@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eyes Up — Lesson Report</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  body { background: #fff; }
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 3rem 2rem 4rem;
+  }
+  .report-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 3px solid var(--ink);
+    padding-bottom: 1.2rem;
+  }
+  .report-head h1 { font-family: var(--font-display); font-size: 2rem; line-height: 1.1; }
+  .report-head .meta { text-align: right; color: var(--ink-soft); font-size: 0.9rem; }
+  .report-head .meta b { color: var(--ink); letter-spacing: 0.15em; }
+
+  .stat-row { display: flex; gap: 1rem; margin: 1.6rem 0; flex-wrap: wrap; }
+  .stat {
+    flex: 1; min-width: 150px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0.9rem 1rem;
+  }
+  .stat .v { font-size: 1.8rem; font-weight: 800; }
+  .stat .k { color: var(--muted); font-size: 0.82rem; }
+
+  h2.sec {
+    font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); margin: 2rem 0 0.7rem;
+  }
+  .word-chips { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+  .word-chip {
+    background: var(--accent-soft); color: var(--accent-ink);
+    border-radius: 999px; padding: 0.25rem 0.75rem;
+    font-weight: 700; font-size: 0.88rem;
+  }
+  .word-chip small { opacity: 0.6; margin-left: 0.3rem; }
+
+  .itx {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+    break-inside: avoid;
+  }
+  .itx .mode { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: var(--accent-ink); }
+  .itx h3 { font-family: var(--font-display); font-size: 1.15rem; margin: 0.3rem 0 0.6rem; }
+  .itx .n { color: var(--muted); font-size: 0.82rem; }
+  .dist { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+  .dist .row { display: flex; align-items: center; gap: 0.7rem; font-size: 0.9rem; }
+  .dist .lbl { min-width: 130px; font-weight: 700; }
+  .dist .track { flex: 1; height: 12px; background: #eef0f4; border-radius: 6px; overflow: hidden; }
+  .dist .fill { height: 100%; background: var(--accent); border-radius: 6px; }
+  .dist .num { min-width: 2ch; text-align: right; color: var(--ink-soft); }
+  ol.answers, ol.ranked-list { margin: 0.5rem 0 0 1.2rem; }
+  ol.answers li, ol.ranked-list li { margin-bottom: 0.35rem; font-size: 0.95rem; }
+  ol.answers { list-style: none; margin-left: 0; }
+  ol.answers li { border-left: 3px solid var(--line); padding-left: 0.8rem; }
+
+  .note { margin-top: 2.2rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+
+  .print-bar {
+    position: sticky; top: 0;
+    display: flex; justify-content: flex-end; gap: 0.6rem;
+    padding: 0.8rem 2rem;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+  }
+  .print-bar button {
+    background: var(--accent); color: #fff;
+    font-weight: 700; border-radius: 10px;
+    padding: 0.5rem 1.2rem;
+  }
+  .print-bar .hint { align-self: center; color: var(--muted); font-size: 0.82rem; }
+
+  .err { text-align: center; padding: 4rem 1rem; color: var(--ink-soft); }
+
+  @media print {
+    .print-bar { display: none; }
+    .page { padding: 0; max-width: none; }
+    body { background: #fff; }
+    .stat, .itx { border-color: #ccc; }
+  }
+</style>
+</head>
+<body>
+  <div class="print-bar">
+    <span class="hint">In the print dialog, choose “Save as PDF”.</span>
+    <button onclick="window.print()">🖨 Export as PDF</button>
+  </div>
+  <div class="page" id="page"><div class="err">Loading report…</div></div>
+
+<script>
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const MODE_NAMES = {
+  word_cloud: "Word Cloud", short_answer: "Short Answer", poll: "Poll",
+  agree_disagree: "Agree / Disagree", confidence: "Confidence Check",
+  ranking: "Ranking", predict: "Predict", this_or_that: "This or That",
+  one_word: "One Word", ask_question: "Anonymous Questions",
+  true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
+  muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint",
+  sketch: "Sketch It", spot_mistake: "Spot the Mistake",
+  example_nonexample: "Example / Non-example", teach_back: "Teach It Back",
+  match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
+  make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
+  notice_wonder: "Notice / Wonder", quick_challenge: "Quick Challenge",
+  three_two_one: "3 – 2 – 1", before_after: "Before / After",
+  venn: "Venn Diagram",
+};
+
+async function load() {
+  const params = new URLSearchParams(location.search);
+  const code = (params.get("code") || "").toUpperCase();
+  const pw = params.get("pw") || "";
+  const page = document.getElementById("page");
+  let s;
+  try {
+    const res = await fetch(`/api/summary/${code}${pw ? `?pw=${encodeURIComponent(pw)}` : ""}`);
+    if (!res.ok) throw new Error();
+    s = await res.json();
+  } catch {
+    page.innerHTML = `<div class="err"><h2>No live session found for “${esc(code)}”.</h2><p>Reports are generated from a running session — export before closing the server.</p></div>`;
+    return;
+  }
+
+  const when = new Date(s.createdAt).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+
+  const conf = s.confidence ? `
+    <div class="stat"><div class="v">${s.confidence.understanding}%</div><div class="k">signalled understanding<br/>(${s.confidence.gotIt} got it · ${s.confidence.nearly} nearly · ${s.confidence.confused} confused)</div></div>` : "";
+
+  const words = s.commonWords.length ? `
+    <h2 class="sec">Commonly remembered</h2>
+    <div class="word-chips">${s.commonWords.map((w) => `<span class="word-chip">${esc(w.word)}<small>×${w.count}</small></span>`).join("")}</div>` : "";
+
+  const items = s.items.map((it) => {
+    let body = "";
+    if (it.distribution) {
+      const max = Math.max(1, ...it.distribution.map((d) => d.count));
+      body = `<div class="dist">${it.distribution.map((d) => `
+        <div class="row"><span class="lbl">${esc(d.label)}</span>
+        <span class="track"><span class="fill" style="width:${(d.count / max) * 100}%"></span></span>
+        <span class="num">${d.count}</span></div>`).join("")}</div>`;
+    } else if (it.ranked) {
+      body = `<ol class="ranked-list">${it.ranked.map((r) => `<li>${esc(r.label)}${r.correctPct != null ? ` <small style="color:var(--muted)">(${r.correctPct}% placed it here)</small>` : ""}</li>`).join("")}</ol>`;
+    } else if (it.venn) {
+      const heads = [`${it.venn.labels[0]} only`, "Both", `${it.venn.labels[1]} only`];
+      body = `<div class="dist">${it.venn.regions.map((reg, i) => `
+        <div class="row"><span class="lbl">${esc(heads[i])}</span>
+        <span style="flex:1">${reg.map((w) => esc(w.word) + (w.count > 1 ? ` ×${w.count}` : "")).join(", ") || "—"}</span></div>`).join("")}</div>`;
+    } else if (it.matchStats) {
+      body = `<ol class="ranked-list">${it.matchStats.map((m) => `<li>${esc(m.pair)} — ${m.correctPct}% matched correctly</li>`).join("")}</ol>`;
+    } else if (it.sketchCount != null) {
+      body = `<p style="color:var(--ink-soft);margin-top:0.4rem">${it.sketchCount} sketch${it.sketchCount === 1 ? "" : "es"} drawn (view live during the lesson).</p>`;
+    } else if (it.topWords && it.topWords.length) {
+      body = `<div class="word-chips" style="margin-top:0.5rem">${it.topWords.map((w) => `<span class="word-chip">${esc(w.word)}<small>×${w.count}</small></span>`).join("")}</div>`;
+    } else if (it.answers && it.answers.length) {
+      body = `<ol class="answers">${it.answers.map((a) => `<li>${esc(a)}</li>`).join("")}</ol>`;
+    }
+    return `<div class="itx">
+      <span class="mode">${MODE_NAMES[it.mode] || esc(it.mode)}</span>
+      <h3>${it.prompt ? esc(it.prompt) : "<i>Question asked aloud</i>"}</h3>
+      ${body}
+      <div class="n">${it.responses} response${it.responses === 1 ? "" : "s"}</div>
+    </div>`;
+  }).join("");
+
+  page.innerHTML = `
+    <div class="report-head">
+      <h1>Recall session report</h1>
+      <div class="meta">Session <b>${esc(s.code)}</b><br/>${esc(when)}</div>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">${s.participatedCount}/${s.joinedCount}</div><div class="k">students participated</div></div>
+      <div class="stat"><div class="v">${s.interactionCount}</div><div class="k">interactions run</div></div>
+      ${conf}
+    </div>
+    ${words}
+    <h2 class="sec">Interactions</h2>
+    ${items || "<p style='color:var(--muted)'>No interactions were run.</p>"}
+    <div class="note">Generated by Eyes Up 👀 — use this to decide what to reteach, not to grade. Student answers to anonymous questions carry no names anywhere in the system.</div>`;
+  document.title = `Eyes Up report — ${s.code}`;
+}
+load();
+</script>
+</body>
+</html>

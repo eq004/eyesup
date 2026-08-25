@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eyes Up — the teacher holds the room</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.25rem;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, #eef0ff 0%, transparent 60%),
+      var(--paper);
+  }
+  .hero { text-align: center; max-width: 640px; animation: rise 0.5s ease both; }
+  .hero .wordmark { font-size: clamp(2.6rem, 7vw, 4rem); }
+  .tagline {
+    margin-top: 0.75rem;
+    font-size: 1.15rem;
+    color: var(--ink-soft);
+  }
+  .tagline strong { color: var(--ink); }
+  .cards {
+    margin-top: 2.75rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 1rem;
+    width: 100%;
+    max-width: 860px;
+    animation: rise 0.5s 0.12s ease both;
+  }
+  a.card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 1.6rem 1.5rem;
+    box-shadow: var(--shadow);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  a.card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); }
+  .card .icon { font-size: 1.9rem; }
+  .card h2 { font-size: 1.2rem; margin: 0.7rem 0 0.35rem; font-weight: 800; }
+  .card p { color: var(--ink-soft); font-size: 0.95rem; }
+  .card .go { display: inline-block; margin-top: 0.9rem; font-weight: 700; color: var(--accent); }
+  .foot {
+    margin-top: 3rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+    text-align: center;
+    animation: fade-in 0.6s 0.3s ease both;
+  }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <div class="wordmark">Eyes Up<span class="eye">👀</span></div>
+    <p class="tagline">Recall, made social. Short bursts of whole-class response between moments of real teaching. <strong>The teacher holds the room. The room responds.</strong></p>
+  </div>
+
+  <div class="cards">
+    <a class="card" href="/teacher">
+      <span class="icon">🎼</span>
+      <h2>Teacher</h2>
+      <p>Start a session, get a join code, and conduct the room — launch a response mode in seconds.</p>
+      <span class="go">Open dashboard →</span>
+    </a>
+    <a class="card" href="/join">
+      <span class="icon">🙋</span>
+      <h2>Student</h2>
+      <p>Enter the class code. Your device becomes a classroom remote — quick answers, then eyes up.</p>
+      <span class="go">Join a class →</span>
+    </a>
+    <a class="card" href="/projector">
+      <span class="icon">📽️</span>
+      <h2>Projector</h2>
+      <p>The big screen. Questions and the class's collective thinking, readable from the back row.</p>
+      <span class="go">Open display →</span>
+    </a>
+  </div>
+
+  <p class="foot">Teach → Ask → Respond → Reveal → Discuss → Teach</p>
+</body>
+</html>

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eyes Up — Classroom Screen</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(1400px 700px at 50% -20%, var(--night-2) 0%, transparent 70%),
+      var(--night);
+    color: var(--chalk);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.8rem;
+    font-size: 1rem;
+    color: var(--chalk-dim);
+  }
+  .bar .wordmark { color: var(--chalk); font-size: 1.15rem; }
+  .bar .spacer { flex: 1; }
+  .bar .code {
+    font-weight: 800;
+    letter-spacing: 0.25em;
+    color: var(--chalk);
+    background: rgba(123, 147, 255, 0.14);
+    border: 1px solid var(--night-line);
+    border-radius: 10px;
+    padding: 0.3rem 0.9rem;
+  }
+  .bar .count { display: inline-flex; align-items: center; gap: 0.5rem; }
+  .bar .dot { width: 9px; height: 9px; border-radius: 50%; background: #5fd38a; animation: pulse-dot 2s infinite; }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem 4vw 4vh;
+    text-align: center;
+    min-height: 0;
+  }
+  .stage { width: 100%; max-width: 1500px; animation: fade-in 0.35s ease both; }
+
+  .q-tag {
+    display: inline-block;
+    font-size: clamp(0.8rem, 1.4vw, 1.1rem);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--glow);
+    margin-bottom: 1rem;
+  }
+  h1.prompt {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(1.8rem, 4.2vw, 3.6rem);
+    line-height: 1.18;
+    letter-spacing: -0.01em;
+    margin: 0 auto 2.2rem;
+    max-width: 24ch;
+  }
+  h1.prompt .aloud { color: var(--chalk-dim); font-style: italic; }
+
+  /* join screen */
+  .join-wrap { display: flex; align-items: center; justify-content: center; gap: 5vw; flex-wrap: wrap; }
+  .join-block { text-align: left; }
+  .join-block .lead { color: var(--chalk-dim); font-size: clamp(1rem, 1.8vw, 1.4rem); }
+  .join-block .url { font-size: clamp(1.6rem, 3.4vw, 2.8rem); font-weight: 800; margin: 0.4rem 0 1.6rem; }
+  .join-block .bigcode {
+    font-size: clamp(3.5rem, 9vw, 7rem);
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    line-height: 1;
+    background: linear-gradient(135deg, #aab8ff, #e8ebff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .qr-card { background: #fff; border-radius: 20px; padding: 1.1rem; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+  .qr-card svg { display: block; width: clamp(160px, 22vw, 260px); height: auto; }
+  .joined-pill {
+    margin-top: 2.4rem;
+    font-size: clamp(1rem, 1.9vw, 1.4rem);
+    color: var(--chalk-dim);
+  }
+  .joined-pill b { color: var(--chalk); }
+
+  /* big state screens */
+  .giant-emoji { font-size: clamp(4rem, 11vw, 8rem); line-height: 1; }
+  .giant-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 9vw, 7rem);
+    font-weight: 700;
+    margin-top: 1.6rem;
+    letter-spacing: -0.02em;
+  }
+  .giant-sub { color: var(--chalk-dim); font-size: clamp(1.2rem, 2.6vw, 2rem); margin-top: 0.8rem; }
+
+  /* response progress */
+  .progress-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    font-size: clamp(1rem, 1.8vw, 1.35rem);
+    color: var(--chalk-dim);
+    margin-top: 2rem;
+  }
+  .progress-line .dot { width: 10px; height: 10px; border-radius: 50%; background: #5fd38a; animation: pulse-dot 1.6s infinite; }
+  .progress-line.closed .dot { background: #e07272; animation: none; }
+  .progress-line b { color: var(--chalk); }
+
+  /* word cloud */
+  .cloud {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em 1em;
+    max-width: 1200px;
+    margin: 0 auto;
+    line-height: 1.25;
+  }
+  .cloud span {
+    font-weight: 800;
+    animation: pop-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    white-space: nowrap;
+  }
+
+  /* bars */
+  .bars { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.2rem; text-align: left; }
+  .pbar .top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: clamp(1.1rem, 2.2vw, 1.7rem); font-weight: 700; margin-bottom: 0.45rem;
+  }
+  .pbar .top .pct { color: var(--chalk-dim); font-size: 0.85em; }
+  .pbar .track { height: clamp(18px, 2.6vw, 30px); background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; }
+  .pbar .fill {
+    height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, #6f86ff, #9db1ff);
+    transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    min-width: 0;
+  }
+  .pbar.c-green .fill { background: linear-gradient(90deg, #3fb96a, #7bdc9f); }
+  .pbar.c-amber .fill { background: linear-gradient(90deg, #d9a13f, #edc27a); }
+  .pbar.c-red .fill { background: linear-gradient(90deg, #d05f5f, #e79191); }
+
+  /* ranking */
+  .ranked { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.9rem; text-align: left; }
+  .rank-row {
+    display: flex; align-items: center; gap: 1.1rem;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--night-line);
+    border-radius: 16px;
+    padding: 0.9rem 1.3rem;
+    font-size: clamp(1.1rem, 2.4vw, 1.8rem);
+    font-weight: 700;
+    animation: rise 0.5s ease both;
+  }
+  .rank-row .pos {
+    font-family: var(--font-display);
+    font-size: 1.2em;
+    color: var(--glow);
+    width: 1.6em;
+  }
+
+  /* revealed answers */
+  .answers {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    gap: 1rem; max-width: 1300px; margin: 0 auto;
+  }
+  .answer-card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--night-line);
+    border-radius: 18px;
+    padding: 1.1rem 1.4rem;
+    font-size: clamp(1.05rem, 2vw, 1.55rem);
+    max-width: 34ch;
+    animation: pop-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    text-align: left;
+  }
+  .waiting-note { color: var(--chalk-dim); font-size: clamp(1.1rem, 2vw, 1.5rem); }
+
+  .sketch-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 6px;
+    animation: pop-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+  }
+  .sketch-card img { display: block; width: clamp(160px, 18vw, 240px); border-radius: 10px; }
+
+  .pct-badge {
+    font-size: 0.55em;
+    font-weight: 800;
+    color: var(--chalk-dim);
+    background: rgba(255,255,255,0.07);
+    border-radius: 999px;
+    padding: 0.25em 0.9em;
+    white-space: nowrap;
+  }
+
+  /* timer overlay */
+  .timer-overlay {
+    position: fixed;
+    top: 0.9rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 23, 45, 0.92);
+    border: 2px solid var(--night-line);
+    border-radius: 999px;
+    padding: 0.5rem 2rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(2rem, 5vw, 3.6rem);
+    color: var(--chalk);
+    display: none;
+    z-index: 30;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    animation: rise 0.25s ease both;
+  }
+  .timer-overlay.show { display: block; }
+  .timer-overlay.urgent { color: #ff8f8f; border-color: #d05f5f; animation: pulse-dot 1s infinite; }
+  .timer-overlay .paused-tag { font-size: 0.4em; color: var(--chalk-dim); vertical-align: middle; margin-left: 0.6em; }
+
+  /* spotlight */
+  .spot-name {
+    font-family: var(--font-display);
+    font-size: clamp(3.5rem, 11vw, 8.5rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #aab8ff, #f0e6c8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-top: 1.4rem;
+    animation: pop-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* groups */
+  .groups-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .group-card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--night-line);
+    border-radius: 20px;
+    padding: 1.2rem 1.6rem;
+    min-width: 220px;
+    animation: rise 0.45s ease both;
+    text-align: left;
+  }
+  .group-card h3 {
+    font-family: var(--font-display);
+    color: var(--glow);
+    font-size: clamp(1.2rem, 2.2vw, 1.7rem);
+    margin-bottom: 0.5rem;
+  }
+  .group-card ul { list-style: none; }
+  .group-card li { font-size: clamp(1rem, 2vw, 1.5rem); font-weight: 700; padding: 0.15rem 0; }
+
+  /* projector code entry */
+  .enter-code input {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid var(--night-line);
+    color: var(--chalk);
+    border-radius: 14px;
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: 0.3em;
+    text-align: center;
+    text-transform: uppercase;
+    padding: 0.7rem 1rem;
+    width: 260px;
+  }
+  .enter-code button {
+    display: block; margin: 1.2rem auto 0;
+    background: var(--accent); color: #fff;
+    font-weight: 800; font-size: 1.1rem;
+    border-radius: 12px; padding: 0.8rem 2rem;
+  }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <span class="wordmark">Eyes Up 👀</span>
+    <span class="spacer"></span>
+    <span class="count" id="barCount"></span>
+    <span class="code" id="barCode"></span>
+  </div>
+  <main><div class="stage" id="stage"></div></main>
+  <div class="timer-overlay" id="timerOverlay"></div>
+  <script src="/vendor/qrcode.js"></script>
+  <script src="/projector.js"></script>
+</body>
+</html>

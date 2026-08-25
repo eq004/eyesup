@@ -1,0 +1,405 @@
+/* Eyes Up — projected classroom screen */
+
+const stage = document.getElementById("stage");
+const barCode = document.getElementById("barCode");
+const barCount = document.getElementById("barCount");
+
+let ws = null;
+let state = null;
+let code = (new URLSearchParams(location.search).get("code") || "").toUpperCase();
+
+const MODE_TAGS = {
+  word_cloud: "Word Cloud", short_answer: "Short Answer", poll: "Poll",
+  agree_disagree: "Agree / Disagree", confidence: "Confidence Check",
+  ranking: "Ranking", predict: "Make a Prediction", this_or_that: "This or That",
+  one_word: "One Word", ask_question: "Your Questions",
+  true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
+  muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint — 60 seconds",
+  sketch: "Sketch It", spot_mistake: "Spot the Mistake",
+  example_nonexample: "Example or Non-example?", teach_back: "Teach It Back",
+  match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
+  make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
+  notice_wonder: "Notice / Wonder", quick_challenge: "Quick Challenge",
+  three_two_one: "3 – 2 – 1", before_after: "Before / After",
+  venn: "Venn Diagram",
+};
+
+const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ---------------- connection ---------------- */
+
+function connect() {
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+  ws.onopen = () => {
+    if (code) ws.send(JSON.stringify({ type: "projector_join", code }));
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "error") {
+      code = "";
+      renderCodeEntry(true);
+      return;
+    }
+    if (msg.type === "state") {
+      state = msg;
+      render();
+    }
+  };
+  ws.onclose = () => setTimeout(connect, 1200);
+}
+
+/* ---------------- render ---------------- */
+
+function render() {
+  if (!state) return renderCodeEntry(false);
+  barCode.textContent = state.code;
+  barCount.innerHTML = `<span class="dot"></span> ${state.studentCount} in the room`;
+
+  const itx = state.interaction;
+
+  if (state.phase === "ended") {
+    stage.innerHTML = bigState("🙌", "Great thinking today", "Recap complete.");
+    return;
+  }
+
+  // Room-tool focus takes the big screen until the teacher clears it.
+  if (state.focus?.type === "spotlight") {
+    stage.innerHTML = `
+      <div class="giant-emoji">🎲</div>
+      <div class="giant-sub" style="margin-top:1rem">All eyes on…</div>
+      <div class="spot-name">${esc(state.focus.name)}</div>
+      <div class="giant-sub">Your voice — tell us what you think.</div>`;
+    return;
+  }
+  if (state.focus?.type === "groups") {
+    stage.innerHTML = `
+      <div class="q-tag">Working Groups</div>
+      <h1 class="prompt" style="margin-bottom:1.6rem">Find your people 👥</h1>
+      <div class="groups-grid">${state.focus.groups
+        .map(
+          (g, i) => `
+        <div class="group-card" style="animation-delay:${i * 0.08}s">
+          <h3>Group ${i + 1}</h3>
+          <ul>${g.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
+        </div>`
+        )
+        .join("")}</div>`;
+    return;
+  }
+
+  if (state.phase === "eyesup" || (!itx && state.phase !== "lobby")) {
+    stage.innerHTML = bigState("👀", "Eyes up", "Back to the room. Let's talk about it.");
+    return;
+  }
+  if (!itx) return renderLobby();
+
+  renderInteraction(itx);
+}
+
+/* ---------------- timer overlay ---------------- */
+
+function updateTimerOverlay() {
+  const el = document.getElementById("timerOverlay");
+  const t = state?.timer;
+  if (!t) { el.classList.remove("show", "urgent"); return; }
+  const left = t.paused ? t.remaining : Math.max(0, t.endsAt - Date.now());
+  const s = Math.ceil(left / 1000);
+  el.classList.add("show");
+  el.classList.toggle("urgent", left > 0 && left <= 10000);
+  el.innerHTML =
+    left <= 0
+      ? `⏰ Time's up`
+      : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}${t.paused ? `<span class="paused-tag">paused</span>` : ""}`;
+}
+setInterval(updateTimerOverlay, 250);
+
+function bigState(emoji, title, sub) {
+  return `
+    <div class="giant-emoji">${emoji}</div>
+    <div class="giant-title">${esc(title)}</div>
+    <div class="giant-sub">${esc(sub)}</div>`;
+}
+
+function renderLobby() {
+  // Locally, advertise the LAN address other devices can reach; on a real
+  // deployment the page's own host IS the public address.
+  const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+  const host = isLocal && state.joinHost ? state.joinHost : location.host;
+  const proto = isLocal ? "http:" : location.protocol;
+  const joinUrl = `${host}/join`;
+  const full = `${proto}//${host}/join?code=${state.code}`;
+  let qrSvg = "";
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(full);
+    qr.make();
+    qrSvg = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+  } catch { /* QR lib missing — code alone is fine */ }
+
+  stage.innerHTML = `
+    <div class="join-wrap">
+      <div class="join-block">
+        <div class="lead">Grab any device and go to</div>
+        <div class="url">${esc(joinUrl)}</div>
+        <div class="lead">Class code</div>
+        <div class="bigcode">${esc(state.code)}</div>
+      </div>
+      ${qrSvg ? `<div class="qr-card">${qrSvg}</div>` : ""}
+    </div>
+    <div class="joined-pill"><b>${state.studentCount}</b> ${state.studentCount === 1 ? "student is" : "students are"} in — then it's eyes up. 👀</div>`;
+}
+
+function promptBlock(itx) {
+  return `
+    <div class="q-tag">${MODE_TAGS[itx.mode] || itx.mode}</div>
+    <h1 class="prompt">${itx.prompt ? esc(itx.prompt) : `<span class="aloud">Listen to the question…</span>`}</h1>`;
+}
+
+function progressLine(itx) {
+  return `
+    <div class="progress-line ${itx.open ? "" : "closed"}">
+      <span class="dot"></span>
+      <span><b>${state.respondedCount}</b> of <b>${state.studentCount}</b> responded${itx.open ? "" : " · closed"}</span>
+    </div>`;
+}
+
+function renderInteraction(itx) {
+  const agg = itx.aggregate;
+  let body = "";
+
+  if (!agg) {
+    // Results hidden — build anticipation, show only the count.
+    body = `<p class="waiting-note">${itx.open ? "Thinking time… responses are coming in." : "Responses are in. Waiting for the reveal…"}</p>`;
+  } else if (agg.words) {
+    body = itx.mode === "mindmap" ? renderMindmap(itx, agg) : renderCloud(agg);
+  } else if (itx.mode === "example_nonexample") {
+    body = renderBars(itx, agg) + renderWhys(agg);
+  } else if (agg.matches) {
+    body = renderMatches(agg);
+  } else if (itx.mode === "venn") {
+    body = renderVenn(agg);
+  } else if (agg.counts) {
+    body = renderBars(itx, agg);
+  } else if (agg.ranked) {
+    body = renderRanked(agg);
+  } else if (agg.sketches) {
+    body = renderSketches(agg);
+  } else if (agg.fields) {
+    body = renderStructured(agg);
+  } else if (agg.revealed) {
+    body = renderAnswers(itx, agg);
+  }
+
+  stage.innerHTML = promptBlock(itx) + body + progressLine(itx);
+}
+
+/* Mindmap — submissions branch out around the central concept. */
+function renderMindmap(itx, agg) {
+  const items = agg.words.slice(0, 22);
+  if (!items.length) return `<p class="waiting-note">Ideas will branch out here as they land…</p>`;
+  const W = 1200, H = 560, cx = W / 2, cy = H / 2;
+  const max = Math.max(...items.map((w) => w.count));
+  const nodes = items.map((w, i) => {
+    const angle = i * 2.39996; // golden angle — organic spread
+    const r = 130 + 150 * Math.sqrt(i / Math.max(1, items.length - 1));
+    return {
+      ...w,
+      x: cx + Math.cos(angle) * r * 1.55,
+      y: cy + Math.sin(angle) * r * 0.78,
+      size: 20 + (max > 1 ? ((w.count - 1) / (max - 1)) * 22 : 8),
+      color: CLOUD_COLORS[i % CLOUD_COLORS.length],
+    };
+  });
+  const center = itx.prompt || "the idea";
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:58vh" role="img" aria-label="class mindmap">
+    ${nodes.map((n) => `<line x1="${cx}" y1="${cy}" x2="${n.x}" y2="${n.y}" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>`).join("")}
+    ${nodes.map((n, i) => `<text x="${n.x}" y="${n.y}" text-anchor="middle" dominant-baseline="middle"
+        font-size="${n.size}" font-weight="800" fill="${n.color}"
+        style="animation:fade-in 0.5s ${(i % 10) * 0.05}s ease both">${esc(n.word)}${n.count > 1 ? ` ×${n.count}` : ""}</text>`).join("")}
+    <g>
+      <ellipse cx="${cx}" cy="${cy}" rx="${Math.min(190, 40 + center.length * 7)}" ry="52" fill="#1d2140" stroke="#7b93ff" stroke-width="2"/>
+      <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="24" font-weight="800" fill="#f4f2ea">${esc(center.length > 40 ? center.slice(0, 38) + "…" : center)}</text>
+    </g>
+  </svg>`;
+}
+
+/* Venn — two overlapping circles filling live with the class's ideas. */
+function renderVenn(agg) {
+  const W = 1200, H = 640, cy = 330, r = 275;
+  const cxA = 430, cxB = 770;
+  const anchors = [285, 600, 915]; // A-only, both, B-only
+  const colors = ["#aab8ff", "#8fd6a9", "#edc27a"];
+  const CAP = 9, LH = 42;
+
+  const regionWords = (list, x, color) => {
+    const words = list.slice(0, CAP);
+    const startY = cy - ((words.length - 1) * LH) / 2;
+    let out = words
+      .map((w, i) => {
+        const size = 20 + Math.min(3, w.count - 1) * 5;
+        return `<text x="${x}" y="${startY + i * LH}" text-anchor="middle" dominant-baseline="middle"
+          font-size="${size}" font-weight="800" fill="${color}"
+          style="animation:fade-in 0.4s ${i * 0.05}s ease both">${esc(w.word)}${w.count > 1 ? ` ×${w.count}` : ""}</text>`;
+      })
+      .join("");
+    if (list.length > CAP)
+      out += `<text x="${x}" y="${startY + CAP * LH}" text-anchor="middle" font-size="17" fill="var(--chalk-dim)">+${list.length - CAP} more</text>`;
+    return out;
+  };
+
+  const empty = agg.regions.every((reg) => !reg.length);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:62vh" role="img" aria-label="class venn diagram">
+    <circle cx="${cxA}" cy="${cy}" r="${r}" fill="rgba(111,134,255,0.16)" stroke="#7b93ff" stroke-width="3"/>
+    <circle cx="${cxB}" cy="${cy}" r="${r}" fill="rgba(232,161,60,0.13)" stroke="#edc27a" stroke-width="3"/>
+    <text x="${cxA - 90}" y="34" text-anchor="middle" font-size="30" font-weight="800" fill="#aab8ff">${esc(agg.labels[0])}</text>
+    <text x="${cxB + 90}" y="34" text-anchor="middle" font-size="30" font-weight="800" fill="#edc27a">${esc(agg.labels[1])}</text>
+    ${empty ? `<text x="600" y="${cy}" text-anchor="middle" font-size="24" fill="var(--chalk-dim)">Ideas land here as the class sorts them…</text>` : ""}
+    ${agg.regions.map((list, i) => regionWords(list, anchors[i], colors[i])).join("")}
+  </svg>`;
+}
+
+/* Match Up — how much of the room matched each pair correctly. */
+function renderMatches(agg) {
+  if (!agg.total) return `<p class="waiting-note">Matches will appear here…</p>`;
+  return `<div class="bars">${agg.matches
+    .map((m) => {
+      const pct = Math.round((m.correct / agg.total) * 100);
+      const cls = pct >= 70 ? "c-green" : pct >= 40 ? "c-amber" : "c-red";
+      return `
+      <div class="pbar ${cls}">
+        <div class="top"><span>${esc(m.left)} <span style="color:var(--chalk-dim)">↔</span> ${esc(m.right)}</span><span class="pct">${pct}% matched it</span></div>
+        <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+/* Example / Non-example — the written "why"s the teacher has revealed. */
+function renderWhys(agg) {
+  if (!agg.revealed.length) return "";
+  return `<div class="answers" style="margin-top:2rem">${agg.revealed
+    .map((r, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s"><b style="color:var(--glow)">${esc(r.choiceLabel)}</b> — ${esc(r.text)}</div>`)
+    .join("")}</div>`;
+}
+
+/* Structured responses (3-2-1, notice/wonder, before/after). */
+function renderStructured(agg) {
+  if (!agg.revealed.length) {
+    return `<p class="waiting-note">${agg.total ? `${agg.total} in — your teacher will reveal them.` : "Responses will appear here…"}</p>`;
+  }
+  return `<div class="answers">${agg.revealed
+    .map(
+      (r, i) => `<div class="answer-card" style="animation-delay:${(i % 6) * 0.07}s">${agg.fields
+        .map((f, j) => (r.parts[j] ? `<div style="margin-bottom:0.4em"><b style="color:var(--glow);font-size:0.8em">${esc(f)}</b><br/>${esc(r.parts[j])}</div>` : ""))
+        .join("")}</div>`
+    )
+    .join("")}</div>`;
+}
+
+/* Sketch gallery. */
+function renderSketches(agg) {
+  if (!agg.sketches.length) {
+    return `<p class="waiting-note">${agg.total ? `${agg.total} sketch${agg.total === 1 ? "" : "es"} in — your teacher will reveal them.` : "Sketches will appear here…"}</p>`;
+  }
+  return `<div class="answers">${agg.sketches
+    .map((s, i) => `<div class="sketch-card" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/></div>`)
+    .join("")}</div>`;
+}
+
+function renderCloud(agg) {
+  if (!agg.words.length)
+    return `<p class="waiting-note">Words will appear here as they land…</p>`;
+  const max = Math.max(...agg.words.map((w) => w.count));
+  // Deterministic pseudo-shuffle so the cloud looks organic but stable.
+  const words = [...agg.words]
+    .map((w, i) => ({ ...w, sort: (i * 2654435761) % 1000 }))
+    .sort((a, b) => a.sort - b.sort);
+  return `<div class="cloud">${words
+    .map((w, i) => {
+      const scale = max > 1 ? (w.count - 1) / (max - 1) : 0.4;
+      const size = 1.4 + scale * 3.4; // rem-ish via vw clamp below
+      const color = CLOUD_COLORS[i % CLOUD_COLORS.length];
+      return `<span style="font-size:clamp(${(size * 0.55).toFixed(2)}rem, ${(size * 1.1).toFixed(2)}vw, ${(size * 1.15).toFixed(2)}rem); color:${color}; animation-delay:${(i % 12) * 0.04}s">${esc(w.word)}</span>`;
+    })
+    .join("")}</div>`;
+}
+
+const CHOICE_COLOR_SETS = {
+  agree_disagree: ["c-green", "c-amber", "c-red"],
+  confidence: ["c-green", "c-amber", "c-red"],
+  true_false: ["c-green", "c-red"],
+};
+
+function renderBars(itx, agg) {
+  const total = agg.counts.reduce((a, b) => a + b, 0);
+  const max = Math.max(1, ...agg.counts);
+  const colors = CHOICE_COLOR_SETS[itx.mode] || [];
+  return `<div class="bars">${itx.options
+    .map((o, i) => {
+      const n = agg.counts[i];
+      const pct = total ? Math.round((n / total) * 100) : 0;
+      return `
+      <div class="pbar ${colors[i] || ""}">
+        <div class="top"><span>${esc(o)}</span><span class="pct">${n} · ${pct}%</span></div>
+        <div class="track"><div class="fill" style="width:${total ? (n / max) * 100 : 0}%"></div></div>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+function renderRanked(agg) {
+  if (!agg.total) return `<p class="waiting-note">The class order will appear here…</p>`;
+  return `<div class="ranked">${agg.ranked
+    .map(
+      (r, i) => `
+    <div class="rank-row" style="animation-delay:${i * 0.08}s">
+      <span class="pos">${r.position}</span>
+      <span style="flex:1;text-align:left">${esc(r.label)}</span>
+      ${r.correctPct != null ? `<span class="pct-badge">${r.correctPct}% placed it here</span>` : ""}
+    </div>`
+    )
+    .join("")}</div>`;
+}
+
+function renderAnswers(itx, agg) {
+  if (!agg.revealed.length) {
+    const n = agg.total;
+    return `<p class="waiting-note">${n ? `${n} response${n === 1 ? "" : "s"} in — your teacher will reveal them.` : "Responses will appear here…"}</p>`;
+  }
+  return `<div class="answers">${agg.revealed
+    .map((r, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s">${esc(r.text)}</div>`)
+    .join("")}</div>`;
+}
+
+/* ---------------- code entry ---------------- */
+
+function renderCodeEntry(failed) {
+  barCode.textContent = "";
+  barCount.textContent = "";
+  stage.innerHTML = `
+    <div class="giant-emoji">📽️</div>
+    <div class="giant-title" style="font-size:clamp(2rem,5vw,3.4rem)">Connect this screen</div>
+    <div class="giant-sub" style="margin-bottom:1.6rem">${failed ? "That code didn't match a live session — check the teacher dashboard." : "Enter the session code from the teacher dashboard."}</div>
+    <div class="enter-code">
+      <input id="codeIn" maxlength="4" placeholder="CODE" autocomplete="off" />
+      <button id="goBtn">Connect</button>
+    </div>`;
+  const input = document.getElementById("codeIn");
+  input.focus();
+  const go = () => {
+    const c = input.value.trim().toUpperCase();
+    if (c.length !== 4) return;
+    code = c;
+    history.replaceState(null, "", `/projector?code=${c}`);
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "projector_join", code: c }));
+  };
+  document.getElementById("goBtn").onclick = go;
+  input.onkeydown = (e) => { if (e.key === "Enter") go(); };
+}
+
+if (!code) renderCodeEntry(false);
+connect();

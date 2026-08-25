@@ -1,0 +1,16 @@
+{
+  "name": "eyes-up",
+  "version": "0.1.0",
+  "description": "Teacher-led real-time classroom recall & participation platform. The teacher holds the room. The room responds.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.22.2",
+    "qrcode-generator": "^2.0.4",
+    "ws": "^8.21.3"
+  }
+}

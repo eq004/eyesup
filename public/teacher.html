@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eyes Up — Teacher</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  body { min-height: 100vh; }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.8rem 1.4rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  header .wordmark { font-size: 1.25rem; }
+  .code-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    background: var(--ink);
+    color: #fff;
+    border-radius: 10px;
+    padding: 0.35rem 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    font-size: 1.05rem;
+    cursor: pointer;
+  }
+  .code-chip small { letter-spacing: 0; font-weight: 500; opacity: 0.65; }
+  .join-url { color: var(--muted); font-size: 0.85rem; }
+  .spacer { flex: 1; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    border-radius: 999px;
+    padding: 0.4rem 0.9rem;
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+  .pill .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 2s infinite;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: 10px;
+    padding: 0.48rem 0.95rem;
+    font-weight: 700;
+    font-size: 0.9rem;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    transition: background 0.12s ease, transform 0.08s ease;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--paper); }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-ink); }
+  .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .btn.dark:hover { background: #2c3040; }
+  .btn.danger-ghost { color: var(--red); }
+  .btn.danger-ghost:hover { background: var(--red-soft); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn.big { font-size: 1rem; padding: 0.65rem 1.3rem; border-radius: 12px; }
+
+  /* ---------- layout ---------- */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 1.25rem;
+    padding: 1.25rem 1.4rem 3rem;
+    max-width: 1360px;
+    margin: 0 auto;
+  }
+  @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.95rem 1.25rem;
+    border-bottom: 1px solid var(--line);
+    font-weight: 800;
+    font-size: 0.95rem;
+  }
+  .panel-head .sub { font-weight: 500; color: var(--muted); font-size: 0.85rem; }
+
+  /* ---------- launch grid ---------- */
+  .modes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.7rem;
+    padding: 1.1rem 1.25rem 1.25rem;
+  }
+  .mode-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--paper);
+    padding: 0.85rem 0.95rem;
+    text-align: left;
+    transition: transform 0.1s ease, border-color 0.12s ease, background 0.12s ease;
+  }
+  .mode-tile:hover { transform: translateY(-2px); border-color: var(--accent); background: var(--accent-soft); }
+  .mode-tile .icon { font-size: 1.35rem; }
+  .mode-tile .name { font-weight: 800; font-size: 0.92rem; line-height: 1.2; }
+  .mode-tile .hint { font-size: 0.74rem; color: var(--muted); line-height: 1.3; }
+  .mode-cat {
+    grid-column: 1 / -1;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    margin-top: 0.35rem;
+  }
+  .mode-cat:first-child { margin-top: 0; }
+  .pair-row { display: flex; align-items: center; gap: 0.45rem; }
+  .pair-row input { flex: 1; margin-top: 0 !important; }
+  .pair-eq { color: var(--accent-ink); font-weight: 800; }
+
+  /* ---------- composer ---------- */
+  .composer {
+    margin: 0 1.25rem 1.25rem;
+    border: 2px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    background: var(--accent-soft);
+    display: none;
+    animation: pop-in 0.18s ease both;
+  }
+  .composer.show { display: block; }
+  .composer .mode-label { font-weight: 800; color: var(--accent-ink); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .composer input[type="text"] {
+    width: 100%;
+    margin-top: 0.55rem;
+    border: 1px solid #c9d1fb;
+    border-radius: 10px;
+    padding: 0.65rem 0.85rem;
+    font-size: 1rem;
+    background: #fff;
+  }
+  .composer input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .composer .opts { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.55rem; }
+  .composer .opts input { margin-top: 0; }
+  .composer .row { display: flex; gap: 0.6rem; margin-top: 0.8rem; align-items: center; flex-wrap: wrap; }
+  .composer .tip { font-size: 0.8rem; color: var(--ink-soft); }
+
+  /* ---------- live interaction ---------- */
+  .live-empty { padding: 2.2rem 1.25rem; text-align: center; color: var(--muted); }
+  .live-empty .big { font-size: 1.05rem; font-weight: 700; color: var(--ink-soft); }
+
+  .live { padding: 1.1rem 1.25rem 1.25rem; }
+  .live-top { display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+  .live-q { flex: 1; min-width: 240px; }
+  .live-q .mode-tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 0.18rem 0.5rem;
+  }
+  .live-q h2 { font-family: var(--font-display); font-size: 1.45rem; margin-top: 0.4rem; line-height: 1.25; }
+  .live-q .aloud { color: var(--muted); font-style: italic; font-weight: 500; }
+  .resp-meter { text-align: right; min-width: 130px; }
+  .resp-meter .n { font-size: 2rem; font-weight: 800; line-height: 1; }
+  .resp-meter .lbl { color: var(--muted); font-size: 0.8rem; }
+  .status-line {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    margin-top: 0.4rem; font-size: 0.8rem; font-weight: 700;
+    border-radius: 999px; padding: 0.2rem 0.65rem;
+  }
+  .status-line.open { background: var(--green-soft); color: var(--green); }
+  .status-line.closed { background: var(--red-soft); color: var(--red); }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .responses { margin-top: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .resp-card {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.55rem 0.8rem;
+    background: var(--paper);
+    animation: pop-in 0.25s ease both;
+  }
+  .resp-card .who { font-weight: 700; font-size: 0.82rem; color: var(--ink-soft); min-width: 70px; }
+  .resp-card .what { flex: 1; }
+  .resp-card .reveal-btn {
+    font-size: 0.78rem; font-weight: 700;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.25rem 0.6rem;
+    background: var(--surface);
+  }
+  .resp-card.revealed { border-color: var(--green); background: var(--green-soft); }
+  .resp-card.revealed .reveal-btn { color: var(--green); border-color: var(--green); }
+
+  .agg-bars { margin-top: 1.1rem; display: flex; flex-direction: column; gap: 0.55rem; }
+  .agg-bar .lbl { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.2rem; }
+  .agg-bar .track { height: 10px; border-radius: 6px; background: var(--line); overflow: hidden; }
+  .agg-bar .fill { height: 100%; border-radius: 6px; background: var(--accent); transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+
+  .word-chips { margin-top: 1.1rem; display: flex; flex-wrap: wrap; gap: 0.45rem; }
+  .word-chip {
+    background: var(--accent-soft); color: var(--accent-ink);
+    border-radius: 999px; padding: 0.25rem 0.75rem;
+    font-weight: 700; font-size: 0.88rem;
+    animation: pop-in 0.25s ease both;
+  }
+  .word-chip small { opacity: 0.6; margin-left: 0.3rem; }
+
+  /* ---------- room tools ---------- */
+  .tools { padding: 0.9rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.9rem; }
+  .tool-block { display: flex; flex-direction: column; gap: 0.45rem; }
+  .tool-title { font-weight: 800; font-size: 0.88rem; display: flex; align-items: center; gap: 0.5rem; }
+  .tool-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+  .tool-hint { color: var(--muted); font-size: 0.75rem; }
+  .btn.mini { padding: 0.32rem 0.6rem; font-size: 0.8rem; border-radius: 8px; }
+  .btn.primary-mini { background: var(--accent); border-color: var(--accent); color: #fff; padding: 0.32rem 0.7rem; font-size: 0.8rem; border-radius: 8px; }
+  .btn.primary-mini:hover { background: var(--accent-ink); }
+  .tools input[type="number"], .tools select {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.8rem;
+    width: 64px;
+    background: var(--surface);
+  }
+  .tools select { width: auto; }
+  .timer-display { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--accent-ink); }
+  .timer-display.urgent { color: var(--red); }
+  .picked-name { font-weight: 800; font-size: 1rem; }
+  #groupsList { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; }
+  #groupsList .grp { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 0.35rem 0.55rem; }
+  #groupsList .grp b { color: var(--accent-ink); }
+
+  .venn-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8rem; margin-top: 1.1rem; }
+  .venn-col { border: 1px solid var(--line); border-radius: 10px; padding: 0.6rem 0.7rem; background: var(--paper); }
+  .venn-head { font-weight: 800; font-size: 0.8rem; color: var(--accent-ink); }
+
+  /* ---------- sequence sidebar ---------- */
+  .seq-list { padding: 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.45rem; }
+  .seq-item {
+    display: flex; align-items: center; gap: 0.6rem;
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 0.5rem 0.65rem; background: var(--paper);
+    font-size: 0.85rem;
+  }
+  .seq-item.done { opacity: 0.5; }
+  .seq-item.current { border-color: var(--accent); background: var(--accent-soft); }
+  .seq-item .num {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--ink); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 800; flex-shrink: 0;
+  }
+  .seq-item .txt { flex: 1; min-width: 0; }
+  .seq-item .txt .m { font-weight: 800; font-size: 0.78rem; }
+  .seq-item .txt .p { color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seq-item .play { font-size: 0.9rem; padding: 0.2rem 0.4rem; border-radius: 6px; }
+  .seq-item .play:hover { background: var(--accent-soft); }
+  .seq-item .del { color: var(--muted); padding: 0.2rem 0.3rem; }
+  .seq-item .del:hover { color: var(--red); }
+  .seq-actions { padding: 0 1rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .seq-empty { padding: 0.5rem 1rem 0.75rem; color: var(--muted); font-size: 0.85rem; }
+  .ai-stub {
+    margin: 0 1rem 1rem; padding: 0.8rem 0.9rem;
+    border: 1px dashed var(--line); border-radius: 10px;
+    font-size: 0.8rem; color: var(--muted);
+  }
+  .ai-stub b { color: var(--ink-soft); }
+
+  /* ---------- student preview panel ---------- */
+  .phone-panel {
+    position: fixed;
+    right: 1.2rem;
+    bottom: 1.2rem;
+    width: 320px;
+    z-index: 40;
+    display: none;
+    flex-direction: column;
+    background: var(--ink);
+    border-radius: 26px;
+    padding: 0.55rem;
+    box-shadow: var(--shadow-lift);
+    animation: rise 0.25s ease both;
+  }
+  .phone-panel.show { display: flex; }
+  .phone-panel .phone-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #cfd3e6;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.15rem 0.7rem 0.5rem;
+  }
+  .phone-panel .phone-head button {
+    color: #cfd3e6;
+    font-size: 0.95rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 6px;
+  }
+  .phone-panel .phone-head button:hover { background: rgba(255,255,255,0.12); }
+  .phone-panel iframe {
+    width: 100%;
+    height: 480px;
+    border: none;
+    border-radius: 18px;
+    background: var(--paper);
+  }
+
+  /* ---------- summary overlay ---------- */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(20, 22, 34, 0.55);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 4vh 1rem;
+    z-index: 50;
+    overflow-y: auto;
+  }
+  .overlay.show { display: flex; }
+  .sheet {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    max-width: 660px;
+    width: 100%;
+    padding: 2rem;
+    box-shadow: var(--shadow-lift);
+    animation: rise 0.3s ease both;
+  }
+  .sheet h2 { font-family: var(--font-display); font-size: 1.7rem; }
+  .stat-row { display: flex; gap: 1rem; margin: 1.2rem 0; flex-wrap: wrap; }
+  .stat {
+    flex: 1; min-width: 140px;
+    background: var(--paper); border-radius: var(--radius);
+    padding: 0.9rem 1rem;
+  }
+  .stat .v { font-size: 1.7rem; font-weight: 800; }
+  .stat .k { color: var(--muted); font-size: 0.82rem; }
+  .sum-section { margin-top: 1.1rem; }
+  .sum-section h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.4rem; }
+  .sum-item { border-top: 1px solid var(--line); padding: 0.7rem 0; font-size: 0.9rem; }
+  .sum-item .q { font-weight: 700; }
+  .sum-item .d { color: var(--ink-soft); margin-top: 0.15rem; }
+
+  /* join overlay for teacher start */
+  .toast {
+    position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff;
+    padding: 0.55rem 1.1rem; border-radius: 999px;
+    font-size: 0.88rem; font-weight: 600;
+    opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+    z-index: 60;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header>
+    <span class="wordmark">Eyes Up <span class="eye">👀</span></span>
+    <button class="code-chip" id="codeChip" title="Click to copy join code">
+      <small>CODE</small> <span id="codeText">····</span>
+    </button>
+    <span class="join-url" id="joinUrl"></span>
+    <span class="spacer"></span>
+    <span class="pill"><span class="dot"></span><span id="studentCount">0</span>&nbsp;connected</span>
+    <button class="btn" id="openProjector">📽️ Projector</button>
+    <button class="btn" id="togglePreview" title="See exactly what students see, right here">📱 Student view</button>
+    <button class="btn dark" id="eyesUpTop">👀 EYES UP</button>
+    <button class="btn" id="endBtn">Finish &amp; summarise</button>
+  </header>
+
+  <div class="layout">
+    <main>
+      <!-- Launch panel -->
+      <section class="panel">
+        <div class="panel-head">Launch an interaction <span class="sub">— think it, say it aloud, tap it. Students respond in seconds.</span></div>
+        <div class="modes" id="modeGrid"></div>
+        <div class="composer" id="composer">
+          <div class="mode-label" id="composerMode"></div>
+          <input type="text" id="composerPrompt" placeholder="Type the question — or leave blank and just ask it aloud" maxlength="300" />
+          <div class="opts" id="composerOpts"></div>
+          <div class="row">
+            <button class="btn primary big" id="launchBtn">Launch now ⏎</button>
+            <button class="btn" id="addStepBtn">＋ Add to plan instead</button>
+            <button class="btn" id="cancelComposer">Cancel</button>
+            <span class="tip" id="composerTip"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live interaction -->
+      <section class="panel" style="margin-top:1.25rem">
+        <div class="panel-head">Live now <span class="sub" id="liveSub"></span></div>
+        <div id="liveArea">
+          <div class="live-empty">
+            <p class="big">Nothing live — the room is yours. 🎤</p>
+            <p>Teach, question, discuss. Launch an interaction when you want the whole class to respond.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Sequence sidebar -->
+    <aside>
+      <section class="panel" style="margin-bottom:1.25rem">
+        <div class="panel-head">Room tools</div>
+        <div class="tools">
+          <div class="tool-block">
+            <div class="tool-title">⏱ Timer <span class="timer-display" id="timerDisplay"></span></div>
+            <div class="tool-row">
+              <button class="btn mini" data-timer="30">30s</button>
+              <button class="btn mini" data-timer="60">1m</button>
+              <button class="btn mini" data-timer="120">2m</button>
+              <button class="btn mini" data-timer="300">5m</button>
+              <input type="number" id="timerCustom" min="5" max="3600" placeholder="secs" />
+              <button class="btn mini" id="timerGo">Go</button>
+            </div>
+            <div class="tool-row" id="timerControls"></div>
+          </div>
+          <div class="tool-block">
+            <div class="tool-title">🎲 Random student</div>
+            <div class="tool-row">
+              <button class="btn mini primary-mini" id="pickBtn">Pick someone</button>
+              <span class="picked-name" id="pickedName"></span>
+            </div>
+            <p class="tool-hint">No repeats until everyone has had a turn.</p>
+          </div>
+          <div class="tool-block">
+            <div class="tool-title">👥 Random groups</div>
+            <div class="tool-row">
+              <select id="groupBy">
+                <option value="size">groups of</option>
+                <option value="count">split into</option>
+              </select>
+              <input type="number" id="groupN" min="2" max="15" value="2" />
+              <button class="btn mini primary-mini" id="groupsBtn">Make groups</button>
+            </div>
+            <div id="groupsList"></div>
+          </div>
+          <div class="tool-row" id="focusClearRow"></div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-head">Recall plan <span class="sub">optional</span></div>
+        <div id="seqArea"></div>
+        <div class="seq-actions">
+          <button class="btn primary" id="nextBtn">▶ Next in plan</button>
+          <button class="btn" id="loadExample">Load example: Gen-AI Lesson 2</button>
+        </div>
+        <div class="ai-stub">
+          <b>✨ Create Recall (coming soon)</b><br />
+          Speak for 30 seconds about last lesson and get a suggested recall sequence to review. AI assists planning — it never replaces you.
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <!-- Student preview (teacher testing) -->
+  <div class="phone-panel" id="phonePanel">
+    <div class="phone-head">
+      <span>👁 Student view — live preview</span>
+      <button id="closePreview" title="Close (leaves the session)">✕</button>
+    </div>
+    <iframe id="phoneFrame" title="Student view preview"></iframe>
+  </div>
+
+  <!-- Summary overlay -->
+  <div class="overlay" id="summaryOverlay">
+    <div class="sheet" id="summarySheet"></div>
+  </div>
+
+  <!-- Teacher password gate (shown only when the server requires one) -->
+  <div class="overlay" id="pwOverlay">
+    <div class="sheet" style="max-width:400px;text-align:center">
+      <h2 style="font-family:var(--font-display)">Teacher access</h2>
+      <p style="color:var(--ink-soft);margin-top:0.4rem">Enter the teacher password to open the dashboard.</p>
+      <input type="password" id="pwInput" placeholder="Password" autocomplete="current-password"
+        style="width:100%;margin-top:1.1rem;border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font-size:1rem" />
+      <p id="pwError" style="color:var(--red);font-size:0.85rem;margin-top:0.5rem;display:none">That password didn't match — try again.</p>
+      <button class="btn primary big" id="pwGo" style="width:100%;margin-top:0.9rem">Open dashboard</button>
+      <p style="color:var(--muted);font-size:0.8rem;margin-top:0.9rem">Students don't need this — they just enter the class code.</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/teacher.js"></script>
+</body>
+</html>
