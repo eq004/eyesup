@@ -224,6 +224,7 @@ function render() {
   if (!state) return;
   $("codeText").textContent = state.code;
   $("joinUrl").textContent = `${location.host}/join`;
+  $("openProjector").href = `/projector?code=${state.code}`;
   $("studentCount").textContent = state.students.length;
   renderLive();
   renderSequence();
@@ -491,12 +492,12 @@ function renderSummary(s) {
     <div class="sum-section"><h3>What happened</h3>${items || "<p style='color:var(--muted)'>No interactions yet.</p>"}</div>
     <div style="margin-top:1.4rem;display:flex;gap:0.6rem">
       <button class="btn primary" id="closeSummary">Back to the room</button>
-      <button class="btn" id="exportPdf">🖨 Export as PDF</button>
+      <a class="btn" id="exportPdf" target="_blank" rel="noopener"
+         href="/report?code=${state.code}${teacherPw() ? `&pw=${encodeURIComponent(teacherPw())}` : ""}"
+         style="text-decoration:none">🖨 Export as PDF</a>
     </div>`;
   $("summaryOverlay").classList.add("show");
   $("closeSummary").onclick = () => $("summaryOverlay").classList.remove("show");
-  $("exportPdf").onclick = () =>
-    window.open(`/report?code=${state.code}${teacherPw() ? `&pw=${encodeURIComponent(teacherPw())}` : ""}`, "_blank");
 }
 
 /* ---------------- wire-up ---------------- */
@@ -509,9 +510,8 @@ $("codeChip").onclick = () => {
   navigator.clipboard?.writeText(`${location.origin}/join — code ${state?.code || ""}`);
   toast("Join link copied");
 };
-$("openProjector").onclick = () => {
-  if (state) window.open(`/projector?code=${state.code}`, "_blank");
-};
+// A real link (not window.open) so popup blockers never eat it;
+// render() keeps its href pointed at the current session.
 $("togglePreview").onclick = () => {
   if (!state) return;
   const panel = $("phonePanel");

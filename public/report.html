@@ -127,10 +127,14 @@ async function load() {
   let s;
   try {
     const res = await fetch(`/api/summary/${code}${pw ? `?pw=${encodeURIComponent(pw)}` : ""}`);
+    if (res.status === 403) {
+      page.innerHTML = `<div class="err"><h2>Teacher password needed.</h2><p>Open this report via the “Export as PDF” button on the teacher dashboard — it carries the password for you.</p></div>`;
+      return;
+    }
     if (!res.ok) throw new Error();
     s = await res.json();
   } catch {
-    page.innerHTML = `<div class="err"><h2>No live session found for “${esc(code)}”.</h2><p>Reports are generated from a running session — export before closing the server.</p></div>`;
+    page.innerHTML = `<div class="err"><h2>No live session found for “${esc(code)}”.</h2><p>Reports are generated from a running session — export before closing the server (a restart or redeploy clears sessions).</p></div>`;
     return;
   }
 
