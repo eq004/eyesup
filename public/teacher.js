@@ -2,6 +2,7 @@
 
 const MODES = {
   /* fast votes */
+  multi_choice:  { icon: "🅰️", name: "Multiple Choice", hint: "Quiz question — reveal the answer after voting", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true },
   poll:          { icon: "📊", name: "Poll",          hint: "2–5 options, live results",       opts: { min: 2, max: 5, labels: "Option" } },
   agree_disagree:{ icon: "⚖️", name: "Agree / Disagree", hint: "Agree · Unsure · Disagree",    opts: null },
   true_false:    { icon: "✅", name: "True or False", hint: "Two buttons, instant",            opts: null },
@@ -44,7 +45,7 @@ const MODES = {
 };
 
 const CATEGORIES = [
-  { label: "⚡ Fast votes", modes: ["poll", "agree_disagree", "true_false", "this_or_that", "confidence", "example_nonexample"] },
+  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "agree_disagree", "true_false", "this_or_that", "confidence", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap"] },
   { label: "✏️ Written recall", modes: ["short_answer", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
@@ -157,6 +158,15 @@ function openComposer(key) {
       opts.appendChild(inp);
     }
   }
+  if (m.hasCorrect) {
+    const sel = document.createElement("select");
+    sel.id = "correctSel";
+    sel.innerHTML =
+      `<option value="">Correct answer: not set</option>` +
+      ["A", "B", "C", "D", "E"].slice(0, m.opts.max).map((L, i) => `<option value="${i}">Correct answer: ${L}</option>`).join("");
+    sel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    opts.appendChild(sel);
+  }
   if (m.pairs) {
     for (let i = 0; i < m.pairs.max; i++) {
       const row = document.createElement("div");
@@ -193,6 +203,7 @@ function readComposer() {
     return null;
   }
   let options = null;
+  let correct = null;
   if (m.opts) {
     options = [...$("composerOpts").querySelectorAll("input")]
       .map((i) => i.value.trim())
@@ -200,6 +211,10 @@ function readComposer() {
     if (options.length < m.opts.min) {
       toast(`Needs at least ${m.opts.min} options`);
       return null;
+    }
+    if (m.hasCorrect) {
+      const v = parseInt($("correctSel")?.value, 10);
+      correct = Number.isInteger(v) && v < options.length ? v : null;
     }
   }
   if (m.pairs) {
@@ -215,7 +230,7 @@ function readComposer() {
       return null;
     }
   }
-  return { mode: composerModeKey, prompt, options };
+  return { mode: composerModeKey, prompt, options, correct };
 }
 
 /* ---------------- rendering ---------------- */
@@ -314,6 +329,11 @@ function renderLive() {
       ? `<button class="btn" data-act="hide_results">🙈 Hide results</button>`
       : `<button class="btn" data-act="show_results">📊 Show results</button>`}
     ${canReveal ? `<button class="btn" data-act="reveal_all">✨ Reveal all</button>` : ""}
+    ${itx.mode === "multi_choice" && itx.correct != null
+      ? itx.answerRevealed
+        ? `<button class="btn" disabled>🎯 Answer shown ✓</button>`
+        : `<button class="btn" data-act="reveal_answer">🎯 Reveal answer</button>`
+      : ""}
     <button class="btn danger-ghost" data-act="clear">Clear</button>
     <button class="btn dark" data-act="eyes_up">👀 EYES UP</button>
   `;
@@ -374,7 +394,10 @@ function renderLive() {
       agg.matches.map((m) => (agg.total ? Math.round((m.correct / agg.total) * 100) + "% correct" : ""))
     );
   } else if (agg && agg.counts) {
-    body = bars(itx.options, agg.counts);
+    body = bars(
+      itx.options.map((o, i) => (itx.correct === i ? `${o} ✓` : o)),
+      agg.counts
+    );
   } else if (agg && agg.ranked) {
     body = `<div class="agg-bars">${agg.ranked
       .map(
@@ -568,6 +591,104 @@ $("loadExample").onclick = () => {
     ],
   });
   toast("Example plan loaded");
+};
+
+/* ---------------- paste-a-quiz importer ---------------- */
+
+// Parses the multiple-choice formats ChatGPT typically produces:
+// numbered questions, A)/A./(A) options, dash bullets, "Answer: B" /
+// "Correct answer: C" lines, markdown bold. Forgiving by design.
+function parseQuiz(text) {
+  const lines = String(text).replace(/\r/g, "").split("\n").map((l) => l.replace(/\*\*|__/g, "").trim());
+  const optRe = /^[-*•]?\s*\(?([A-Ha-h])[\.\)\:]\s+(.+)$/;
+  const ansRe = /^(?:correct\s*answer|correct\s*option|answer|correct|ans)\s*(?:is)?\s*[:\-\.]?\s*\(?([A-Ha-h])\b/i;
+  const qStartRe = /^(?:q(?:uestion)?\s*)?\d+\s*[\.\):]\s*(.*)$/i;
+
+  const questions = [];
+  let cur = null;
+  const push = () => {
+    if (cur && cur.prompt && cur.options.length >= 2) {
+      cur.options = cur.options.slice(0, 5);
+      if (cur.correct != null && (cur.correct < 0 || cur.correct >= cur.options.length)) cur.correct = null;
+      questions.push(cur);
+    }
+    cur = null;
+  };
+
+  for (const line of lines) {
+    if (!line) continue;
+    const ans = line.match(ansRe);
+    if (ans && cur && cur.options.length) {
+      cur.correct = ans[1].toUpperCase().charCodeAt(0) - 65;
+      continue;
+    }
+    const opt = line.match(optRe);
+    if (opt && cur) {
+      cur.options.push(opt[2].trim());
+      continue;
+    }
+    const qs = line.match(qStartRe);
+    if (qs) {
+      push();
+      cur = { prompt: qs[1].trim(), options: [], correct: null };
+      continue;
+    }
+    if (!cur) {
+      cur = { prompt: line, options: [], correct: null };
+    } else if (cur.options.length) {
+      push(); // options had ended — this text starts the next question
+      cur = { prompt: line, options: [], correct: null };
+    } else {
+      cur.prompt = (cur.prompt ? cur.prompt + " " : "") + line; // wrapped question text
+    }
+  }
+  push();
+  return questions.slice(0, 25);
+}
+
+let parsedQuiz = [];
+
+function renderQuizPreview() {
+  parsedQuiz = parseQuiz($("quizPaste").value);
+  const box = $("quizPreview");
+  if (!parsedQuiz.length) {
+    box.innerHTML = $("quizPaste").value.trim()
+      ? `<p style="color:var(--red);font-size:0.85rem">Couldn't find complete questions yet — each needs a question line plus at least two A) B) options.</p>`
+      : "";
+  } else {
+    box.innerHTML =
+      `<p style="font-weight:800;font-size:0.85rem;margin-bottom:0.4rem">Found ${parsedQuiz.length} question${parsedQuiz.length === 1 ? "" : "s"}:</p>` +
+      parsedQuiz
+        .map(
+          (q, qi) => `
+        <div style="border:1px solid var(--line);border-radius:10px;padding:0.55rem 0.8rem;margin-bottom:0.45rem;font-size:0.85rem;background:var(--paper)">
+          <b>${qi + 1}. ${esc(q.prompt)}</b><br/>
+          ${q.options
+            .map((o, i) => `<span style="${i === q.correct ? "color:var(--green);font-weight:700" : "color:var(--ink-soft)"}">${String.fromCharCode(65 + i)}) ${esc(o)}${i === q.correct ? " ✓" : ""}</span>`)
+            .join(" &nbsp; ")}
+          ${q.correct == null ? `<br/><span style="color:var(--amber);font-size:0.78rem">⚠ No answer line found — you can still run it, just without a reveal.</span>` : ""}
+        </div>`
+        )
+        .join("");
+  }
+  $("quizAdd").disabled = !parsedQuiz.length;
+}
+
+$("pasteQuizBtn").onclick = () => {
+  $("quizPaste").value = "";
+  $("quizPreview").innerHTML = "";
+  $("quizAdd").disabled = true;
+  $("quizOverlay").classList.add("show");
+  $("quizPaste").focus();
+};
+$("quizPaste").addEventListener("input", renderQuizPreview);
+$("quizCancel").onclick = () => $("quizOverlay").classList.remove("show");
+$("quizAdd").onclick = () => {
+  if (!parsedQuiz.length) return;
+  const items = parsedQuiz.map((q) => ({ mode: "multi_choice", prompt: q.prompt, options: q.options, correct: q.correct }));
+  send({ type: "set_sequence", items: [...(state?.sequence || []), ...items] });
+  $("quizOverlay").classList.remove("show");
+  toast(`${items.length} question${items.length === 1 ? "" : "s"} added to plan`);
 };
 
 $("pwGo").onclick = () => {

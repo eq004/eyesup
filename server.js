@@ -96,13 +96,13 @@ const TEXT_MODES = new Set([
   "retrieval_sprint", "spot_mistake", "teach_back", "give_example",
   "make_connection", "finish_sentence", "quick_challenge",
 ]);
-const CHOICE_MODES = new Set(["poll", "agree_disagree", "confidence", "this_or_that", "true_false"]);
+const CHOICE_MODES = new Set(["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice"]);
 const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
 const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Custom options entered by the teacher at launch.
-const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn"]);
+const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice"]);
 
 const FIXED_OPTIONS = {
   agree_disagree: ["Agree", "Unsure", "Disagree"],
@@ -123,7 +123,7 @@ function isRevealMode(mode) {
   return TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] || mode === "sketch" || mode === "example_nonexample";
 }
 
-function newInteraction(session, { mode, prompt, options }) {
+function newInteraction(session, { mode, prompt, options, correct }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -137,6 +137,10 @@ function newInteraction(session, { mode, prompt, options }) {
       .filter((p) => p.length === 2 && p[0] && p[1])
       .map(([left, right]) => ({ left, right }));
   }
+  const correctIdx =
+    mode === "multi_choice" && Number.isInteger(correct) && opts && correct >= 0 && correct < opts.length
+      ? correct
+      : null;
   return {
     id: session.counter,
     mode,
@@ -145,10 +149,14 @@ function newInteraction(session, { mode, prompt, options }) {
     pairs,
     fields: STRUCTURED_FIELDS[mode] || null,
     timeLimit: TIME_LIMITS[mode] || null,
+    correct: correctIdx,
+    answerRevealed: false,
     open: true,
     // Live-building modes show results as they arrive; written/drawn answers
     // are revealed by the teacher (gradually or all at once).
-    resultsVisible: true,
+    // Quiz questions hide results until the teacher shows them, so nobody
+    // bandwagons onto the popular answer.
+    resultsVisible: mode !== "multi_choice",
     responses: new Map(), // studentId -> {name, payload, revealed, at}
     startedAt: Date.now(),
   };
@@ -183,7 +191,8 @@ function aggregate(session, itx) {
       const i = r.payload.choice;
       if (Number.isInteger(i) && i >= 0 && i < counts.length) counts[i] += 1;
     }
-    return { ...base, options: itx.options, counts };
+    // The correct answer only reaches screens after the teacher reveals it.
+    return { ...base, options: itx.options, counts, correct: itx.answerRevealed ? itx.correct : null };
   }
 
   if (ORDER_MODES.has(itx.mode)) {
@@ -304,6 +313,8 @@ function teacherState(session) {
           pairs: itx.pairs,
           fields: itx.fields,
           timeLimit: itx.timeLimit,
+          correct: itx.correct,
+          answerRevealed: itx.answerRevealed,
           open: itx.open,
           resultsVisible: itx.resultsVisible,
           responses: [...itx.responses.entries()].map(([sid, r]) => ({
@@ -394,7 +405,10 @@ function buildSummary(session) {
     const item = { mode: itx.mode, prompt: itx.prompt, responses: itx.responses.size };
     if (WORD_MODES.has(itx.mode)) item.topWords = agg.words.slice(0, 8);
     if (CHOICE_MODES.has(itx.mode) || itx.mode === "example_nonexample")
-      item.distribution = itx.options.map((o, i) => ({ label: o, count: agg.counts[i] }));
+      item.distribution = itx.options.map((o, i) => ({
+        label: o + (itx.correct === i ? " ✓" : ""),
+        count: agg.counts[i],
+      }));
     if (ORDER_MODES.has(itx.mode)) item.ranked = agg.ranked;
     if (itx.mode === "match_up") {
       const total = itx.responses.size;
@@ -617,6 +631,14 @@ function handle(ws, msg) {
       if (itx) for (const r of itx.responses.values()) r.revealed = true;
       break;
     }
+    case "reveal_answer": {
+      const itx = session.interaction;
+      if (itx && itx.correct != null) {
+        itx.answerRevealed = true;
+        itx.resultsVisible = true; // showing the answer implies showing the results
+      }
+      break;
+    }
     case "clear": {
       if (session.interaction) session.interaction.responses.clear();
       break;
@@ -631,10 +653,11 @@ function handle(ws, msg) {
       break;
     }
     case "set_sequence": {
-      session.sequence = (msg.items || []).slice(0, 20).map((it) => ({
+      session.sequence = (msg.items || []).slice(0, 30).map((it) => ({
         mode: String(it.mode || ""),
         prompt: String(it.prompt || "").slice(0, 300),
         options: Array.isArray(it.options) ? it.options.map((o) => String(o).slice(0, 80)) : null,
+        correct: Number.isInteger(it.correct) ? it.correct : null,
       }));
       if (session.seqIndex >= session.sequence.length) session.seqIndex = session.sequence.length - 1;
       break;

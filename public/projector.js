@@ -21,7 +21,7 @@ const MODE_TAGS = {
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
   notice_wonder: "Notice / Wonder", quick_challenge: "Quick Challenge",
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
-  venn: "Venn Diagram",
+  venn: "Venn Diagram", multi_choice: "Multiple Choice",
 };
 
 const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
@@ -338,13 +338,17 @@ function renderBars(itx, agg) {
   const total = agg.counts.reduce((a, b) => a + b, 0);
   const max = Math.max(1, ...agg.counts);
   const colors = CHOICE_COLOR_SETS[itx.mode] || [];
+  const answered = agg.correct != null; // teacher revealed the correct answer
+  const letter = (i) => (itx.mode === "multi_choice" ? String.fromCharCode(65 + i) + ")  " : "");
   return `<div class="bars">${itx.options
     .map((o, i) => {
       const n = agg.counts[i];
       const pct = total ? Math.round((n / total) * 100) : 0;
+      const cls = answered ? (i === agg.correct ? "c-green" : "") : colors[i] || "";
+      const dim = answered && i !== agg.correct ? "opacity:0.45" : "";
       return `
-      <div class="pbar ${colors[i] || ""}">
-        <div class="top"><span>${esc(o)}</span><span class="pct">${n} · ${pct}%</span></div>
+      <div class="pbar ${cls}" style="${dim}">
+        <div class="top"><span>${letter(i)}${esc(o)}${answered && i === agg.correct ? " ✓" : ""}</span><span class="pct">${n} · ${pct}%</span></div>
         <div class="track"><div class="fill" style="width:${total ? (n / max) * 100 : 0}%"></div></div>
       </div>`;
     })

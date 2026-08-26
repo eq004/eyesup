@@ -28,7 +28,7 @@ const MODE_NAMES = {
   make_connection: "🔗 Make a Connection", finish_sentence: "📝 Finish the Sentence",
   notice_wonder: "👀 Notice / Wonder", quick_challenge: "🚀 Quick Challenge",
   three_two_one: "3️⃣ 3 – 2 – 1", before_after: "🔄 Before / After",
-  venn: "◉ Venn Diagram",
+  venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice",
 };
 
 function esc(s) {
@@ -304,17 +304,19 @@ function renderInteraction(itx) {
   }
 
   /* --- choices --- */
-  if (["poll", "agree_disagree", "confidence", "this_or_that", "true_false"].includes(itx.mode)) {
+  if (["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice"].includes(itx.mode)) {
     const emojis = {
       agree_disagree: ["👍", "🤔", "👎"],
       confidence: ["💪", "🌤", "🌫"],
       true_false: ["✅", "❌"],
     }[itx.mode];
     const huge = ["this_or_that", "true_false"].includes(itx.mode) ? "huge" : "";
+    const letter = (i) =>
+      itx.mode === "multi_choice" ? `<b style="color:var(--accent-ink);margin-right:0.45rem">${String.fromCharCode(65 + i)}</b>` : "";
     show(`${h}${itx.options
       .map(
         (o, i) => `<button class="btn choice ${huge}" data-i="${i}">
-          ${emojis ? emojis[i] + " " : ""}${esc(o)}
+          ${letter(i)}${emojis ? emojis[i] + " " : ""}${esc(o)}
         </button>`
       )
       .join("")}
