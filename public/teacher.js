@@ -21,6 +21,8 @@ const MODES = {
   post_its:      { icon: "🗒️", name: "Post-its",     hint: "Sticky notes fill the board — screened or straight up", opts: null, postits: true, multiOpt: true },
   /* written recall */
   short_answer:  { icon: "✏️", name: "Short Answer",  hint: "Written replies, reveal in turn", opts: null },
+  picture_prompt:{ icon: "🖼️", name: "Picture Prompt", hint: "Put an image up — students write about it", opts: null, imageUpload: true,
+                   ph: "The question about the image — or ask it aloud" },
   retrieval_sprint:{ icon: "🧠", name: "Retrieval Sprint", hint: "60 seconds — write everything you recall", opts: null },
   exit_ticket:   { icon: "🎟️", name: "Exit Ticket",  hint: "One thing learned before you leave", opts: null },
   finish_sentence:{ icon: "📝", name: "Finish the Sentence", hint: "Students complete your stem", opts: null,
@@ -54,13 +56,13 @@ const MODES = {
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its"] },
-  { label: "✏️ Written recall", modes: ["short_answer", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
+  { label: "✏️ Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🎨 Draw", modes: ["sketch", "annotate"] },
 ];
 
-const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge"]);
+const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt"]);
 const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
@@ -140,7 +142,8 @@ function buildModeGrid() {
       const b = document.createElement("button");
       b.className = "mode-tile";
       b.innerHTML = `<span class="icon">${m.icon}</span><span class="name">${m.name}</span><span class="hint">${m.hint}</span>`;
-      b.onclick = () => openComposer(key);
+      // Switching between image modes keeps the image you already loaded.
+      b.onclick = () => openComposer(key, !!(MODES[key].imageUpload && composerImage));
       grid.appendChild(b);
     }
   }
@@ -166,9 +169,20 @@ function loadComposerImage(file, cb) {
   reader.readAsDataURL(file);
 }
 
-function openComposer(key) {
+function setComposerImage(dataUrl) {
+  composerImage = dataUrl;
+  const p = $("imgPreview");
+  if (p) {
+    p.src = dataUrl;
+    p.style.display = "block";
+  }
+  const z = $("dropZone");
+  if (z) z.textContent = "✓ Image ready — drop another to replace it";
+}
+
+function openComposer(key, keepImage) {
   composerModeKey = key;
-  composerImage = null;
+  if (!keepImage) composerImage = null;
   const m = MODES[key];
   $("composer").classList.add("show");
   $("composerMode").textContent = `${m.icon} ${m.name}`;
@@ -190,19 +204,17 @@ function openComposer(key) {
   if (m.imageUpload) {
     const wrap = document.createElement("div");
     wrap.innerHTML = `
-      <input type="file" id="imgFile" accept="image/*" style="margin-top:0.55rem;font-size:0.85rem" />
+      <div class="drop-zone" id="dropZone">🖼️ Drop an image here — or click to choose
+        <input type="file" id="imgFile" accept="image/*" hidden />
+      </div>
       <img id="imgPreview" alt="" style="display:none;margin-top:0.5rem;max-height:120px;border-radius:8px;border:1px solid var(--line)" />`;
     opts.appendChild(wrap);
-    wrap.querySelector("#imgFile").onchange = (e) => {
+    $("dropZone").onclick = () => $("imgFile").click();
+    $("imgFile").onchange = (e) => {
       const f = e.target.files[0];
-      if (!f) return;
-      loadComposerImage(f, (dataUrl) => {
-        composerImage = dataUrl;
-        const p = $("imgPreview");
-        p.src = dataUrl;
-        p.style.display = "block";
-      });
+      if (f) loadComposerImage(f, setComposerImage);
     };
+    if (composerImage) setComposerImage(composerImage); // dropped before opening
   }
   if (m.multiOpt) {
     const multiSel = document.createElement("select");
@@ -535,7 +547,10 @@ function renderLive() {
       : "";
     body = source + revealCards((r) => `<img src="${r.payload.image}" alt="student drawing" style="height:90px;border-radius:8px;background:#fff;border:1px solid var(--line)" />`);
   } else if (TEXT_MODES.has(itx.mode)) {
-    body = revealCards((r) => esc(r.payload.text || ""));
+    const source = itx.imageUrl
+      ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="prompt image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /></div>`
+      : "";
+    body = source + revealCards((r) => esc(r.payload.text || ""));
   }
 
   area.innerHTML = `
@@ -820,6 +835,37 @@ $("quizAdd").onclick = () => {
   $("quizOverlay").classList.remove("show");
   toast(`${items.length} question${items.length === 1 ? "" : "s"} added to plan`);
 };
+
+/* ---------------- drag & drop an image anywhere on the dashboard ---------------- */
+
+let dragDepth = 0;
+document.addEventListener("dragenter", (e) => {
+  if ([...(e.dataTransfer?.types || [])].includes("Files")) {
+    dragDepth++;
+    $("dropHint").classList.add("show");
+  }
+});
+document.addEventListener("dragleave", () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) $("dropHint").classList.remove("show");
+});
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  $("dropHint").classList.remove("show");
+  const f = [...(e.dataTransfer?.files || [])].find((x) => x.type.startsWith("image/"));
+  if (!f) return;
+  loadComposerImage(f, (dataUrl) => {
+    composerImage = dataUrl;
+    // Already composing an image mode? Keep it. Otherwise open Picture Prompt.
+    if (!composerModeKey || !MODES[composerModeKey]?.imageUpload) {
+      openComposer("picture_prompt", true);
+      $("composerTip").textContent = "Image loaded ✓ — or pick 🖍️ Annotate instead if they should draw on it.";
+    }
+    setComposerImage(dataUrl);
+  });
+});
 
 $("pwGo").onclick = () => {
   const pw = $("pwInput").value;

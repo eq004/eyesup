@@ -23,6 +23,7 @@ const MODE_TAGS = {
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
   venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
+  picture_prompt: "Picture Prompt",
 };
 
 const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
@@ -473,11 +474,16 @@ function renderRanked(agg) {
 }
 
 function renderAnswers(itx, agg) {
+  // Picture Prompt: the image stays up — big while the class writes,
+  // smaller above the answers once revealing starts.
+  const img = itx.imageUrl
+    ? `<img src="${itx.imageUrl}" alt="prompt image" style="max-height:${agg.revealed.length ? "26vh" : "48vh"};max-width:80%;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,0.45);margin-bottom:1.4rem" /><br/>`
+    : "";
   if (!agg.revealed.length) {
     const n = agg.total;
-    return `<p class="waiting-note">${n ? `${n} response${n === 1 ? "" : "s"} in — your teacher will reveal them.` : "Responses will appear here…"}</p>`;
+    return `${img}<p class="waiting-note">${n ? `${n} response${n === 1 ? "" : "s"} in — your teacher will reveal them.` : "Responses will appear here…"}</p>`;
   }
-  return `<div class="answers">${agg.revealed
+  return `${img}<div class="answers">${agg.revealed
     .map((r, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s">${esc(r.text)}</div>`)
     .join("")}</div>`;
 }

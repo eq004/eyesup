@@ -31,6 +31,7 @@ const MODE_NAMES = {
   three_two_one: "3️⃣ 3 – 2 – 1", before_after: "🔄 Before / After",
   venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice", post_its: "🗒️ Post-its",
   smiley: "😊 Smiley Review", scale: "🎚️ Scale", annotate: "🖍️ Annotate",
+  picture_prompt: "🖼️ Picture Prompt",
 };
 
 function esc(s) {
@@ -255,10 +256,12 @@ function renderInteraction(itx) {
     make_connection: "This connects to…",
     finish_sentence: "Finish the sentence…",
     quick_challenge: "Your answer…",
+    picture_prompt: "Look closely. What do you see / think / wonder?",
   };
   if (WRITTEN_PH[itx.mode]) {
     const anon = ["ask_question", "muddiest_point"].includes(itx.mode);
     show(`${h}
+      ${itx.imageUrl ? `<img class="prompt-img" src="${itx.imageUrl}" alt="look at this image" />` : ""}
       <textarea id="textInput" rows="4" maxlength="500" placeholder="${WRITTEN_PH[itx.mode]}"></textarea>
       <button class="btn send" id="sendBtn">Send</button>
       ${anon ? `<p class="hint">🕶 Your name is never shown with this.</p>` : ""}`, () => {

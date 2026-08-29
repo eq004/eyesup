@@ -108,7 +108,7 @@ function createSession(teacherWs) {
 const TEXT_MODES = new Set([
   "short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point",
   "retrieval_sprint", "spot_mistake", "teach_back", "give_example",
-  "make_connection", "finish_sentence", "quick_challenge",
+  "make_connection", "finish_sentence", "quick_challenge", "picture_prompt",
 ]);
 const CHOICE_MODES = new Set(["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice", "smiley"]);
 const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
@@ -122,7 +122,7 @@ const FIXED_OPTIONS = {
   agree_disagree: ["Agree", "Unsure", "Disagree"],
   confidence: ["I've got it", "I'm nearly there", "I'm confused"],
   true_false: ["True", "False"],
-  smiley: ["😄", "🙂", "😐", "🙁", "😢"], // happiest → saddest
+  smiley: ["😢", "🙁", "😐", "🙂", "😄"], // saddest on the left → happiest on the right
 };
 
 const STRUCTURED_FIELDS = {
@@ -164,7 +164,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
   }
   let imageUrl = null;
   if (
-    mode === "annotate" &&
+    (mode === "annotate" || mode === "picture_prompt") &&
     typeof image === "string" &&
     /^data:image\/(png|jpeg|webp);base64,/.test(image) &&
     image.length < 900000

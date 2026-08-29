@@ -181,6 +181,35 @@
   .composer .opts { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.55rem; }
   .composer .opts input { margin-top: 0; }
   .composer .row { display: flex; gap: 0.6rem; margin-top: 0.8rem; align-items: center; flex-wrap: wrap; }
+  .drop-zone {
+    margin-top: 0.55rem;
+    border: 2px dashed #a9b6f7;
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--accent-ink);
+    background: rgba(255,255,255,0.55);
+    cursor: pointer;
+  }
+  .drop-zone:hover { background: #fff; }
+  .drop-hint {
+    position: fixed;
+    inset: 0;
+    background: rgba(61, 90, 241, 0.12);
+    border: 4px dashed var(--accent);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 70;
+    pointer-events: none;
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--accent-ink);
+  }
+  .drop-hint.show { display: flex; }
+  .drop-hint span { background: var(--surface); border-radius: 14px; padding: 1rem 1.8rem; box-shadow: var(--shadow-lift); }
   .composer .tip { font-size: 0.8rem; color: var(--ink-soft); }
 
   /* ---------- live interaction ---------- */
@@ -610,6 +639,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
+  <div class="drop-hint" id="dropHint"><span>🖼️ Drop the image — it becomes the question</span></div>
 
   <script src="/teacher.js"></script>
 </body>
