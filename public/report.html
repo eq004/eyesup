@@ -117,7 +117,7 @@ const MODE_NAMES = {
   notice_wonder: "Notice / Wonder", quick_challenge: "Quick Challenge",
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
   venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
-  smiley: "Smiley Review",
+  smiley: "Smiley Review", scale: "Scale",
 };
 
 async function load() {
@@ -158,6 +158,12 @@ async function load() {
         <span class="num">${d.count}</span></div>`).join("")}</div>`;
     } else if (it.ranked) {
       body = `<ol class="ranked-list">${it.ranked.map((r) => `<li>${esc(r.label)}${r.correctPct != null ? ` <small style="color:var(--muted)">(${r.correctPct}% placed it here)</small>` : ""}</li>`).join("")}</ol>`;
+    } else if (it.scale) {
+      body = `<div class="dist"><div class="row">
+        <span class="lbl">${esc(it.scale.labels[0])}</span>
+        <span class="track"><span class="fill" style="width:${it.scale.avg ?? 50}%"></span></span>
+        <span class="lbl" style="text-align:right">${esc(it.scale.labels[1])}</span></div></div>
+        <p style="color:var(--ink-soft);font-size:0.85rem;margin-top:0.3rem">Class average: ${it.scale.avg ?? "—"} / 100</p>`;
     } else if (it.venn) {
       const heads = [`${it.venn.labels[0]} only`, "Both", `${it.venn.labels[1]} only`];
       body = `<div class="dist">${it.venn.regions.map((reg, i) => `

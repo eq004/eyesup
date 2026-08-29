@@ -101,6 +101,37 @@
   .timer-fill { height: 100%; background: var(--accent); border-radius: 6px; transition: width 0.25s linear; }
   .timer-num { font-weight: 800; font-size: 0.9rem; color: var(--ink-soft); margin-bottom: 0.8rem; }
 
+  .scale-labels { display: flex; justify-content: space-between; font-weight: 800; font-size: 0.9rem; color: var(--ink-soft); margin-bottom: 0.5rem; }
+  input[type="range"] {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 12px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, var(--accent-soft), var(--accent));
+    outline: none;
+    margin: 0.6rem 0 0.4rem;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 4px solid var(--accent);
+    box-shadow: var(--shadow-lift);
+    cursor: grab;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 4px solid var(--accent);
+    box-shadow: var(--shadow-lift);
+    cursor: grab;
+  }
+  .scale-value { font-size: 0.88rem; font-weight: 700; color: var(--ink-soft); min-height: 1.3em; }
+
   .smiley-row { display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
   .smiley-btn {
     font-size: 2.7rem;

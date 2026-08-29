@@ -103,7 +103,7 @@ const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Custom options entered by the teacher at launch.
-const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice"]);
+const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale"]);
 
 const FIXED_OPTIONS = {
   agree_disagree: ["Agree", "Unsure", "Disagree"],
@@ -144,6 +144,10 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
       .map((o) => String(o).split("=").map((s) => s.trim()))
       .filter((p) => p.length === 2 && p[0] && p[1])
       .map(([left, right]) => ({ left, right }));
+  }
+  if (mode === "scale") {
+    // A continuum needs two ends; sensible defaults keep launch instant.
+    opts = [(opts && opts[0]) || "Disagree", (opts && opts[1]) || "Agree"];
   }
   const correctIdx =
     mode === "multi_choice" && Number.isInteger(correct) && opts && correct >= 0 && correct < opts.length
@@ -230,6 +234,14 @@ function aggregate(session, itx) {
       .sort((a, b) => a.avg - b.avg)
       .map((x, i) => ({ ...x, position: i + 1 }));
     return { ...base, ranked, isSequence: itx.mode === "put_in_order" };
+  }
+
+  if (itx.mode === "scale") {
+    const values = responses.map((r) => r.payload.value);
+    const avg = values.length
+      ? Math.round(values.reduce((a, b) => a + b, 0) / values.length)
+      : null;
+    return { ...base, labels: itx.options, values, avg };
   }
 
   if (itx.mode === "post_its") {
@@ -457,6 +469,7 @@ function buildSummary(session) {
       item.venn = { labels: itx.options, regions: agg.regions.map((r) => r.slice(0, 8)) };
     if (itx.mode === "post_its")
       item.answers = [...itx.responses.values()].flatMap((r) => r.payload.notes || []).slice(0, 60);
+    if (itx.mode === "scale") item.scale = { labels: itx.options, avg: agg.avg };
     if (itx.mode === "example_nonexample")
       item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
     if (TEXT_MODES.has(itx.mode))
@@ -873,6 +886,12 @@ function sanitizePayload(itx, payload) {
       order.length === n &&
       [...order].sort((a, b) => a - b).every((v, i) => v === i);
     return valid ? { order } : null;
+  }
+
+  if (itx.mode === "scale") {
+    const v = payload.value;
+    if (!Number.isInteger(v) || v < 0 || v > 100) return null;
+    return { value: v };
   }
 
   if (itx.mode === "post_its") {

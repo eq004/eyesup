@@ -11,6 +11,8 @@ const MODES = {
   example_nonexample: { icon: "↔️", name: "Example / Non-example", hint: "Which fits the concept — and why?", opts: { min: 2, max: 2, labels: "Item" } },
   smiley:        { icon: "😊", name: "Smiley Review", hint: "5 faces, happiest to saddest — one tap", opts: null,
                    ph: "What are they reviewing? e.g. “How was today's lesson?”" },
+  scale:         { icon: "🎚️", name: "Scale",        hint: "Students place a marker along a line", opts: { min: 0, max: 2, labels: "End" },
+                   ph: "The statement or question they're placing themselves on" },
   /* words & ideas */
   word_cloud:    { icon: "☁️", name: "Word Cloud",    hint: "Words build a live cloud",        opts: null, multiOpt: true },
   one_word:      { icon: "🗣️", name: "One Word",     hint: "Exactly one word each",           opts: null },
@@ -48,7 +50,7 @@ const MODES = {
 };
 
 const CATEGORIES = [
-  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "example_nonexample"] },
+  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its"] },
   { label: "✏️ Written recall", modes: ["short_answer", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
@@ -437,6 +439,21 @@ function renderLive() {
       </div>`
       )
       .join("")}</div>`;
+  } else if (itx.mode === "scale" && agg) {
+    const dots = agg.values
+      .map((v, i) => `<span class="scale-dot" style="left:${v}%;top:${18 + ((i * 37) % 3) * 9}px"></span>`)
+      .join("");
+    const byValue = [...itx.responses].sort((a, b) => a.payload.value - b.payload.value);
+    body = `
+      <div class="scale-track-wrap">
+        <div class="scale-track">${dots}
+          ${agg.avg != null ? `<span class="scale-avg" style="left:${agg.avg}%" title="class average">▲</span>` : ""}
+        </div>
+        <div class="scale-ends"><span>${esc(itx.options[0])}</span><span>${esc(itx.options[1])}</span></div>
+      </div>
+      <div class="word-chips" style="margin-top:0.8rem">${byValue
+        .map((r) => `<span class="word-chip">${esc(r.name || "")} · ${r.payload.value}</span>`)
+        .join("")}</div>`;
   } else if (agg && agg.matches) {
     body = bars(
       agg.matches.map((m) => `${m.left} ↔ ${m.right}`),

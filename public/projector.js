@@ -22,7 +22,7 @@ const MODE_TAGS = {
   notice_wonder: "Notice / Wonder", quick_challenge: "Quick Challenge",
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
   venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
-  smiley: "Smiley Review",
+  smiley: "Smiley Review", scale: "Where Do You Stand?",
 };
 
 const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
@@ -221,6 +221,8 @@ function renderInteraction(itx) {
     body = renderStickies(agg);
   } else if (itx.mode === "smiley") {
     body = renderSmileys(itx, agg);
+  } else if (itx.mode === "scale") {
+    body = renderScale(agg);
   } else if (agg.counts) {
     body = renderBars(itx, agg);
   } else if (agg.ranked) {
@@ -299,6 +301,25 @@ function renderVenn(agg) {
     ${empty ? `<text x="600" y="${cy}" text-anchor="middle" font-size="24" fill="var(--chalk-dim)">Ideas land here as the class sorts them…</text>` : ""}
     ${agg.regions.map((list, i) => regionWords(list, anchors[i], colors[i])).join("")}
   </svg>`;
+}
+
+/* Scale — every marker on the continuum, plus the class average. */
+function renderScale(agg) {
+  const dots = agg.values
+    .map((v, i) => {
+      // Deterministic vertical jitter so stacked markers stay visible.
+      const lane = (i * 7) % 5;
+      return `<span class="cont-dot" style="left:${v}%;top:${16 + lane * 16}px;animation-delay:${(i % 12) * 0.04}s"></span>`;
+    })
+    .join("");
+  return `
+    <div class="continuum">
+      <div class="cont-track">${dots}
+        ${agg.avg != null ? `<div class="cont-avg" style="left:${agg.avg}%"><span>▲</span><small>class average</small></div>` : ""}
+      </div>
+      <div class="cont-ends"><span>← ${esc(agg.labels[0])}</span><span>${esc(agg.labels[1])} →</span></div>
+      ${!agg.values.length ? `<p class="waiting-note" style="margin-top:1.6rem">Markers land on the line as the class decides…</p>` : ""}
+    </div>`;
 }
 
 /* Smiley review — faces grow as votes land. */

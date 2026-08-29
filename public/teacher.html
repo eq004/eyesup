@@ -272,6 +272,39 @@
   #groupsList .grp { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 0.35rem 0.55rem; }
   #groupsList .grp b { color: var(--accent-ink); }
 
+  .scale-track-wrap { margin-top: 1.3rem; }
+  .scale-track {
+    position: relative;
+    height: 54px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+  .scale-track::before {
+    content: "";
+    position: absolute;
+    left: 3%; right: 3%; top: 50%;
+    height: 3px;
+    background: var(--line);
+    border-radius: 2px;
+  }
+  .scale-dot {
+    position: absolute;
+    width: 12px; height: 12px;
+    margin-left: -6px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.75;
+  }
+  .scale-avg {
+    position: absolute;
+    bottom: -14px;
+    margin-left: -7px;
+    color: var(--amber);
+    font-size: 0.85rem;
+  }
+  .scale-ends { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 700; color: var(--ink-soft); margin-top: 1rem; }
+
   .note-chip {
     background: #fef3a2;
     border: 1px solid #e3d370;

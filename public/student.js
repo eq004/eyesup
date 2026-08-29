@@ -30,7 +30,7 @@ const MODE_NAMES = {
   notice_wonder: "👀 Notice / Wonder", quick_challenge: "🚀 Quick Challenge",
   three_two_one: "3️⃣ 3 – 2 – 1", before_after: "🔄 Before / After",
   venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice", post_its: "🗒️ Post-its",
-  smiley: "😊 Smiley Review",
+  smiley: "😊 Smiley Review", scale: "🎚️ Scale",
 };
 
 function esc(s) {
@@ -306,6 +306,29 @@ function renderInteraction(itx) {
       $("sendBtn").onclick = () => {
         if (sel == null) return;
         submit({ choice: sel, text: $("whyInput").value.trim() });
+      };
+    });
+    return;
+  }
+
+  /* --- scale: slide a marker along the line --- */
+  if (itx.mode === "scale") {
+    show(`${h}
+      <div class="scale-labels"><span>${esc(itx.options[0])}</span><span>${esc(itx.options[1])}</span></div>
+      <input type="range" id="scaleInput" min="0" max="100" value="50" />
+      <div class="scale-value" id="scaleValue">Drag the marker, then send</div>
+      <button class="btn send" id="sendBtn">Place my marker</button>`, () => {
+      const input = $("scaleInput");
+      let moved = false;
+      input.oninput = () => {
+        moved = true;
+        const v = +input.value;
+        const lean = v < 40 ? itx.options[0] : v > 60 ? itx.options[1] : "right in the middle";
+        $("scaleValue").textContent = `${v} — leaning ${lean}`;
+      };
+      $("sendBtn").onclick = () => {
+        if (!moved) $("scaleValue").textContent = "Slide the marker first — where do YOU sit?";
+        else submit({ value: +input.value });
       };
     });
     return;
