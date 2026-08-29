@@ -121,10 +121,16 @@ const TIME_LIMITS = { retrieval_sprint: 60 }; // seconds
 
 // Does the teacher gate this response type onto the projector?
 function isRevealMode(mode) {
-  return TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] || mode === "sketch" || mode === "example_nonexample";
+  return (
+    TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] ||
+    mode === "sketch" || mode === "example_nonexample" || mode === "post_its"
+  );
 }
 
-function newInteraction(session, { mode, prompt, options, correct }) {
+// Modes where the teacher chooses "one response each" vs "multiple".
+const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn"]);
+
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -152,6 +158,10 @@ function newInteraction(session, { mode, prompt, options, correct }) {
     timeLimit: TIME_LIMITS[mode] || null,
     correct: correctIdx,
     answerRevealed: false,
+    // Post-its: teacher chooses at launch — screen notes first, or straight up.
+    moderated: mode === "post_its" ? moderated !== false : null,
+    // One contribution each, or several (the default).
+    multi: MULTI_MODES.has(mode) ? multi !== false : null,
     open: true,
     // Live-building modes show results as they arrive; written/drawn answers
     // are revealed by the teacher (gradually or all at once).
@@ -219,6 +229,19 @@ function aggregate(session, itx) {
       .sort((a, b) => a.avg - b.avg)
       .map((x, i) => ({ ...x, position: i + 1 }));
     return { ...base, ranked, isSequence: itx.mode === "put_in_order" };
+  }
+
+  if (itx.mode === "post_its") {
+    // Only approved notes reach the board; the teacher sees everything.
+    const stickies = [];
+    let totalNotes = 0;
+    for (const r of responses) {
+      (r.payload.notes || []).forEach((text, i) => {
+        totalNotes += 1;
+        if (r.noteRevealed?.[i]) stickies.push({ text });
+      });
+    }
+    return { ...base, stickies, totalNotes };
   }
 
   if (itx.mode === "venn") {
@@ -317,6 +340,8 @@ function teacherState(session) {
           timeLimit: itx.timeLimit,
           correct: itx.correct,
           answerRevealed: itx.answerRevealed,
+          moderated: itx.moderated,
+          multi: itx.multi,
           open: itx.open,
           resultsVisible: itx.resultsVisible,
           responses: [...itx.responses.entries()].map(([sid, r]) => ({
@@ -324,6 +349,7 @@ function teacherState(session) {
             name: ANON_MODES.has(itx.mode) ? null : r.name, // anonymous modes stay anonymous
             payload: r.payload,
             revealed: r.revealed,
+            noteRevealed: r.noteRevealed,
           })),
           aggregate: aggregate(session, itx),
         }
@@ -376,6 +402,7 @@ function studentState(session, student) {
             options: itx.options,
             pairs: itx.pairs,
             fields: itx.fields,
+            multi: itx.multi,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
@@ -427,6 +454,8 @@ function buildSummary(session) {
     if (itx.mode === "sketch") item.sketchCount = itx.responses.size;
     if (itx.mode === "venn")
       item.venn = { labels: itx.options, regions: agg.regions.map((r) => r.slice(0, 8)) };
+    if (itx.mode === "post_its")
+      item.answers = [...itx.responses.values()].flatMap((r) => r.payload.notes || []).slice(0, 60);
     if (itx.mode === "example_nonexample")
       item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
     if (TEXT_MODES.has(itx.mode))
@@ -585,13 +614,23 @@ function handle(ws, msg) {
     if (msg.interactionId !== itx.id) return;
     const payload = sanitizePayload(itx, msg.payload);
     if (!payload) return;
-    itx.responses.set(student.id, {
+    const record = {
       name: student.name,
       payload,
       // Live modes are effectively revealed on arrival; written/drawn ones wait for the teacher.
       revealed: !isRevealMode(itx.mode),
       at: Date.now(),
-    });
+    };
+    if (itx.mode === "post_its") {
+      // Per-note approval; unmoderated boards reveal on arrival. Resubmits
+      // (students adding notes) keep the approval state of earlier notes.
+      const prev = itx.responses.get(student.id);
+      record.noteRevealed = payload.notes.map((_, i) =>
+        itx.moderated ? prev?.noteRevealed?.[i] || false : true
+      );
+      record.revealed = record.noteRevealed.some(Boolean);
+    }
+    itx.responses.set(student.id, record);
     broadcast(session);
     return;
   }
@@ -626,12 +665,24 @@ function handle(ws, msg) {
     }
     case "reveal": {
       const r = session.interaction?.responses.get(msg.studentId);
-      if (r) r.revealed = !r.revealed;
+      if (!r) break;
+      if (Number.isInteger(msg.noteIndex) && Array.isArray(r.noteRevealed)) {
+        if (msg.noteIndex >= 0 && msg.noteIndex < r.noteRevealed.length) {
+          r.noteRevealed[msg.noteIndex] = !r.noteRevealed[msg.noteIndex];
+          r.revealed = r.noteRevealed.some(Boolean);
+        }
+      } else {
+        r.revealed = !r.revealed;
+      }
       break;
     }
     case "reveal_all": {
       const itx = session.interaction;
-      if (itx) for (const r of itx.responses.values()) r.revealed = true;
+      if (itx)
+        for (const r of itx.responses.values()) {
+          r.revealed = true;
+          if (Array.isArray(r.noteRevealed)) r.noteRevealed = r.noteRevealed.map(() => true);
+        }
       break;
     }
     case "reveal_answer": {
@@ -661,6 +712,8 @@ function handle(ws, msg) {
         prompt: String(it.prompt || "").slice(0, 300),
         options: Array.isArray(it.options) ? it.options.map((o) => String(o).slice(0, 80)) : null,
         correct: Number.isInteger(it.correct) ? it.correct : null,
+        moderated: typeof it.moderated === "boolean" ? it.moderated : undefined,
+        multi: typeof it.multi === "boolean" ? it.multi : undefined,
       }));
       if (session.seqIndex >= session.sequence.length) session.seqIndex = session.sequence.length - 1;
       break;
@@ -790,10 +843,12 @@ function sanitizePayload(itx, payload) {
   if (WORD_MODES.has(itx.mode)) {
     let words = Array.isArray(payload.words) ? payload.words : [];
     const maxLen = itx.mode === "mindmap" ? 40 : 30; // mindmap allows short phrases
+    const cap =
+      itx.mode === "one_word" || itx.multi === false ? 1 : itx.mode === "mindmap" ? 6 : 5;
     words = words
       .map((w) => String(w).trim().replace(/\s+/g, " ").slice(0, maxLen))
       .filter(Boolean)
-      .slice(0, itx.mode === "one_word" ? 1 : itx.mode === "mindmap" ? 6 : 5);
+      .slice(0, cap);
     return words.length ? { words } : null;
   }
 
@@ -819,6 +874,19 @@ function sanitizePayload(itx, payload) {
     return valid ? { order } : null;
   }
 
+  if (itx.mode === "post_its") {
+    const seen = new Set();
+    const notes = (Array.isArray(payload.notes) ? payload.notes : [])
+      .map((n) => String(n).trim().replace(/\s+/g, " ").slice(0, 140))
+      .filter((n) => {
+        if (!n || seen.has(n.toLowerCase())) return false;
+        seen.add(n.toLowerCase());
+        return true;
+      })
+      .slice(0, itx.multi === false ? 1 : 4);
+    return notes.length ? { notes } : null;
+  }
+
   if (itx.mode === "venn") {
     let items = Array.isArray(payload.items) ? payload.items : [];
     const seen = new Set();
@@ -834,7 +902,7 @@ function sanitizePayload(itx, payload) {
         seen.add(k);
         return true;
       })
-      .slice(0, 6);
+      .slice(0, itx.multi === false ? 1 : 6);
     return items.length ? { items } : null;
   }
 

@@ -10,10 +10,11 @@ const MODES = {
   confidence:    { icon: "🎯", name: "Confidence",    hint: "Got it · Nearly · Confused",      opts: null },
   example_nonexample: { icon: "↔️", name: "Example / Non-example", hint: "Which fits the concept — and why?", opts: { min: 2, max: 2, labels: "Item" } },
   /* words & ideas */
-  word_cloud:    { icon: "☁️", name: "Word Cloud",    hint: "Words build a live cloud",        opts: null },
+  word_cloud:    { icon: "☁️", name: "Word Cloud",    hint: "Words build a live cloud",        opts: null, multiOpt: true },
   one_word:      { icon: "🗣️", name: "One Word",     hint: "Exactly one word each",           opts: null },
   mindmap:       { icon: "🕸️", name: "Mindmap",      hint: "Ideas branch around a concept",   opts: null,
-                   ph: "The central concept, e.g. “Generative AI”" },
+                   ph: "The central concept, e.g. “Generative AI”", multiOpt: true },
+  post_its:      { icon: "🗒️", name: "Post-its",     hint: "Sticky notes fill the board — screened or straight up", opts: null, postits: true, multiOpt: true },
   /* written recall */
   short_answer:  { icon: "✏️", name: "Short Answer",  hint: "Written replies, reveal in turn", opts: null },
   retrieval_sprint:{ icon: "🧠", name: "Retrieval Sprint", hint: "60 seconds — write everything you recall", opts: null },
@@ -39,14 +40,14 @@ const MODES = {
   put_in_order:  { icon: "🪜", name: "Put in Order",  hint: "Sequence steps or events — enter them in the CORRECT order", opts: { min: 2, max: 6, labels: "Step" } },
   match_up:      { icon: "🧩", name: "Match Up",      hint: "Match terms to definitions or examples", pairs: { min: 2, max: 6 } },
   venn:          { icon: "◉", name: "Venn Diagram",   hint: "Sort ideas into two overlapping circles", opts: { min: 2, max: 2, labels: "Circle" },
-                   ph: "The sorting question, e.g. “Which features belong where?”" },
+                   ph: "The sorting question, e.g. “Which features belong where?”", multiOpt: true },
   /* draw */
   sketch:        { icon: "🎨", name: "Sketch It",     hint: "Draw understanding instead of writing", opts: null },
 };
 
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "agree_disagree", "true_false", "this_or_that", "confidence", "example_nonexample"] },
-  { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap"] },
+  { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its"] },
   { label: "✏️ Written recall", modes: ["short_answer", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
@@ -58,7 +59,7 @@ const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
-const revealMode = (m) => TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "example_nonexample";
+const revealMode = (m) => TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "example_nonexample" || m === "post_its";
 
 const $ = (id) => document.getElementById(id);
 let ws = null;
@@ -158,6 +159,24 @@ function openComposer(key) {
       opts.appendChild(inp);
     }
   }
+  if (m.multiOpt) {
+    const multiSel = document.createElement("select");
+    multiSel.id = "multiSel";
+    multiSel.innerHTML = `
+      <option value="1">🙌 Multiple contributions each</option>
+      <option value="0">1️⃣ One contribution each</option>`;
+    multiSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    opts.appendChild(multiSel);
+  }
+  if (m.postits) {
+    const modSel = document.createElement("select");
+    modSel.id = "modSel";
+    modSel.innerHTML = `
+      <option value="1">🛡 I approve notes before they appear</option>
+      <option value="0">⚡ Notes go straight to the board</option>`;
+    modSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    opts.appendChild(modSel);
+  }
   if (m.hasCorrect) {
     const sel = document.createElement("select");
     sel.id = "correctSel";
@@ -230,7 +249,9 @@ function readComposer() {
       return null;
     }
   }
-  return { mode: composerModeKey, prompt, options, correct };
+  const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
+  const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
+  return { mode: composerModeKey, prompt, options, correct, moderated, multi };
 }
 
 /* ---------------- rendering ---------------- */
@@ -320,7 +341,8 @@ function renderLive() {
   const responded = itx.responses.length;
   const total = state.students.length;
   const isWord = WORD_MODES.has(itx.mode);
-  const canReveal = revealMode(itx.mode);
+  // Unmoderated post-it boards have nothing to approve.
+  const canReveal = revealMode(itx.mode) && !(itx.mode === "post_its" && !itx.moderated);
   const agg = itx.aggregate;
 
   let controls = `
@@ -376,6 +398,30 @@ function renderLive() {
       revealCards((r) =>
         `<b>${esc(itx.options[r.payload.choice])}</b>${r.payload.text ? " — " + esc(r.payload.text) : " <i style='color:var(--muted)'>(no reason given)</i>"}`
       );
+  } else if (itx.mode === "post_its") {
+    const rows = itx.responses
+      .map(
+        (r) => `
+      <div class="resp-card" style="flex-wrap:wrap">
+        <span class="who">${esc(r.name || "")}</span>
+        <span class="what" style="display:flex;flex-wrap:wrap;gap:0.35rem">${(r.payload.notes || [])
+          .map((n, i) => {
+            const on = r.noteRevealed?.[i];
+            return itx.moderated
+              ? `<button class="note-chip ${on ? "on-board" : ""}" data-note="${r.studentId}|${i}" title="${on ? "Click to take it down" : "Click to approve onto the board"}">${esc(n)} ${on ? "✓" : "→"}</button>`
+              : `<span class="note-chip on-board">${esc(n)} ✓</span>`;
+          })
+          .join("")}</span>
+      </div>`
+      )
+      .join("");
+    const boardCount = itx.aggregate?.stickies?.length ?? 0;
+    const noteCount = itx.aggregate?.totalNotes ?? 0;
+    body = `
+      <p style="margin-top:1rem;font-size:0.85rem;color:var(--ink-soft)">
+        ${itx.moderated ? `🛡 Screening on — <b>${boardCount}</b> of <b>${noteCount}</b> notes on the board. Click a note to approve it.` : `⚡ Straight to the board — ${noteCount} notes up.`}
+      </p>
+      <div class="responses">${rows}</div>`;
   } else if (itx.mode === "venn" && agg) {
     const heads = [`${itx.options[0]} only`, "Both", `${itx.options[1]} only`];
     body = `<div class="venn-cols">${agg.regions
@@ -444,6 +490,12 @@ function renderLive() {
   area.querySelectorAll("[data-reveal]").forEach(
     (b) => (b.onclick = () => send({ type: "reveal", studentId: b.dataset.reveal }))
   );
+  area.querySelectorAll("[data-note]").forEach((b) => {
+    b.onclick = () => {
+      const [sid, i] = b.dataset.note.split("|");
+      send({ type: "reveal", studentId: sid, noteIndex: +i });
+    };
+  });
 }
 
 function renderSequence() {

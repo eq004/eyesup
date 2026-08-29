@@ -11,6 +11,7 @@ let changingAnswer = false;
 let rankOrder = null; // local ranking order while arranging
 let matchShuffle = null; // shuffled display order for match-up choices
 let vennItems = []; // ideas this student has sorted so far
+let postNotes = []; // sticky notes this student has sent so far
 let sprintDeadline = null; // retrieval-sprint countdown target
 let sprintTimer = null;
 let lastRenderKey = null; // skip re-renders that would wipe half-typed input
@@ -28,7 +29,7 @@ const MODE_NAMES = {
   make_connection: "🔗 Make a Connection", finish_sentence: "📝 Finish the Sentence",
   notice_wonder: "👀 Notice / Wonder", quick_challenge: "🚀 Quick Challenge",
   three_two_one: "3️⃣ 3 – 2 – 1", before_after: "🔄 Before / After",
-  venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice",
+  venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice", post_its: "🗒️ Post-its",
 };
 
 function esc(s) {
@@ -129,6 +130,7 @@ function render(force) {
     rankOrder = null;
     matchShuffle = null;
     vennItems = [];
+    postNotes = [];
     sprintDeadline = null;
     if (sprintTimer) { clearInterval(sprintTimer); sprintTimer = null; }
   }
@@ -140,8 +142,8 @@ function render(force) {
       <p class="state-sub">Responses are closed. Back to the room.</p>`);
   }
 
-  // Venn keeps its input screen after submitting — students add ideas one by one.
-  if (state.submitted && !changingAnswer && itx.mode !== "venn") {
+  // Venn and Post-its keep their input screen after submitting — students add more one by one.
+  if (state.submitted && !changingAnswer && !["venn", "post_its"].includes(itx.mode)) {
     return show(`
       <div class="big-emoji">✓</div>
       <div class="state-title">Response received</div>
@@ -175,21 +177,26 @@ function renderInteraction(itx) {
 
   /* --- words (incl. mindmap phrases) --- */
   if (["word_cloud", "one_word", "mindmap"].includes(itx.mode)) {
-    const one = itx.mode === "one_word";
-    const ph = one
+    const single = itx.mode === "one_word" || itx.multi === false;
+    const ph = itx.mode === "one_word"
       ? "One word only"
+      : single
+      ? (itx.mode === "mindmap" ? "One idea only" : "One word only")
       : itx.mode === "mindmap"
       ? "Ideas connected to it — separate with commas"
       : "A word — or a few, separated by commas";
     show(`${h}
-      <input type="text" id="wordInput" autocomplete="off" placeholder="${ph}" maxlength="${one ? 30 : 160}" />
+      <input type="text" id="wordInput" autocomplete="off" placeholder="${ph}" maxlength="${single && itx.mode !== "mindmap" ? 30 : 160}" />
       <button class="btn send" id="sendBtn">Send</button>
-      ${one ? `<p class="hint">Just one word — make it count.</p>` : ""}`, () => {
+      ${single ? `<p class="hint">Just one — make it count.</p>` : ""}`, () => {
       const input = $("wordInput");
       input.focus();
       const go = () => {
         let words = input.value.split(/[,\n]+/).map((w) => w.trim()).filter(Boolean);
-        if (one) words = words.slice(0, 1).map((w) => w.split(/\s+/)[0]);
+        if (single) {
+          words = words.slice(0, 1);
+          if (itx.mode !== "mindmap") words = words.map((w) => w.split(/\s+/)[0]);
+        }
         if (!words.length) return;
         submit({ words });
       };
@@ -364,6 +371,32 @@ function renderInteraction(itx) {
     return;
   }
 
+  /* --- post-its: write a note, stick it, write another --- */
+  if (itx.mode === "post_its") {
+    const cap = itx.multi === false ? 1 : 4;
+    const full = postNotes.length >= cap;
+    show(`${h}
+      <textarea id="noteInput" rows="3" maxlength="140" placeholder="Write your note…" ${full ? "disabled" : ""}></textarea>
+      <button class="btn send" id="stickBtn" ${full ? "disabled" : ""}>🗒️ Stick it on the board</button>
+      ${postNotes.length
+        ? `<div class="venn-sent">${postNotes.map((n) => `<span class="sent-chip">🗒 ${esc(n)}</span>`).join("")}</div>`
+        : ""}
+      <p class="hint">${full ? (cap === 1 ? "Sent ✓ — eyes up! 👀" : "That's the lot. Eyes up! 👀") : postNotes.length ? `${postNotes.length} sent ✓ — add another if you've got one.` : cap === 1 ? "One note each — make it your best thought." : "Short and punchy. You can add up to 4."}</p>`, () => {
+      const input = $("noteInput");
+      if (!full) input.focus();
+      const stick = () => {
+        const text = input.value.trim();
+        if (!text || postNotes.length >= cap) return;
+        postNotes.push(text);
+        submit({ notes: postNotes });
+        render(true);
+      };
+      $("stickBtn").onclick = stick;
+      input.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); stick(); } };
+    });
+    return;
+  }
+
   /* --- venn: type an idea, tap where it belongs, repeat --- */
   if (itx.mode === "venn") {
     const [A, B] = itx.options;
@@ -380,12 +413,12 @@ function renderInteraction(itx) {
             .map((it) => `<span class="sent-chip">${esc(it.text)} → ${esc(regionNames[it.region])}</span>`)
             .join("")}</div>`
         : ""}
-      <p class="hint">${vennItems.length ? `${vennItems.length} sent ✓ — add another, or eyes up.` : "Type an idea, then tap where it belongs. Add a few!"}</p>`, () => {
+      <p class="hint">${vennItems.length >= (itx.multi === false ? 1 : 6) ? "Sent ✓ — eyes up! 👀" : vennItems.length ? `${vennItems.length} sent ✓ — add another, or eyes up.` : itx.multi === false ? "One idea each — type it, then tap where it belongs." : "Type an idea, then tap where it belongs. Add a few!"}</p>`, () => {
       const input = $("vennInput");
       input.focus();
       screenEl.querySelectorAll("[data-r]").forEach((b) => (b.onclick = () => {
         const text = input.value.trim();
-        if (!text || vennItems.length >= 6) return;
+        if (!text || vennItems.length >= (itx.multi === false ? 1 : 6)) return;
         vennItems.push({ text, region: +b.dataset.r });
         submit({ items: vennItems });
         render(true);

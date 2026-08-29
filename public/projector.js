@@ -21,7 +21,7 @@ const MODE_TAGS = {
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
   notice_wonder: "Notice / Wonder", quick_challenge: "Quick Challenge",
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
-  venn: "Venn Diagram", multi_choice: "Multiple Choice",
+  venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
 };
 
 const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
@@ -216,6 +216,8 @@ function renderInteraction(itx) {
     body = renderMatches(agg);
   } else if (itx.mode === "venn") {
     body = renderVenn(agg);
+  } else if (itx.mode === "post_its") {
+    body = renderStickies(agg);
   } else if (agg.counts) {
     body = renderBars(itx, agg);
   } else if (agg.ranked) {
@@ -294,6 +296,24 @@ function renderVenn(agg) {
     ${empty ? `<text x="600" y="${cy}" text-anchor="middle" font-size="24" fill="var(--chalk-dim)">Ideas land here as the class sorts them…</text>` : ""}
     ${agg.regions.map((list, i) => regionWords(list, anchors[i], colors[i])).join("")}
   </svg>`;
+}
+
+/* Post-its — approved notes stuck across the board. */
+const STICKY_COLORS = ["#fef3a2", "#ffd6e7", "#d3f4e2", "#d6e6ff", "#ffe8c9"];
+
+function renderStickies(agg) {
+  if (!agg.stickies.length) {
+    return `<p class="waiting-note">${agg.totalNotes
+      ? `${agg.totalNotes} note${agg.totalNotes === 1 ? "" : "s"} written — waiting for your teacher to stick them up…`
+      : "Notes land here as they're written…"}</p>`;
+  }
+  return `<div class="sticky-board">${agg.stickies
+    .map((s, i) => {
+      const rot = ((i * 47) % 7) - 3; // organic tilt, deterministic
+      const color = STICKY_COLORS[i % STICKY_COLORS.length];
+      return `<div class="sticky" style="background:${color};transform:rotate(${rot}deg);animation-delay:${(i % 10) * 0.05}s">${esc(s.text)}</div>`;
+    })
+    .join("")}</div>`;
 }
 
 /* Match Up — how much of the room matched each pair correctly. */

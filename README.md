@@ -30,7 +30,9 @@ For real classroom use, students on other devices connect to your machine's LAN 
 ## Interaction modes
 
 **Fast votes**: Poll · Agree/Disagree · True or False · This or That · Confidence Check · Example/Non-example
-**Words & ideas**: Word Cloud · One Word · Mindmap
+**Words & ideas**: Word Cloud · One Word · Mindmap · Post-its (sticky notes on the board — teacher chooses at launch whether notes appear instantly or wait for per-note approval / "Reveal all")
+
+Contribution modes (Word Cloud, Mindmap, Post-its, Venn) also have a launch option for **one contribution each** vs **multiple contributions each**.
 **Written recall**: Short Answer · Retrieval Sprint (60s timer) · Exit Ticket · Finish the Sentence · Give an Example · Make a Connection · Teach It Back · Spot the Mistake · Quick Challenge · Predict
 **Reflect**: 3–2–1 · Notice/Wonder · Before/After · Muddiest Point (anonymous) · Ask a Question (anonymous)
 **Arrange & match**: Ranking · Put in Order · Match Up · Venn Diagram (sort ideas into two overlapping circles, drawn live on the projector)

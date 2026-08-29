@@ -272,6 +272,20 @@
   #groupsList .grp { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 0.35rem 0.55rem; }
   #groupsList .grp b { color: var(--accent-ink); }
 
+  .note-chip {
+    background: #fef3a2;
+    border: 1px solid #e3d370;
+    border-radius: 4px;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #4a4215;
+    text-align: left;
+  }
+  button.note-chip { cursor: pointer; opacity: 0.65; }
+  button.note-chip:hover { opacity: 0.9; }
+  .note-chip.on-board { opacity: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.12); border-color: var(--green); }
+
   .venn-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8rem; margin-top: 1.1rem; }
   .venn-col { border: 1px solid var(--line); border-radius: 10px; padding: 0.6rem 0.7rem; background: var(--paper); }
   .venn-head { font-weight: 800; font-size: 0.8rem; color: var(--accent-ink); }
