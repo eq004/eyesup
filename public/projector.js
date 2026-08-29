@@ -61,10 +61,15 @@ function render() {
 
   const itx = state.interaction;
 
+  updateJoinBadge();
+
   if (state.phase === "ended") {
     stage.innerHTML = bigState("🙌", "Great thinking today", "Recap complete.");
     return;
   }
+
+  // Teacher pressed the QR button — the join screen takes over until toggled off.
+  if (state.showJoin) return renderLobby();
 
   // Room-tool focus takes the big screen until the teacher clears it.
   if (state.focus?.type === "spotlight") {
@@ -100,6 +105,38 @@ function render() {
   renderInteraction(itx);
 }
 
+/* ---------------- always-on join badge ---------------- */
+
+let badgeCode = null; // rebuild the little QR only when the code changes
+
+function joinTarget() {
+  const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+  const host = isLocal && state.joinHost ? state.joinHost : location.host;
+  const proto = isLocal ? "http:" : location.protocol;
+  return { host, url: `${proto}//${host}/join?code=${state.code}` };
+}
+
+function updateJoinBadge() {
+  const el = document.getElementById("joinBadge");
+  // Hidden in the lobby / forced join screen (a big one is already up) and when over.
+  const wanted = state.phase !== "lobby" && !state.showJoin && state.phase !== "ended";
+  el.classList.toggle("show", wanted);
+  if (!wanted) return;
+  if (badgeCode === state.code) return;
+  badgeCode = state.code;
+  const { host, url } = joinTarget();
+  let qrSvg = "";
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    qrSvg = qr.createSvgTag({ cellSize: 3, margin: 2, scalable: true });
+  } catch { /* fine without */ }
+  el.innerHTML = `
+    ${qrSvg ? `<span class="mini-qr">${qrSvg}</span>` : ""}
+    <span class="txt">${esc(host)}/join<br/><b>${esc(state.code)}</b></span>`;
+}
+
 /* ---------------- timer overlay ---------------- */
 
 function updateTimerOverlay() {
@@ -127,11 +164,8 @@ function bigState(emoji, title, sub) {
 function renderLobby() {
   // Locally, advertise the LAN address other devices can reach; on a real
   // deployment the page's own host IS the public address.
-  const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
-  const host = isLocal && state.joinHost ? state.joinHost : location.host;
-  const proto = isLocal ? "http:" : location.protocol;
+  const { host, url: full } = joinTarget();
   const joinUrl = `${host}/join`;
-  const full = `${proto}//${host}/join?code=${state.code}`;
   let qrSvg = "";
   try {
     const qr = qrcode(0, "M");

@@ -240,6 +240,8 @@ function render() {
   $("codeText").textContent = state.code;
   $("joinUrl").textContent = `${location.host}/join`;
   $("openProjector").href = `/projector?code=${state.code}`;
+  $("qrToggle").classList.toggle("primary", !!state.showJoin);
+  $("qrToggle").textContent = state.showJoin ? "🔳 QR is up" : "🔳 QR";
   $("studentCount").textContent = state.students.length;
   renderLive();
   renderSequence();
@@ -529,10 +531,15 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+function joinLink() {
+  return `${location.origin}/join?code=${state?.code || ""}`;
+}
 $("codeChip").onclick = () => {
-  navigator.clipboard?.writeText(`${location.origin}/join — code ${state?.code || ""}`);
-  toast("Join link copied");
+  navigator.clipboard?.writeText(joinLink());
+  toast("Join link copied — students who click it only type their name");
 };
+$("copyLink").onclick = $("codeChip").onclick;
+$("qrToggle").onclick = () => send({ type: "toggle_join" });
 // A real link (not window.open) so popup blockers never eat it;
 // render() keeps its href pointed at the current session.
 $("togglePreview").onclick = () => {

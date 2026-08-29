@@ -83,6 +83,7 @@ function createSession(teacherWs) {
     seqIndex: -1,
     counter: 0,
     // Room tools
+    showJoin: false, // teacher-toggled: force the big join screen onto the projector
     timer: null, // {seconds, endsAt, paused, remaining}
     focus: null, // {type:'spotlight', name} | {type:'groups', groups:[[names]]}
     picked: new Set(), // student ids already randomly selected (no repeats till all picked)
@@ -300,6 +301,7 @@ function teacherState(session) {
     phase: session.phase,
     timer: session.timer,
     focus: session.focus,
+    showJoin: session.showJoin,
     students: [...session.students.values()].map((s) => ({ id: s.id, name: s.name })),
     sequence: session.sequence,
     seqIndex: session.seqIndex,
@@ -339,6 +341,7 @@ function projectorState(session) {
     phase: session.phase,
     timer: session.timer,
     focus: session.focus,
+    showJoin: session.showJoin,
     studentCount: session.students.size,
     respondedCount: itx ? itx.responses.size : 0,
     interaction: itx
@@ -736,6 +739,10 @@ function handle(ws, msg) {
     }
     case "clear_focus": {
       session.focus = null;
+      break;
+    }
+    case "toggle_join": {
+      session.showJoin = !session.showJoin;
       break;
     }
     case "get_summary": {

@@ -466,27 +466,44 @@ function renderInteraction(itx) {
 
 /* ---------------- join screen ---------------- */
 
-function renderJoin() {
+function renderJoin(forceFullForm) {
   const params = new URLSearchParams(location.search);
   const preset = (params.get("code") || "").toUpperCase();
+  // The device remembers who you are — next lesson is one tap.
+  const savedName = localStorage.getItem("eyesup_name") || "";
+
+  const doJoin = (c, n) => {
+    if (c.length !== 4) return;
+    if (n) localStorage.setItem("eyesup_name", n);
+    sessionStorage.setItem("eyesup_name", n);
+    sessionStorage.removeItem("eyesup_sid");
+    send({ type: "student_join", code: c, name: n });
+  };
+
+  if (preset && savedName && !forceFullForm) {
+    show(`
+      <div class="big-emoji">🙋</div>
+      <div class="state-title" style="font-size:1.7rem">Ready to join</div>
+      <button class="btn send" id="quickJoin" style="margin-top:1.4rem;font-size:1.2rem">Join as ${esc(savedName)} →</button>
+      <button class="change-link" id="notMe">Not ${esc(savedName)}? Change name</button>
+      <p class="hint">Class code ${esc(preset)}</p>`, () => {
+      $("quickJoin").onclick = () => doJoin(preset, savedName);
+      $("notMe").onclick = () => renderJoin(true);
+    });
+    return;
+  }
+
   show(`
     <div class="big-emoji">🙋</div>
     <div class="state-title" style="font-size:1.7rem">Join your class</div>
     <input type="text" id="codeInput" placeholder="CLASS CODE" maxlength="4" value="${esc(preset)}"
       style="margin-top:1.2rem;text-transform:uppercase;text-align:center;letter-spacing:0.35em;font-weight:800;font-size:1.4rem" />
-    <input type="text" id="nameInput" placeholder="First name" maxlength="24" style="margin-top:0.6rem;text-align:center" />
+    <input type="text" id="nameInput" placeholder="First name" maxlength="24" value="${forceFullForm ? "" : esc(savedName)}" style="margin-top:0.6rem;text-align:center" />
     <button class="btn send" id="joinBtn">Join</button>
     <p class="hint">No account. No downloads. You're just here to think.</p>`, () => {
     const code = $("codeInput"), name = $("nameInput");
     (preset ? name : code).focus();
-    const go = () => {
-      const c = code.value.trim().toUpperCase();
-      const n = name.value.trim();
-      if (c.length !== 4) return;
-      sessionStorage.setItem("eyesup_name", n);
-      sessionStorage.removeItem("eyesup_sid");
-      send({ type: "student_join", code: c, name: n });
-    };
+    const go = () => doJoin(code.value.trim().toUpperCase(), name.value.trim());
     $("joinBtn").onclick = go;
     [code, name].forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter") go(); }));
   });
