@@ -97,7 +97,7 @@ const TEXT_MODES = new Set([
   "retrieval_sprint", "spot_mistake", "teach_back", "give_example",
   "make_connection", "finish_sentence", "quick_challenge",
 ]);
-const CHOICE_MODES = new Set(["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice"]);
+const CHOICE_MODES = new Set(["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice", "smiley"]);
 const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
 const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
@@ -109,6 +109,7 @@ const FIXED_OPTIONS = {
   agree_disagree: ["Agree", "Unsure", "Disagree"],
   confidence: ["I've got it", "I'm nearly there", "I'm confused"],
   true_false: ["True", "False"],
+  smiley: ["😄", "🙂", "😐", "🙁", "😢"], // happiest → saddest
 };
 
 const STRUCTURED_FIELDS = {

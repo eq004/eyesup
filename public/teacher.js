@@ -9,6 +9,8 @@ const MODES = {
   this_or_that:  { icon: "⚡", name: "This or That",  hint: "Two big options, fast",           opts: { min: 2, max: 2, labels: "Choice" } },
   confidence:    { icon: "🎯", name: "Confidence",    hint: "Got it · Nearly · Confused",      opts: null },
   example_nonexample: { icon: "↔️", name: "Example / Non-example", hint: "Which fits the concept — and why?", opts: { min: 2, max: 2, labels: "Item" } },
+  smiley:        { icon: "😊", name: "Smiley Review", hint: "5 faces, happiest to saddest — one tap", opts: null,
+                   ph: "What are they reviewing? e.g. “How was today's lesson?”" },
   /* words & ideas */
   word_cloud:    { icon: "☁️", name: "Word Cloud",    hint: "Words build a live cloud",        opts: null, multiOpt: true },
   one_word:      { icon: "🗣️", name: "One Word",     hint: "Exactly one word each",           opts: null },
@@ -46,7 +48,7 @@ const MODES = {
 };
 
 const CATEGORIES = [
-  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "agree_disagree", "true_false", "this_or_that", "confidence", "example_nonexample"] },
+  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its"] },
   { label: "✏️ Written recall", modes: ["short_answer", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },

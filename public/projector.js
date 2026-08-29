@@ -22,6 +22,7 @@ const MODE_TAGS = {
   notice_wonder: "Notice / Wonder", quick_challenge: "Quick Challenge",
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
   venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
+  smiley: "Smiley Review",
 };
 
 const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
@@ -218,6 +219,8 @@ function renderInteraction(itx) {
     body = renderVenn(agg);
   } else if (itx.mode === "post_its") {
     body = renderStickies(agg);
+  } else if (itx.mode === "smiley") {
+    body = renderSmileys(itx, agg);
   } else if (agg.counts) {
     body = renderBars(itx, agg);
   } else if (agg.ranked) {
@@ -296,6 +299,25 @@ function renderVenn(agg) {
     ${empty ? `<text x="600" y="${cy}" text-anchor="middle" font-size="24" fill="var(--chalk-dim)">Ideas land here as the class sorts them…</text>` : ""}
     ${agg.regions.map((list, i) => regionWords(list, anchors[i], colors[i])).join("")}
   </svg>`;
+}
+
+/* Smiley review — faces grow as votes land. */
+function renderSmileys(itx, agg) {
+  const total = agg.counts.reduce((a, b) => a + b, 0);
+  const max = Math.max(1, ...agg.counts);
+  return `<div class="smiley-board">${itx.options
+    .map((face, i) => {
+      const n = agg.counts[i];
+      const pct = total ? Math.round((n / total) * 100) : 0;
+      const scale = 0.75 + (n / max) * 0.6;
+      return `
+      <div class="smiley-cell ${n === max && n > 0 ? "leader" : ""}">
+        <div class="face" style="transform:scale(${scale.toFixed(2)})">${face}</div>
+        <div class="n">${n}</div>
+        <div class="p">${pct}%</div>
+      </div>`;
+    })
+    .join("")}</div>`;
 }
 
 /* Post-its — approved notes stuck across the board. */

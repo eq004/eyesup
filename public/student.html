@@ -101,6 +101,19 @@
   .timer-fill { height: 100%; background: var(--accent); border-radius: 6px; transition: width 0.25s linear; }
   .timer-num { font-weight: 800; font-size: 0.9rem; color: var(--ink-soft); margin-bottom: 0.8rem; }
 
+  .smiley-row { display: flex; justify-content: center; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+  .smiley-btn {
+    font-size: 2.7rem;
+    line-height: 1;
+    background: var(--surface);
+    border: 1.5px solid var(--line);
+    border-radius: 18px;
+    padding: 0.7rem 0.75rem;
+    box-shadow: var(--shadow);
+    transition: transform 0.1s ease;
+  }
+  .smiley-btn:active { transform: scale(1.15); border-color: var(--accent); background: var(--accent-soft); }
+
   .venn-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-top: 0.8rem; }
   .venn-btns .btn.choice { margin-top: 0; padding: 0.85rem 0.4rem; font-size: 0.95rem; }
   .venn-sent { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; margin-top: 0.9rem; }

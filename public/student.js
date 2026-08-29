@@ -30,6 +30,7 @@ const MODE_NAMES = {
   notice_wonder: "👀 Notice / Wonder", quick_challenge: "🚀 Quick Challenge",
   three_two_one: "3️⃣ 3 – 2 – 1", before_after: "🔄 Before / After",
   venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice", post_its: "🗒️ Post-its",
+  smiley: "😊 Smiley Review",
 };
 
 function esc(s) {
@@ -306,6 +307,20 @@ function renderInteraction(itx) {
         if (sel == null) return;
         submit({ choice: sel, text: $("whyInput").value.trim() });
       };
+    });
+    return;
+  }
+
+  /* --- smiley review: one tap on a face --- */
+  if (itx.mode === "smiley") {
+    show(`${h}
+      <div class="smiley-row">${itx.options
+        .map((o, i) => `<button class="smiley-btn" data-i="${i}" aria-label="rating ${i + 1} of 5">${o}</button>`)
+        .join("")}</div>
+      <p class="hint">Tap a face — it sends straight away.</p>`, () => {
+      screenEl.querySelectorAll("[data-i]").forEach(
+        (b) => (b.onclick = () => submit({ choice: +b.dataset.i }))
+      );
     });
     return;
   }
