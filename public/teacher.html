@@ -10,16 +10,15 @@
 
   /* ---------- header ---------- */
   header {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.8rem 1.4rem;
+    padding: 0.7rem 1.4rem 0.75rem;
     background: var(--surface);
     border-bottom: 1px solid var(--line);
     position: sticky;
     top: 0;
     z-index: 20;
   }
+  .hrow { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
+  .hrow + .hrow { margin-top: 0.55rem; }
   header .wordmark { font-size: 1.25rem; }
   #titleInput {
     border: 1px dashed transparent;
@@ -487,22 +486,27 @@
 </head>
 <body>
   <header>
-    <span class="wordmark">Eyes Up <span class="eye">👀</span></span>
-    <input id="titleInput" placeholder="Class / lesson title…" maxlength="80"
-      title="Names this session — shows on the summary and PDF export" />
-    <button class="code-chip" id="codeChip" title="Click to copy join code">
-      <small>CODE</small> <span id="codeText">····</span>
-    </button>
-    <span class="join-url" id="joinUrl"></span>
-    <span class="spacer"></span>
-    <span class="pill"><span class="dot"></span><span id="studentCount">0</span>&nbsp;connected</span>
-    <button class="btn" id="copyLink" title="Copy the join link — paste it into Google Classroom, Teams, email…">🔗 Copy join link</button>
-    <button class="btn" id="qrToggle" title="Throw the big QR / join screen onto the projector">🔳 QR</button>
-    <a class="btn" id="openProjector" target="_blank" rel="noopener" href="/projector" style="text-decoration:none">📽️ Projector</a>
-    <button class="btn" id="remoteBtn" title="Control the session from your phone while the projector shows the class screen">📱 Remote</button>
-    <button class="btn" id="togglePreview" title="See exactly what students see, right here">📱 Student view</button>
-    <button class="btn dark" id="eyesUpTop">👀 EYES UP</button>
-    <button class="btn" id="endBtn">Finish &amp; summarise</button>
+    <div class="hrow">
+      <span class="wordmark">Eyes Up <span class="eye">👀</span></span>
+      <input id="titleInput" placeholder="Class / lesson title…" maxlength="80"
+        title="Names this session — shows on the summary and PDF export" />
+      <button class="code-chip" id="codeChip" title="Click to copy join code">
+        <small>CODE</small> <span id="codeText">····</span>
+      </button>
+      <span class="join-url" id="joinUrl"></span>
+      <span class="spacer"></span>
+      <span class="pill"><span class="dot"></span><span id="studentCount">0</span>&nbsp;connected</span>
+      <button class="btn" id="endBtn">Finish &amp; summarise</button>
+    </div>
+    <div class="hrow">
+      <button class="btn" id="copyLink" title="Copy the join link — paste it into Google Classroom, Teams, email…">🔗 Copy join link</button>
+      <button class="btn" id="qrToggle" title="Throw the big QR / join screen onto the projector">🔳 QR</button>
+      <a class="btn" id="openProjector" target="_blank" rel="noopener" href="/projector" style="text-decoration:none">📽️ Projector</a>
+      <button class="btn" id="remoteBtn" title="Control the session from your phone while the projector shows the class screen">📱 Remote</button>
+      <button class="btn" id="togglePreview" title="See exactly what students see, right here">📱 Student view</button>
+      <span class="spacer"></span>
+      <button class="btn dark" id="eyesUpTop">👀 EYES UP</button>
+    </div>
   </header>
 
   <div class="layout">

@@ -127,6 +127,7 @@ async function load() {
   const pw = params.get("pw") || "";
   const page = document.getElementById("page");
   let s;
+  let recovered = false;
   try {
     const res = await fetch(`/api/summary/${code}${pw ? `?pw=${encodeURIComponent(pw)}` : ""}`);
     if (res.status === 403) {
@@ -136,8 +137,20 @@ async function load() {
     if (!res.ok) throw new Error();
     s = await res.json();
   } catch {
-    page.innerHTML = `<div class="err"><h2>No live session found for “${esc(code)}”.</h2><p>Reports are generated from a running session — export before closing the server (a restart or redeploy clears sessions).</p></div>`;
-    return;
+    // The session is gone from the server — fall back to the dashboard's
+    // continuous autosave in this browser.
+    try {
+      const arc = JSON.parse(localStorage.getItem("eyesup_archive") || "{}");
+      const saved = arc[code];
+      if (saved) {
+        s = { ...saved.summary, code, createdAt: saved.savedAt };
+        recovered = true;
+      }
+    } catch { /* no archive */ }
+    if (!s) {
+      page.innerHTML = `<div class="err"><h2>No data found for “${esc(code)}”.</h2><p>The live session has ended and no autosave for it exists in this browser. Autosaves are kept on the computer that ran the teacher dashboard — open this report there.</p></div>`;
+      return;
+    }
   }
 
   const when = new Date(s.createdAt).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
@@ -188,6 +201,7 @@ async function load() {
   }).join("");
 
   page.innerHTML = `
+    ${recovered ? `<p style="background:var(--accent-soft);color:var(--accent-ink);border-radius:10px;padding:0.6rem 0.9rem;font-size:0.85rem;font-weight:600;margin-bottom:1.2rem">♻️ The live session has ended — this report was recovered from the dashboard's autosave on this computer (saved ${esc(new Date(s.createdAt).toLocaleTimeString())}).</p>` : ""}
     <div class="report-head">
       <h1>${s.title ? esc(s.title) : "Recall session report"}</h1>
       <div class="meta">${s.title ? "Recall session · " : ""}Session <b>${esc(s.code)}</b><br/>${esc(when)}</div>

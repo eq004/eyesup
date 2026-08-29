@@ -106,17 +106,59 @@ function connect() {
       ws.send(JSON.stringify({ type: "teacher_create", password: teacherPw() }));
       return;
     }
-    if (msg.type === "summary") return renderSummary(msg);
+    if (msg.type === "summary") {
+      archiveSummary(msg); // every summary is captured locally, asked-for or not
+      if (userSummaryWanted) {
+        userSummaryWanted = false;
+        renderSummary(msg);
+      }
+      return;
+    }
     if (msg.type === "state") {
       state = msg;
       $("pwOverlay").classList.remove("show");
       sessionStorage.setItem("eyesup_teacher_code", state.code);
       render();
+      scheduleAutosave();
     }
   };
   ws.onclose = () => setTimeout(connect, 1200);
 }
 const send = (obj) => ws && ws.readyState === 1 && ws.send(JSON.stringify(obj));
+
+/* ---------------- session autosave ----------------
+   Sessions live in server memory, so the dashboard continuously snapshots
+   the full summary into this browser. If the server restarts before the
+   teacher exports, the report page recovers from this archive. */
+
+let userSummaryWanted = false;
+let autosaveTimer = null;
+let lastAutosaveKey = "";
+
+function scheduleAutosave() {
+  if (!state) return;
+  const itx = state.interaction;
+  const key = `${state.historyCount}|${itx?.id || 0}|${itx?.responses.length || 0}`;
+  if (key === lastAutosaveKey || autosaveTimer) return;
+  lastAutosaveKey = key;
+  autosaveTimer = setTimeout(() => {
+    autosaveTimer = null;
+    send({ type: "get_summary" }); // archived on arrival; no overlay unless asked
+  }, 3000);
+}
+
+function archiveSummary(summary) {
+  if (!state) return;
+  try {
+    const arc = JSON.parse(localStorage.getItem("eyesup_archive") || "{}");
+    arc[state.code] = { savedAt: Date.now(), summary };
+    // keep the ten most recent sessions
+    const keep = Object.keys(arc)
+      .sort((a, b) => arc[b].savedAt - arc[a].savedAt)
+      .slice(0, 10);
+    localStorage.setItem("eyesup_archive", JSON.stringify(Object.fromEntries(keep.map((c) => [c, arc[c]]))));
+  } catch { /* storage full/blocked — the live path still works */ }
+}
 
 /* ---------------- toast ---------------- */
 
@@ -716,7 +758,10 @@ $("closePreview").onclick = () => {
   $("phoneFrame").src = "about:blank"; // disconnects the preview student so the roster stays honest
 };
 $("eyesUpTop").onclick = () => send({ type: "eyes_up" });
-$("endBtn").onclick = () => send({ type: "get_summary" });
+$("endBtn").onclick = () => {
+  userSummaryWanted = true;
+  send({ type: "get_summary" });
+};
 $("nextBtn").onclick = () => send({ type: "next" });
 
 $("launchBtn").onclick = () => {

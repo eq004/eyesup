@@ -64,7 +64,9 @@ Teachers can optionally pre-build a short sequence (e.g. One Word → Short Answ
 
 **Finish & summarise** produces a deliberately simple recap: who participated, the confidence picture, commonly remembered words, and what each interaction gathered — enough to decide what to reteach, no analytics rabbit hole.
 
-**Export as PDF** (button on the summary, or `/report?code=XXXX` directly) opens a clean print-styled lesson report — headline stats, common words, and every interaction with its distributions and answers — and saves via the browser's print dialog ("Save as PDF"). Export before stopping the server: sessions live in memory, so the report is generated from the running session.
+**Export as PDF** (button on the summary, or `/report?code=XXXX` directly) opens a clean print-styled lesson report — headline stats, common words, and every interaction with its distributions and answers — and saves via the browser's print dialog ("Save as PDF").
+
+**Autosave**: sessions live in server memory, but the dashboard continuously snapshots the full session summary into the teacher's browser (localStorage, last 10 sessions) a few seconds after every change. If the server restarts or the host sleeps before exporting, the report page transparently recovers from that autosave (with a "recovered" banner) — open it on the computer that ran the dashboard.
 
 ## Going live
 
