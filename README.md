@@ -44,6 +44,10 @@ The **📱 Student view** button on the dashboard opens a phone-sized live previ
 
 Written answers (Short Answer, Predict, anonymous questions) arrive on the teacher dashboard privately and only reach the projector when the teacher reveals them — gradually or all at once. Live modes (word cloud, polls, votes) build on the projector in real time.
 
+## Phone remote
+
+**📱 Remote** on the dashboard shows a QR — scan it with a phone to get a pocket control surface at `/remote` (session code + teacher password). The projector keeps showing the class screen while the teacher walks the room: Eyes Up, open/close/reveal, Next-in-plan, zero-setup launches (question asked aloud), timer, random student, QR toggle. The dashboard and any number of remotes stay connected to the same session simultaneously.
+
 ## Room tools
 
 The dashboard sidebar has teacher utilities that use the big screen without being an "activity":

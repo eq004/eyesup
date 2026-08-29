@@ -36,6 +36,7 @@ app.get("/teacher", (_req, res) => res.sendFile(path.join(__dirname, "public/tea
 app.get("/join", (_req, res) => res.sendFile(path.join(__dirname, "public/student.html")));
 app.get("/projector", (_req, res) => res.sendFile(path.join(__dirname, "public/projector.html")));
 app.get("/report", (_req, res) => res.sendFile(path.join(__dirname, "public/report.html")));
+app.get("/remote", (_req, res) => res.sendFile(path.join(__dirname, "public/remote.html")));
 
 // Teacher-uploaded images (annotate mode), served over HTTP so websocket
 // broadcasts stay light — clients just get a URL.
@@ -85,7 +86,7 @@ function createSession(teacherWs) {
     title: "",
     images: new Map(), // interaction id -> uploaded image dataURL (annotate mode)
     createdAt: Date.now(),
-    teacher: teacherWs,
+    teachers: new Set([teacherWs]), // dashboard + any phone remotes, all in control
     projectors: new Set(),
     students: new Map(), // id -> {id, name, ws}
     everJoined: new Map(), // id -> name (for summary even after disconnects)
@@ -359,6 +360,7 @@ function teacherState(session) {
     role: "teacher",
     code: session.code,
     title: session.title,
+    lanHost: `${lanAddress()}:${PORT}`, // so the dashboard can QR the phone remote locally
     phase: session.phase,
     timer: session.timer,
     focus: session.focus,
@@ -456,7 +458,8 @@ function studentState(session, student) {
 }
 
 function broadcast(session) {
-  safeSend(session.teacher, teacherState(session));
+  const ts = teacherState(session);
+  for (const t of session.teachers) safeSend(t, ts);
   for (const p of session.projectors) safeSend(p, projectorState(session));
   for (const s of session.students.values()) safeSend(s.ws, studentState(session, s));
 }
@@ -583,8 +586,8 @@ wss.on("connection", (ws) => {
       broadcast(session);
     } else if (ws.meta.role === "projector") {
       session.projectors.delete(ws);
-    } else if (ws.meta.role === "teacher" && session.teacher === ws) {
-      session.teacher = null; // session survives; teacher can resume with the code
+    } else if (ws.meta.role === "teacher") {
+      session.teachers.delete(ws); // session survives; teacher can resume with the code
     }
   });
 });
@@ -608,7 +611,7 @@ function handle(ws, msg) {
       return safeSend(ws, { type: "error", error: "bad_password" });
     const session = sessions.get(String(msg.code || "").toUpperCase());
     if (!session) return safeSend(ws, { type: "error", error: "no_session" });
-    session.teacher = ws;
+    session.teachers.add(ws);
     ws.meta = { role: "teacher", code: session.code };
     broadcast(session);
     return;
@@ -851,7 +854,7 @@ function handle(ws, msg) {
       break;
     }
     case "get_summary": {
-      safeSend(session.teacher, buildSummary(session));
+      safeSend(ws, buildSummary(session));
       return; // no broadcast needed
     }
     case "end_session": {
@@ -860,7 +863,8 @@ function handle(ws, msg) {
         session.interaction = null;
       }
       session.phase = "ended";
-      safeSend(session.teacher, buildSummary(session));
+      const summary = buildSummary(session);
+      for (const t of session.teachers) safeSend(t, summary);
       break;
     }
     default:

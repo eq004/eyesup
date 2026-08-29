@@ -676,6 +676,25 @@ $("codeChip").onclick = () => {
 };
 $("copyLink").onclick = $("codeChip").onclick;
 $("qrToggle").onclick = () => send({ type: "toggle_join" });
+$("remoteBtn").onclick = () => {
+  if (!state) return;
+  const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+  const host = isLocal && state.lanHost ? state.lanHost : location.host;
+  const proto = isLocal ? "http:" : location.protocol;
+  const url = `${proto}//${host}/remote?code=${state.code}`;
+  $("remoteUrl").textContent = url.replace(/^https?:\/\//, "");
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    $("remoteQr").innerHTML = `<div style="background:#fff;padding:10px;border-radius:12px">${qr.createSvgTag({ cellSize: 5, margin: 0, scalable: true })}</div>`;
+    $("remoteQr").querySelector("svg").style.width = "190px";
+    $("remoteQr").querySelector("svg").style.height = "190px";
+  } catch { $("remoteQr").innerHTML = ""; }
+  $("remoteOverlay").classList.add("show");
+};
+$("closeRemote").onclick = () => $("remoteOverlay").classList.remove("show");
+
 $("titleInput").addEventListener("change", () => send({ type: "set_title", title: $("titleInput").value }));
 $("titleInput").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
 // A real link (not window.open) so popup blockers never eat it;
