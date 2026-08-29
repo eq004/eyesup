@@ -368,6 +368,7 @@ function render() {
   $("codeText").textContent = state.code;
   $("joinUrl").textContent = `${location.host}/join`;
   $("openProjector").href = `/projector?code=${state.code}`;
+  $("lessonsBtn").style.display = state.storage ? "" : "none";
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
   $("qrToggle").textContent = state.showJoin ? "🔳 QR is up" : "🔳 QR";
   $("studentCount").textContent = state.students.length;
@@ -741,6 +742,31 @@ $("remoteBtn").onclick = () => {
   $("remoteOverlay").classList.add("show");
 };
 $("closeRemote").onclick = () => $("remoteOverlay").classList.remove("show");
+
+$("lessonsBtn").onclick = async () => {
+  $("lessonsList").innerHTML = `<p style="color:var(--muted)">Loading…</p>`;
+  $("lessonsOverlay").classList.add("show");
+  try {
+    const res = await fetch(`/api/lessons${teacherPw() ? `?pw=${encodeURIComponent(teacherPw())}` : ""}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    $("lessonsList").innerHTML = data.lessons.length
+      ? data.lessons
+          .map((l) => {
+            const when = new Date(l.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+            const href = `/report?lesson=${l.id}${teacherPw() ? `&pw=${encodeURIComponent(teacherPw())}` : ""}`;
+            return `<a href="${href}" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:10px;padding:0.65rem 0.9rem;margin-bottom:0.5rem;background:var(--paper)">
+              <b>${esc(l.title || "Untitled lesson")}</b> <span style="color:var(--muted);font-size:0.8rem">· ${esc(l.code)}</span><br/>
+              <span style="color:var(--ink-soft);font-size:0.82rem">${esc(when)} — ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions</span>
+            </a>`;
+          })
+          .join("")
+      : `<p style="color:var(--muted)">No stored lessons yet — run one and it saves itself.</p>`;
+  } catch {
+    $("lessonsList").innerHTML = `<p style="color:var(--red)">Couldn't load the archive — check the database connection.</p>`;
+  }
+};
+$("closeLessons").onclick = () => $("lessonsOverlay").classList.remove("show");
 
 $("titleInput").addEventListener("change", () => send({ type: "set_title", title: $("titleInput").value }));
 $("titleInput").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });

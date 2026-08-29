@@ -128,6 +128,26 @@ async function load() {
   const page = document.getElementById("page");
   let s;
   let recovered = false;
+
+  // Archived lesson from the database (?lesson=id) — the permanent path.
+  const lessonId = params.get("lesson");
+  if (lessonId) {
+    try {
+      const res = await fetch(`/api/lessons/${encodeURIComponent(lessonId)}${pw ? `?pw=${encodeURIComponent(pw)}` : ""}`);
+      if (res.status === 403) {
+        page.innerHTML = `<div class="err"><h2>Teacher password needed.</h2><p>Open this report via “Past lessons” on the teacher dashboard.</p></div>`;
+        return;
+      }
+      if (!res.ok) throw new Error();
+      s = await res.json();
+    } catch {
+      page.innerHTML = `<div class="err"><h2>Lesson not found in the archive.</h2></div>`;
+      return;
+    }
+    renderReport(s, false);
+    return;
+  }
+
   try {
     const res = await fetch(`/api/summary/${code}${pw ? `?pw=${encodeURIComponent(pw)}` : ""}`);
     if (res.status === 403) {
@@ -153,6 +173,11 @@ async function load() {
     }
   }
 
+  renderReport(s, recovered);
+}
+
+function renderReport(s, recovered) {
+  const page = document.getElementById("page");
   const when = new Date(s.createdAt).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
 
   const conf = s.confidence ? `

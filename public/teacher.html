@@ -504,6 +504,7 @@
       <a class="btn" id="openProjector" target="_blank" rel="noopener" href="/projector" style="text-decoration:none">📽️ Projector</a>
       <button class="btn" id="remoteBtn" title="Control the session from your phone while the projector shows the class screen">📱 Remote</button>
       <button class="btn" id="togglePreview" title="See exactly what students see, right here">📱 Student view</button>
+      <button class="btn" id="lessonsBtn" style="display:none" title="Every stored lesson, with its full report">📚 Past lessons</button>
       <span class="spacer"></span>
       <button class="btn dark" id="eyesUpTop">👀 EYES UP</button>
     </div>
@@ -627,6 +628,16 @@
         <button class="btn" id="quizCancel">Cancel</button>
         <span style="color:var(--muted);font-size:0.8rem">Questions land in your Recall plan — run them with ▶ Next.</span>
       </div>
+    </div>
+  </div>
+
+  <!-- Past lessons archive -->
+  <div class="overlay" id="lessonsOverlay">
+    <div class="sheet" style="max-width:560px">
+      <h2 style="font-family:var(--font-display)">📚 Past lessons</h2>
+      <p style="color:var(--ink-soft);font-size:0.9rem;margin-top:0.3rem">Stored in your database — each opens the full report, from any computer.</p>
+      <div id="lessonsList" style="margin-top:1rem;max-height:55vh;overflow-y:auto"></div>
+      <button class="btn primary" id="closeLessons" style="margin-top:1.2rem">Close</button>
     </div>
   </div>
 

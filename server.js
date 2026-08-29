@@ -24,6 +24,58 @@ function lanAddress() {
 }
 
 const PORT = process.env.PORT || 4630;
+
+/* ------------------------------------------------------------------ */
+/* Optional persistent storage (Supabase/Postgres via DATABASE_URL).  */
+/* Without it, everything still works — sessions are just in-memory   */
+/* plus the dashboard's browser autosave.                             */
+/* ------------------------------------------------------------------ */
+
+let db = null;
+if (process.env.DATABASE_URL) {
+  const { Pool } = require("pg");
+  db = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    max: 3,
+  });
+  db.query(`CREATE TABLE IF NOT EXISTS lessons (
+      id serial PRIMARY KEY,
+      code text NOT NULL,
+      title text,
+      created_at timestamptz NOT NULL,
+      saved_at timestamptz NOT NULL DEFAULT now(),
+      summary jsonb NOT NULL,
+      UNIQUE (code, created_at)
+    )`)
+    .then(() => console.log("Storage connected — lessons persist to Postgres"))
+    .catch((e) => {
+      console.error("Storage init failed (continuing without):", e.message);
+      db = null;
+    });
+}
+
+// Debounced write of the session's full summary — every response nudges it,
+// at most one write per few seconds per session.
+function persistSession(session) {
+  if (!db || session.persistTimer) return;
+  session.persistTimer = setTimeout(async () => {
+    session.persistTimer = null;
+    try {
+      const summary = buildSummary(session);
+      if (!summary.interactionCount) return; // nothing worth keeping yet
+      await db.query(
+        `INSERT INTO lessons (code, title, created_at, saved_at, summary)
+         VALUES ($1, $2, $3, now(), $4)
+         ON CONFLICT (code, created_at)
+         DO UPDATE SET title = $2, saved_at = now(), summary = $4`,
+        [session.code, session.title, new Date(session.createdAt), summary]
+      );
+    } catch (e) {
+      console.error("persist failed:", e.message);
+    }
+  }, 4000);
+}
 // When set, the teacher dashboard (and reports) require this password.
 // Students and the projector never need it — they only need a session code.
 const TEACHER_PASSWORD = process.env.TEACHER_PASSWORD || "";
@@ -47,6 +99,39 @@ app.get("/api/image/:code/:id", (req, res) => {
   if (!m) return res.status(404).end();
   res.set("Cache-Control", "public, max-age=3600");
   res.type(m[1]).send(Buffer.from(m[2], "base64"));
+});
+
+// Past lessons archive (requires DATABASE_URL). Password-gated like reports.
+app.get("/api/lessons", async (req, res) => {
+  if (!db) return res.json({ storage: false, lessons: [] });
+  if (TEACHER_PASSWORD && req.query.pw !== TEACHER_PASSWORD)
+    return res.status(403).json({ error: "bad_password" });
+  try {
+    const { rows } = await db.query(
+      `SELECT id, code, title, created_at,
+              summary->>'participatedCount' AS participated,
+              summary->>'joinedCount' AS joined,
+              summary->>'interactionCount' AS interactions
+       FROM lessons ORDER BY created_at DESC LIMIT 200`
+    );
+    res.json({ storage: true, lessons: rows });
+  } catch (e) {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+app.get("/api/lessons/:id", async (req, res) => {
+  if (!db) return res.status(404).json({ error: "storage_off" });
+  if (TEACHER_PASSWORD && req.query.pw !== TEACHER_PASSWORD)
+    return res.status(403).json({ error: "bad_password" });
+  try {
+    const { rows } = await db.query(`SELECT * FROM lessons WHERE id = $1`, [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const r = rows[0];
+    res.json({ ...r.summary, code: r.code, title: r.title, createdAt: new Date(r.created_at).getTime() });
+  } catch (e) {
+    res.status(500).json({ error: "db_error" });
+  }
 });
 
 // Summary as JSON for the printable report. The session code is the key,
@@ -361,6 +446,7 @@ function teacherState(session) {
     code: session.code,
     title: session.title,
     lanHost: `${lanAddress()}:${PORT}`, // so the dashboard can QR the phone remote locally
+    storage: !!db, // lessons persist to Postgres
     phase: session.phase,
     timer: session.timer,
     focus: session.focus,
@@ -462,6 +548,7 @@ function broadcast(session) {
   for (const t of session.teachers) safeSend(t, ts);
   for (const p of session.projectors) safeSend(p, projectorState(session));
   for (const s of session.students.values()) safeSend(s.ws, studentState(session, s));
+  persistSession(session); // debounced; no-op without a database
 }
 
 /* ------------------------------------------------------------------ */
