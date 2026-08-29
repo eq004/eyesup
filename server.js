@@ -37,6 +37,17 @@ app.get("/join", (_req, res) => res.sendFile(path.join(__dirname, "public/studen
 app.get("/projector", (_req, res) => res.sendFile(path.join(__dirname, "public/projector.html")));
 app.get("/report", (_req, res) => res.sendFile(path.join(__dirname, "public/report.html")));
 
+// Teacher-uploaded images (annotate mode), served over HTTP so websocket
+// broadcasts stay light — clients just get a URL.
+app.get("/api/image/:code/:id", (req, res) => {
+  const session = sessions.get(String(req.params.code || "").toUpperCase());
+  const dataUrl = session?.images.get(Number(req.params.id));
+  const m = dataUrl?.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!m) return res.status(404).end();
+  res.set("Cache-Control", "public, max-age=3600");
+  res.type(m[1]).send(Buffer.from(m[2], "base64"));
+});
+
 // Summary as JSON for the printable report. The session code is the key,
 // same trust model as joining the room.
 app.get("/api/summary/:code", (req, res) => {
@@ -71,6 +82,8 @@ function createSession(teacherWs) {
   const code = newCode();
   const session = {
     code,
+    title: "",
+    images: new Map(), // interaction id -> uploaded image dataURL (annotate mode)
     createdAt: Date.now(),
     teacher: teacherWs,
     projectors: new Set(),
@@ -124,14 +137,14 @@ const TIME_LIMITS = { retrieval_sprint: 60 }; // seconds
 function isRevealMode(mode) {
   return (
     TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] ||
-    mode === "sketch" || mode === "example_nonexample" || mode === "post_its"
+    mode === "sketch" || mode === "annotate" || mode === "example_nonexample" || mode === "post_its"
   );
 }
 
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -149,6 +162,16 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     // A continuum needs two ends; sensible defaults keep launch instant.
     opts = [(opts && opts[0]) || "Disagree", (opts && opts[1]) || "Agree"];
   }
+  let imageUrl = null;
+  if (
+    mode === "annotate" &&
+    typeof image === "string" &&
+    /^data:image\/(png|jpeg|webp);base64,/.test(image) &&
+    image.length < 900000
+  ) {
+    session.images.set(session.counter, image);
+    imageUrl = `/api/image/${session.code}/${session.counter}`;
+  }
   const correctIdx =
     mode === "multi_choice" && Number.isInteger(correct) && opts && correct >= 0 && correct < opts.length
       ? correct
@@ -161,6 +184,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     pairs,
     fields: STRUCTURED_FIELDS[mode] || null,
     timeLimit: TIME_LIMITS[mode] || null,
+    imageUrl,
     correct: correctIdx,
     answerRevealed: false,
     // Post-its: teacher chooses at launch — screen notes first, or straight up.
@@ -308,7 +332,7 @@ function aggregate(session, itx) {
     return { ...base, fields: itx.fields, revealed, revealedCount: revealed.length };
   }
 
-  if (itx.mode === "sketch") {
+  if (itx.mode === "sketch" || itx.mode === "annotate") {
     const revealed = responses.filter((r) => r.revealed).map((r) => ({ image: r.payload.image }));
     return { ...base, sketches: revealed, revealedCount: revealed.length };
   }
@@ -334,6 +358,7 @@ function teacherState(session) {
     type: "state",
     role: "teacher",
     code: session.code,
+    title: session.title,
     phase: session.phase,
     timer: session.timer,
     focus: session.focus,
@@ -351,6 +376,7 @@ function teacherState(session) {
           pairs: itx.pairs,
           fields: itx.fields,
           timeLimit: itx.timeLimit,
+          imageUrl: itx.imageUrl,
           correct: itx.correct,
           answerRevealed: itx.answerRevealed,
           moderated: itx.moderated,
@@ -376,6 +402,7 @@ function projectorState(session) {
     type: "state",
     role: "projector",
     code: session.code,
+    title: session.title,
     joinHost: `${lanAddress()}:${PORT}`,
     phase: session.phase,
     timer: session.timer,
@@ -388,6 +415,7 @@ function projectorState(session) {
           mode: itx.mode,
           prompt: itx.prompt,
           options: itx.options,
+          imageUrl: itx.imageUrl,
           open: itx.open,
           resultsVisible: itx.resultsVisible,
           aggregate: itx.resultsVisible ? aggregate(session, itx) : null,
@@ -416,6 +444,7 @@ function studentState(session, student) {
             pairs: itx.pairs,
             fields: itx.fields,
             multi: itx.multi,
+            imageUrl: itx.imageUrl,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
@@ -464,7 +493,7 @@ function buildSummary(session) {
       item.answers = [...itx.responses.values()]
         .map((r) => r.payload.parts.filter(Boolean).join(" · "))
         .slice(0, 40);
-    if (itx.mode === "sketch") item.sketchCount = itx.responses.size;
+    if (itx.mode === "sketch" || itx.mode === "annotate") item.sketchCount = itx.responses.size;
     if (itx.mode === "venn")
       item.venn = { labels: itx.options, regions: agg.regions.map((r) => r.slice(0, 8)) };
     if (itx.mode === "post_its")
@@ -510,6 +539,7 @@ function buildSummary(session) {
 
   return {
     type: "summary",
+    title: session.title,
     joinedCount: session.everJoined.size,
     participatedCount: participants.size,
     interactionCount: all.length,
@@ -728,6 +758,10 @@ function handle(ws, msg) {
         correct: Number.isInteger(it.correct) ? it.correct : null,
         moderated: typeof it.moderated === "boolean" ? it.moderated : undefined,
         multi: typeof it.multi === "boolean" ? it.multi : undefined,
+        image:
+          typeof it.image === "string" && it.image.startsWith("data:image/") && it.image.length < 900000
+            ? it.image
+            : undefined,
       }));
       if (session.seqIndex >= session.sequence.length) session.seqIndex = session.sequence.length - 1;
       break;
@@ -810,6 +844,10 @@ function handle(ws, msg) {
     }
     case "toggle_join": {
       session.showJoin = !session.showJoin;
+      break;
+    }
+    case "set_title": {
+      session.title = String(msg.title || "").trim().slice(0, 80);
       break;
     }
     case "get_summary": {
@@ -940,9 +978,9 @@ function sanitizePayload(itx, payload) {
     return parts.some(Boolean) ? { parts } : null;
   }
 
-  if (itx.mode === "sketch") {
+  if (itx.mode === "sketch" || itx.mode === "annotate") {
     const image = String(payload.image || "");
-    if (!image.startsWith("data:image/png;base64,") || image.length > 400000) return null;
+    if (!/^data:image\/(png|jpeg);base64,/.test(image) || image.length > 600000) return null;
     return { image };
   }
 

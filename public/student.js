@@ -30,7 +30,7 @@ const MODE_NAMES = {
   notice_wonder: "👀 Notice / Wonder", quick_challenge: "🚀 Quick Challenge",
   three_two_one: "3️⃣ 3 – 2 – 1", before_after: "🔄 Before / After",
   venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice", post_its: "🗒️ Post-its",
-  smiley: "😊 Smiley Review", scale: "🎚️ Scale",
+  smiley: "😊 Smiley Review", scale: "🎚️ Scale", annotate: "🖍️ Annotate",
 };
 
 function esc(s) {
@@ -492,20 +492,36 @@ function renderInteraction(itx) {
     return;
   }
 
-  /* --- sketch --- */
-  if (itx.mode === "sketch") {
+  /* --- sketch & annotate --- */
+  if (itx.mode === "sketch" || itx.mode === "annotate") {
+    const anno = itx.mode === "annotate";
     show(`${h}
       <canvas id="pad" width="600" height="450"></canvas>
       <div style="display:flex;gap:0.6rem;margin-top:0.8rem">
         <button class="btn" id="clearPad" style="flex:0 0 auto;width:auto;margin-top:0;background:var(--surface);border:1.5px solid var(--line)">↺ Clear</button>
-        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0">Send my sketch</button>
+        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0">${anno ? "Send my annotation" : "Send my sketch"}</button>
       </div>
-      <p class="hint">Draw with your finger or mouse.</p>`, () => {
+      <p class="hint">${anno ? "Draw on the image with your finger or mouse." : "Draw with your finger or mouse."}</p>`, () => {
       const canvas = $("pad");
       const ctx = canvas.getContext("2d");
-      const blank = () => { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, canvas.width, canvas.height); };
+      let bg = null; // the teacher's image, once loaded
+      const blank = () => {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (bg) {
+          // fit the image inside the canvas, centred
+          const s = Math.min(canvas.width / bg.width, canvas.height / bg.height);
+          const w = bg.width * s, hh = bg.height * s;
+          ctx.drawImage(bg, (canvas.width - w) / 2, (canvas.height - hh) / 2, w, hh);
+        }
+      };
       blank();
-      ctx.strokeStyle = "#191c26";
+      if (anno && itx.imageUrl) {
+        const img = new Image();
+        img.onload = () => { bg = img; blank(); };
+        img.src = itx.imageUrl;
+      }
+      ctx.strokeStyle = anno ? "#e02d2d" : "#191c26";
       ctx.lineWidth = 4;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -529,7 +545,11 @@ function renderInteraction(itx) {
       });
       canvas.addEventListener("pointerup", () => (drawing = false));
       $("clearPad").onclick = () => { blank(); drew = false; };
-      $("sendBtn").onclick = () => { if (drew) submit({ image: canvas.toDataURL("image/png") }); };
+      $("sendBtn").onclick = () => {
+        if (!drew) return;
+        // annotations carry a photo background — jpeg keeps them small
+        submit({ image: anno ? canvas.toDataURL("image/jpeg", 0.8) : canvas.toDataURL("image/png") });
+      };
     });
     return;
   }

@@ -21,6 +21,19 @@
     z-index: 20;
   }
   header .wordmark { font-size: 1.25rem; }
+  #titleInput {
+    border: 1px dashed transparent;
+    border-radius: 8px;
+    background: transparent;
+    font-weight: 700;
+    font-size: 0.95rem;
+    padding: 0.35rem 0.55rem;
+    width: 210px;
+    color: var(--ink);
+  }
+  #titleInput:hover { border-color: var(--line); }
+  #titleInput:focus { outline: none; border: 1px solid var(--accent); background: var(--surface); }
+  #titleInput::placeholder { font-weight: 500; }
   .code-chip {
     display: inline-flex;
     align-items: center;
@@ -446,6 +459,8 @@
 <body>
   <header>
     <span class="wordmark">Eyes Up <span class="eye">👀</span></span>
+    <input id="titleInput" placeholder="Class / lesson title…" maxlength="80"
+      title="Names this session — shows on the summary and PDF export" />
     <button class="code-chip" id="codeChip" title="Click to copy join code">
       <small>CODE</small> <span id="codeText">····</span>
     </button>

@@ -22,7 +22,7 @@ const MODE_TAGS = {
   notice_wonder: "Notice / Wonder", quick_challenge: "Quick Challenge",
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
   venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
-  smiley: "Smiley Review", scale: "Where Do You Stand?",
+  smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
 };
 
 const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
@@ -176,6 +176,7 @@ function renderLobby() {
   } catch { /* QR lib missing — code alone is fine */ }
 
   stage.innerHTML = `
+    ${state.title ? `<div class="q-tag" style="margin-bottom:1.5rem">${esc(state.title)}</div>` : ""}
     <div class="join-wrap">
       <div class="join-block">
         <div class="lead">Grab any device and go to</div>
@@ -223,6 +224,11 @@ function renderInteraction(itx) {
     body = renderSmileys(itx, agg);
   } else if (itx.mode === "scale") {
     body = renderScale(agg);
+  } else if (itx.mode === "annotate") {
+    body = agg.sketches.length
+      ? renderSketches(agg)
+      : `${itx.imageUrl ? `<img src="${itx.imageUrl}" alt="image to annotate" style="max-height:45vh;max-width:80%;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,0.45)" />` : ""}
+         <p class="waiting-note" style="margin-top:1.4rem">${agg.total ? `${agg.total} annotation${agg.total === 1 ? "" : "s"} in — your teacher will reveal them.` : "Mark it up on your device…"}</p>`;
   } else if (agg.counts) {
     body = renderBars(itx, agg);
   } else if (agg.ranked) {

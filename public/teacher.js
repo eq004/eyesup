@@ -47,6 +47,8 @@ const MODES = {
                    ph: "The sorting question, e.g. “Which features belong where?”", multiOpt: true },
   /* draw */
   sketch:        { icon: "🎨", name: "Sketch It",     hint: "Draw understanding instead of writing", opts: null },
+  annotate:      { icon: "🖍️", name: "Annotate",     hint: "Upload an image — students draw on it", opts: null, imageUpload: true,
+                   ph: "What should they mark up? e.g. “Circle the error / label the diagram”" },
 };
 
 const CATEGORIES = [
@@ -55,7 +57,7 @@ const CATEGORIES = [
   { label: "✏️ Written recall", modes: ["short_answer", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
-  { label: "🎨 Draw", modes: ["sketch"] },
+  { label: "🎨 Draw", modes: ["sketch", "annotate"] },
 ];
 
 const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge"]);
@@ -63,7 +65,8 @@ const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
-const revealMode = (m) => TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "example_nonexample" || m === "post_its";
+const revealMode = (m) =>
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" || m === "example_nonexample" || m === "post_its";
 
 const $ = (id) => document.getElementById(id);
 let ws = null;
@@ -143,8 +146,29 @@ function buildModeGrid() {
   }
 }
 
+let composerImage = null;
+
+// Downscale the teacher's image client-side so launches stay snappy.
+function loadComposerImage(file, cb) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 1000 / img.width, 750 / img.height);
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * s);
+      c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      cb(c.toDataURL("image/jpeg", 0.82));
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function openComposer(key) {
   composerModeKey = key;
+  composerImage = null;
   const m = MODES[key];
   $("composer").classList.add("show");
   $("composerMode").textContent = `${m.icon} ${m.name}`;
@@ -162,6 +186,23 @@ function openComposer(key) {
       inp.dataset.opt = "1";
       opts.appendChild(inp);
     }
+  }
+  if (m.imageUpload) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `
+      <input type="file" id="imgFile" accept="image/*" style="margin-top:0.55rem;font-size:0.85rem" />
+      <img id="imgPreview" alt="" style="display:none;margin-top:0.5rem;max-height:120px;border-radius:8px;border:1px solid var(--line)" />`;
+    opts.appendChild(wrap);
+    wrap.querySelector("#imgFile").onchange = (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      loadComposerImage(f, (dataUrl) => {
+        composerImage = dataUrl;
+        const p = $("imgPreview");
+        p.src = dataUrl;
+        p.style.display = "block";
+      });
+    };
   }
   if (m.multiOpt) {
     const multiSel = document.createElement("select");
@@ -253,15 +294,21 @@ function readComposer() {
       return null;
     }
   }
+  if (m.imageUpload && !composerImage) {
+    toast("Choose an image first — that's the thing they'll draw on");
+    return null;
+  }
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: composerModeKey, prompt, options, correct, moderated, multi };
+  return { mode: composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined };
 }
 
 /* ---------------- rendering ---------------- */
 
 function render() {
   if (!state) return;
+  const ti = $("titleInput");
+  if (document.activeElement !== ti) ti.value = state.title || "";
   $("codeText").textContent = state.code;
   $("joinUrl").textContent = `${location.host}/join`;
   $("openProjector").href = `/projector?code=${state.code}`;
@@ -482,8 +529,11 @@ function renderLive() {
         .filter(Boolean)
         .join("<br/>")
     );
-  } else if (itx.mode === "sketch") {
-    body = revealCards((r) => `<img src="${r.payload.image}" alt="student sketch" style="height:90px;border-radius:8px;background:#fff;border:1px solid var(--line)" />`);
+  } else if (itx.mode === "sketch" || itx.mode === "annotate") {
+    const source = itx.imageUrl
+      ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.78rem;color:var(--muted)">← what they're drawing on</span></div>`
+      : "";
+    body = source + revealCards((r) => `<img src="${r.payload.image}" alt="student drawing" style="height:90px;border-radius:8px;background:#fff;border:1px solid var(--line)" />`);
   } else if (TEXT_MODES.has(itx.mode)) {
     body = revealCards((r) => esc(r.payload.text || ""));
   }
@@ -577,7 +627,7 @@ function renderSummary(s) {
     .join("");
 
   sheet.innerHTML = `
-    <h2>Recap summary</h2>
+    <h2>${s.title ? esc(s.title) : "Recap summary"}</h2>
     <p style="color:var(--ink-soft)">Use this to decide what to teach next — then close it and keep going.</p>
     <div class="stat-row">
       <div class="stat"><div class="v">${s.participatedCount}/${s.joinedCount}</div><div class="k">students participated</div></div>
@@ -611,6 +661,8 @@ $("codeChip").onclick = () => {
 };
 $("copyLink").onclick = $("codeChip").onclick;
 $("qrToggle").onclick = () => send({ type: "toggle_join" });
+$("titleInput").addEventListener("change", () => send({ type: "set_title", title: $("titleInput").value }));
+$("titleInput").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
 // A real link (not window.open) so popup blockers never eat it;
 // render() keeps its href pointed at the current session.
 $("togglePreview").onclick = () => {
