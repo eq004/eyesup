@@ -23,7 +23,7 @@ const MODE_TAGS = {
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
   venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
-  picture_prompt: "Picture Prompt",
+  picture_prompt: "Picture Prompt", picture_vote: "Picture Vote",
 };
 
 const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
@@ -444,7 +444,10 @@ function renderBars(itx, agg) {
   const colors = CHOICE_COLOR_SETS[itx.mode] || [];
   const answered = agg.correct != null; // teacher revealed the correct answer
   const letter = (i) => (itx.mode === "multi_choice" ? String.fromCharCode(65 + i) + ")  " : "");
-  return `<div class="bars">${itx.options
+  const img = itx.imageUrl
+    ? `<img src="${itx.imageUrl}" alt="vote image" style="max-height:32vh;max-width:70%;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,0.45);margin-bottom:1.6rem" /><br/>`
+    : "";
+  return `${img}<div class="bars">${itx.options
     .map((o, i) => {
       const n = agg.counts[i];
       const pct = total ? Math.round((n / total) * 100) : 0;

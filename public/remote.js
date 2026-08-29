@@ -23,7 +23,7 @@ const MODE_NAMES = {
   finish_sentence: "📝 Finish Sentence", quick_challenge: "🚀 Challenge",
   three_two_one: "3️⃣ 3-2-1", notice_wonder: "👀 Notice/Wonder", before_after: "🔄 Before/After",
   ask_question: "❓ Ask a Question", sketch: "🎨 Sketch", annotate: "🖍️ Annotate",
-  picture_prompt: "🖼️ Picture Prompt",
+  picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
 };
 
 // Launchable from the remote with zero setup — the question lives in your voice.

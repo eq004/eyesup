@@ -31,7 +31,7 @@ const MODE_NAMES = {
   three_two_one: "3️⃣ 3 – 2 – 1", before_after: "🔄 Before / After",
   venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice", post_its: "🗒️ Post-its",
   smiley: "😊 Smiley Review", scale: "🎚️ Scale", annotate: "🖍️ Annotate",
-  picture_prompt: "🖼️ Picture Prompt",
+  picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
 };
 
 function esc(s) {
@@ -352,7 +352,7 @@ function renderInteraction(itx) {
   }
 
   /* --- choices --- */
-  if (["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice"].includes(itx.mode)) {
+  if (["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice", "picture_vote"].includes(itx.mode)) {
     const emojis = {
       agree_disagree: ["👍", "🤔", "👎"],
       confidence: ["💪", "🌤", "🌫"],
@@ -361,7 +361,7 @@ function renderInteraction(itx) {
     const huge = ["this_or_that", "true_false"].includes(itx.mode) ? "huge" : "";
     const letter = (i) =>
       itx.mode === "multi_choice" ? `<b style="color:var(--accent-ink);margin-right:0.45rem">${String.fromCharCode(65 + i)}</b>` : "";
-    show(`${h}${itx.options
+    show(`${h}${itx.imageUrl ? `<img class="prompt-img" src="${itx.imageUrl}" alt="vote on this image" />` : ""}${itx.options
       .map(
         (o, i) => `<button class="btn choice ${huge}" data-i="${i}">
           ${letter(i)}${emojis ? emojis[i] + " " : ""}${esc(o)}

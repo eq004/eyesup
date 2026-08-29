@@ -11,6 +11,8 @@ const MODES = {
   example_nonexample: { icon: "↔️", name: "Example / Non-example", hint: "Which fits the concept — and why?", opts: { min: 2, max: 2, labels: "Item" } },
   smiley:        { icon: "😊", name: "Smiley Review", hint: "5 faces, happiest to saddest — one tap", opts: null,
                    ph: "What are they reviewing? e.g. “How was today's lesson?”" },
+  picture_vote:  { icon: "🗳️", name: "Picture Vote", hint: "Put an image up — class votes on it", opts: { min: 2, max: 5, labels: "Option" }, imageUpload: true,
+                   ph: "The question about the image, e.g. “Which technique is this?”" },
   scale:         { icon: "🎚️", name: "Scale",        hint: "Students place a marker along a line", opts: { min: 0, max: 2, labels: "End" },
                    ph: "The statement or question they're placing themselves on" },
   /* words & ideas */
@@ -54,7 +56,7 @@ const MODES = {
 };
 
 const CATEGORIES = [
-  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
+  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its"] },
   { label: "✏️ Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
@@ -520,7 +522,10 @@ function renderLive() {
       agg.matches.map((m) => (agg.total ? Math.round((m.correct / agg.total) * 100) + "% correct" : ""))
     );
   } else if (agg && agg.counts) {
-    body = bars(
+    const source = itx.imageUrl
+      ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="vote image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /></div>`
+      : "";
+    body = source + bars(
       itx.options.map((o, i) => (itx.correct === i ? `${o} ✓` : o)),
       agg.counts
     );
@@ -880,7 +885,7 @@ document.addEventListener("drop", (e) => {
     // Already composing an image mode? Keep it. Otherwise open Picture Prompt.
     if (!composerModeKey || !MODES[composerModeKey]?.imageUpload) {
       openComposer("picture_prompt", true);
-      $("composerTip").textContent = "Image loaded ✓ — or pick 🖍️ Annotate instead if they should draw on it.";
+      $("composerTip").textContent = "Image loaded ✓ — or switch to 🖍️ Annotate (draw on it) / 🗳️ Picture Vote (vote on it); the image comes with you.";
     }
     setComposerImage(dataUrl);
   });

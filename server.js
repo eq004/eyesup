@@ -111,13 +111,13 @@ const TEXT_MODES = new Set([
   "retrieval_sprint", "spot_mistake", "teach_back", "give_example",
   "make_connection", "finish_sentence", "quick_challenge", "picture_prompt",
 ]);
-const CHOICE_MODES = new Set(["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice", "smiley"]);
+const CHOICE_MODES = new Set(["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice", "smiley", "picture_vote"]);
 const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
 const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Custom options entered by the teacher at launch.
-const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale"]);
+const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale", "picture_vote"]);
 
 const FIXED_OPTIONS = {
   agree_disagree: ["Agree", "Unsure", "Disagree"],
@@ -165,7 +165,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
   }
   let imageUrl = null;
   if (
-    (mode === "annotate" || mode === "picture_prompt") &&
+    (mode === "annotate" || mode === "picture_prompt" || mode === "picture_vote") &&
     typeof image === "string" &&
     /^data:image\/(png|jpeg|webp);base64,/.test(image) &&
     image.length < 900000
