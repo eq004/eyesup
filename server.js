@@ -664,6 +664,31 @@ function broadcast(session) {
 /* Summary                                                            */
 /* ------------------------------------------------------------------ */
 
+// One readable line per response, for the per-student export.
+function describePayload(itx, p) {
+  if (WORD_MODES.has(itx.mode)) return (p.words || []).join(", ");
+  if (itx.mode === "post_its") return (p.notes || []).join("  |  ");
+  if (itx.mode === "phonics")
+    return (p.parts || []).map((x) => (x === "-e" ? "e" : x)).join("·");
+  if (itx.mode === "venn") {
+    const zones = [`${itx.options[0]} only`, "both", `${itx.options[1]} only`];
+    return (p.items || []).map((it) => `${it.text} → ${zones[it.region]}`).join("  |  ");
+  }
+  if (itx.mode === "scale") return `${p.value} / 100`;
+  if (itx.mode === "example_nonexample")
+    return `${itx.options[p.choice]}${p.text ? ` — ${p.text}` : ""}`;
+  if (CHOICE_MODES.has(itx.mode)) return itx.options[p.choice];
+  if (ORDER_MODES.has(itx.mode)) return (p.order || []).map((i) => itx.options[i]).join(" → ");
+  if (itx.mode === "match_up") {
+    const right = (p.matches || []).filter((m, i) => m === i).length;
+    return `${right}/${itx.pairs.length} matched correctly`;
+  }
+  if (STRUCTURED_FIELDS[itx.mode])
+    return (p.parts || []).filter(Boolean).join("  ·  ");
+  if (itx.mode === "sketch" || itx.mode === "annotate") return "(drawing submitted)";
+  return p.text || "";
+}
+
 function buildSummary(session) {
   const all = [...session.history];
   if (session.interaction) all.push(session.interaction);
@@ -674,6 +699,21 @@ function buildSummary(session) {
   const items = all.map((itx) => {
     const agg = aggregate(session, itx);
     const item = { mode: itx.mode, prompt: itx.prompt, responses: itx.responses.size };
+
+    // Per-student attribution for the export — except the modes that
+    // promise students anonymity, which stay anonymous everywhere.
+    const anon = ANON_MODES.has(itx.mode);
+    item.anonymous = anon;
+    item.students = [...itx.responses.values()]
+      .filter((r) => r.name !== "👁 Preview")
+      .map((r) => ({ name: anon ? null : r.name, response: describePayload(itx, r.payload) }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    if (!anon) {
+      item.noResponse = [...session.everJoined.entries()]
+        .filter(([id, n]) => n !== "👁 Preview" && !itx.responses.has(id))
+        .map(([, n]) => n)
+        .sort();
+    }
     if (WORD_MODES.has(itx.mode)) item.topWords = agg.words.slice(0, 8);
     if (CHOICE_MODES.has(itx.mode) || itx.mode === "example_nonexample")
       item.distribution = itx.options.map((o, i) => ({

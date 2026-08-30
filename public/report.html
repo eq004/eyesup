@@ -67,6 +67,21 @@
   ol.answers { list-style: none; margin-left: 0; }
   ol.answers li { border-left: 3px solid var(--line); padding-left: 0.8rem; }
 
+  .who-list {
+    margin-top: 0.7rem;
+    border-top: 1px dashed var(--line);
+    padding-top: 0.55rem;
+    display: grid;
+    grid-template-columns: minmax(90px, max-content) 1fr;
+    column-gap: 0.9rem;
+    row-gap: 0.25rem;
+    font-size: 0.85rem;
+  }
+  .who-row { display: contents; }
+  .who-name { font-weight: 700; color: var(--ink-soft); }
+  .who-resp { color: var(--ink); overflow-wrap: anywhere; }
+  .who-note { margin-top: 0.55rem; font-size: 0.78rem; color: var(--muted); }
+
   .note { margin-top: 2.2rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 1rem; }
 
   .print-bar {
@@ -219,10 +234,22 @@ function renderReport(s, recovered) {
     } else if (it.answers && it.answers.length) {
       body = `<ol class="answers">${it.answers.map((a) => `<li>${esc(a)}</li>`).join("")}</ol>`;
     }
+    // Per-student attribution (anonymous modes stay anonymous by design).
+    let who = "";
+    if (it.anonymous) {
+      who = `<p class="who-note">🕶 Responses in this mode are anonymous — names are never recorded.</p>`;
+    } else if (it.students && it.students.length) {
+      who = `<div class="who-list">${it.students
+        .map((s) => `<div class="who-row"><span class="who-name">${esc(s.name)}</span><span class="who-resp">${esc(s.response)}</span></div>`)
+        .join("")}</div>`;
+      if (it.noResponse && it.noResponse.length)
+        who += `<p class="who-note">No response: ${it.noResponse.map(esc).join(", ")}</p>`;
+    }
     return `<div class="itx">
       <span class="mode">${MODE_NAMES[it.mode] || esc(it.mode)}</span>
       <h3>${it.prompt ? esc(it.prompt) : "<i>Question asked aloud</i>"}</h3>
       ${body}
+      ${who}
       <div class="n">${it.responses} response${it.responses === 1 ? "" : "s"}</div>
     </div>`;
   }).join("");

@@ -462,11 +462,7 @@ function renderCloud(agg) {
     const size = Math.round(24 + Math.pow(t, 0.75) * 72); // 24 → 96px
     const rot = i !== 0 && i % 3 === 2 && w.word.length <= 10; // every third word stands up
     meas.font = `800 ${size}px Manrope, sans-serif`;
-    let tw = meas.measureText(w.word).width;
-    if (w.count > 1) {
-      meas.font = `800 ${Math.round(size * 0.42)}px Manrope, sans-serif`;
-      tw += meas.measureText(` ×${w.count}`).width + 4;
-    }
+    const tw = meas.measureText(w.word).width;
     const th = size * 1.02;
     const bw = (rot ? th : tw) + 12;
     const bh = (rot ? tw : th) + 8;
@@ -496,7 +492,7 @@ function renderCloud(agg) {
         (n) => `<text x="${n.x}" y="${n.y}" text-anchor="middle" dominant-baseline="middle"
           font-weight="800" font-size="${n.size}" fill="${n.color}"
           ${n.rot ? `transform="rotate(90 ${n.x} ${n.y})"` : ""}
-          style="animation:fade-in 0.5s ${n.delay}s ease both">${esc(n.word)}${n.count > 1 ? `<tspan font-size="${Math.round(n.size * 0.42)}" fill="${n.color}" opacity="0.65" dx="4">×${n.count}</tspan>` : ""}</text>`
+          style="animation:fade-in 0.5s ${n.delay}s ease both">${esc(n.word)}</text>`
       )
       .join("")}
   </svg>`;
