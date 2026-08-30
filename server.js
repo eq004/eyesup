@@ -376,6 +376,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     imageUrl,
     correct: correctIdx,
     answerRevealed: false,
+    showNames: false, // teacher can flip names onto the projector per interaction
     // Post-its: teacher chooses at launch — screen notes first, or straight up.
     moderated: mode === "post_its" ? moderated !== false : null,
     // One contribution each, or several (the default).
@@ -400,6 +401,8 @@ function aggregate(session, itx) {
   const responses = [...itx.responses.values()];
   const total = responses.length;
   const base = { mode: itx.mode, total };
+  // Names reach the projector only while the teacher's toggle is on.
+  const nm = (r) => (itx.showNames && !ANON_MODES.has(itx.mode) ? r.name : undefined);
 
   if (WORD_MODES.has(itx.mode)) {
     const freq = new Map();
@@ -464,7 +467,7 @@ function aggregate(session, itx) {
     for (const r of responses) {
       (r.payload.notes || []).forEach((text, i) => {
         totalNotes += 1;
-        if (r.noteRevealed?.[i]) stickies.push({ text });
+        if (r.noteRevealed?.[i]) stickies.push({ text, name: nm(r) });
       });
     }
     return { ...base, stickies, totalNotes };
@@ -510,31 +513,35 @@ function aggregate(session, itx) {
     }
     const revealed = responses
       .filter((r) => r.revealed && r.payload.text)
-      .map((r) => ({ text: r.payload.text, choiceLabel: itx.options[r.payload.choice] }));
+      .map((r) => ({ text: r.payload.text, choiceLabel: itx.options[r.payload.choice], name: nm(r) }));
     return { ...base, options: itx.options, counts, revealed };
   }
 
   if (STRUCTURED_FIELDS[itx.mode]) {
     const revealed = responses
       .filter((r) => r.revealed)
-      .map((r) => ({ parts: r.payload.parts }));
+      .map((r) => ({ parts: r.payload.parts, name: nm(r) }));
     return { ...base, fields: itx.fields, revealed, revealedCount: revealed.length };
   }
 
   if (itx.mode === "sketch" || itx.mode === "annotate") {
-    const revealed = responses.filter((r) => r.revealed).map((r) => ({ image: r.payload.image }));
+    const revealed = responses
+      .filter((r) => r.revealed)
+      .map((r) => ({ image: r.payload.image, name: nm(r) }));
     return { ...base, sketches: revealed, revealedCount: revealed.length };
   }
 
   if (itx.mode === "phonics") {
-    const revealed = responses.filter((r) => r.revealed).map((r) => ({ parts: r.payload.parts }));
+    const revealed = responses
+      .filter((r) => r.revealed)
+      .map((r) => ({ parts: r.payload.parts, name: nm(r) }));
     return { ...base, builds: revealed, revealedCount: revealed.length };
   }
 
   // Text modes — projector only sees responses the teacher has revealed.
   const revealed = responses
     .filter((r) => r.revealed)
-    .map((r) => ({ text: r.payload.text }));
+    .map((r) => ({ text: r.payload.text, name: nm(r) }));
   return { ...base, revealed, revealedCount: revealed.length };
 }
 
@@ -578,6 +585,7 @@ function teacherState(session) {
           answerRevealed: itx.answerRevealed,
           moderated: itx.moderated,
           multi: itx.multi,
+          showNames: itx.showNames,
           open: itx.open,
           resultsVisible: itx.resultsVisible,
           responses: [...itx.responses.entries()].map(([sid, r]) => ({
@@ -986,6 +994,12 @@ async function handle(ws, msg) {
           r.revealed = true;
           if (Array.isArray(r.noteRevealed)) r.noteRevealed = r.noteRevealed.map(() => true);
         }
+      break;
+    }
+    case "toggle_names": {
+      const itx = session.interaction;
+      // Anonymous modes keep their promise — no override.
+      if (itx && !ANON_MODES.has(itx.mode)) itx.showNames = !itx.showNames;
       break;
     }
     case "reveal_answer": {

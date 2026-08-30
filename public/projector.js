@@ -367,11 +367,16 @@ function renderBuilds(agg) {
   }
   return `<div class="answers">${agg.builds
     .map(
-      (b, i) => `<div class="build-card" style="animation-delay:${(i % 8) * 0.06}s">${b.parts
+      (b, i) => `<div class="build-wrap" style="animation-delay:${(i % 8) * 0.06}s"><div class="build-card">${b.parts
         .map((p) => `<span class="build-seg bs-${phonCat(p)}">${esc(p === "-e" ? "e" : p)}</span>`)
-        .join("")}</div>`
+        .join("")}</div>${b.name ? `<div class="sketch-name">${esc(b.name)}</div>` : ""}</div>`
     )
     .join("")}</div>`;
+}
+
+// Small name badge, shown only when the teacher flips names on.
+function nameTag(name) {
+  return name ? `<span class="resp-name">${esc(name)}</span>` : "";
 }
 
 /* Post-its — approved notes stuck across the board. */
@@ -387,7 +392,7 @@ function renderStickies(agg) {
     .map((s, i) => {
       const rot = ((i * 47) % 7) - 3; // organic tilt, deterministic
       const color = STICKY_COLORS[i % STICKY_COLORS.length];
-      return `<div class="sticky" style="background:${color};transform:rotate(${rot}deg);animation-delay:${(i % 10) * 0.05}s">${esc(s.text)}</div>`;
+      return `<div class="sticky" style="background:${color};transform:rotate(${rot}deg);animation-delay:${(i % 10) * 0.05}s">${esc(s.text)}${s.name ? `<div class="sticky-name">— ${esc(s.name)}</div>` : ""}</div>`;
     })
     .join("")}</div>`;
 }
@@ -412,7 +417,7 @@ function renderMatches(agg) {
 function renderWhys(agg) {
   if (!agg.revealed.length) return "";
   return `<div class="answers" style="margin-top:2rem">${agg.revealed
-    .map((r, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s"><b style="color:var(--glow)">${esc(r.choiceLabel)}</b> — ${esc(r.text)}</div>`)
+    .map((r, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s"><b style="color:var(--glow)">${esc(r.choiceLabel)}</b> — ${esc(r.text)}${nameTag(r.name)}</div>`)
     .join("")}</div>`;
 }
 
@@ -425,7 +430,7 @@ function renderStructured(agg) {
     .map(
       (r, i) => `<div class="answer-card" style="animation-delay:${(i % 6) * 0.07}s">${agg.fields
         .map((f, j) => (r.parts[j] ? `<div style="margin-bottom:0.4em"><b style="color:var(--glow);font-size:0.8em">${esc(f)}</b><br/>${esc(r.parts[j])}</div>` : ""))
-        .join("")}</div>`
+        .join("")}${nameTag(r.name)}</div>`
     )
     .join("")}</div>`;
 }
@@ -436,7 +441,7 @@ function renderSketches(agg) {
     return `<p class="waiting-note">${agg.total ? `${agg.total} sketch${agg.total === 1 ? "" : "es"} in — your teacher will reveal them.` : "Sketches will appear here…"}</p>`;
   }
   return `<div class="answers">${agg.sketches
-    .map((s, i) => `<div class="sketch-card" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/></div>`)
+    .map((s, i) => `<div class="sketch-card" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/>${s.name ? `<div class="sketch-name">${esc(s.name)}</div>` : ""}</div>`)
     .join("")}</div>`;
 }
 
@@ -553,7 +558,7 @@ function renderAnswers(itx, agg) {
     return `${img}<p class="waiting-note">${n ? `${n} response${n === 1 ? "" : "s"} in — your teacher will reveal them.` : "Responses will appear here…"}</p>`;
   }
   return `${img}<div class="answers">${agg.revealed
-    .map((r, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s">${esc(r.text)}</div>`)
+    .map((r, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s">${esc(r.text)}${nameTag(r.name)}</div>`)
     .join("")}</div>`;
 }
 

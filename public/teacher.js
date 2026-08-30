@@ -497,6 +497,9 @@ function renderLive() {
       ? `<button class="btn" data-act="hide_results">🙈 Hide results</button>`
       : `<button class="btn" data-act="show_results">📊 Show results</button>`}
     ${canReveal ? `<button class="btn" data-act="reveal_all">✨ Reveal all</button>` : ""}
+    ${canReveal && !ANON_MODES.has(itx.mode)
+      ? `<button class="btn" data-act="toggle_names" title="Show student names next to responses on the projector">🏷 Names on screen: ${itx.showNames ? "ON" : "off"}</button>`
+      : ""}
     ${itx.mode === "multi_choice" && itx.correct != null
       ? itx.answerRevealed
         ? `<button class="btn" disabled>🎯 Answer shown ✓</button>`
