@@ -1117,9 +1117,17 @@ function sanitizePayload(itx, payload) {
     const maxLen = itx.mode === "mindmap" ? 40 : 30; // mindmap allows short phrases
     const cap =
       itx.mode === "one_word" || itx.multi === false ? 1 : itx.mode === "mindmap" ? 6 : 5;
+    const seen = new Set();
     words = words
       .map((w) => String(w).trim().replace(/\s+/g, " ").slice(0, maxLen))
       .filter(Boolean)
+      .filter((w) => {
+        // repeating your own word doesn't make it bigger
+        const k = w.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
       .slice(0, cap);
     return words.length ? { words } : null;
   }

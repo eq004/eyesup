@@ -34,7 +34,7 @@ function phonCat(p) {
   return "let";
 }
 
-const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
+const CLOUD_COLORS = ["#e9ecff", "#9db1ff", "#8fd6a9", "#edc27a", "#e0a7f0", "#7fd0d4", "#f4f2ea", "#c4cdfb"];
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -440,22 +440,66 @@ function renderSketches(agg) {
     .join("")}</div>`;
 }
 
+/* A real packed word cloud: biggest word at the centre, the rest spiral
+   in around it (collision-checked), some turned vertical — wordle-style. */
 function renderCloud(agg) {
   if (!agg.words.length)
     return `<p class="waiting-note">Words will appear here as they land…</p>`;
-  const max = Math.max(...agg.words.map((w) => w.count));
-  // Deterministic pseudo-shuffle so the cloud looks organic but stable.
-  const words = [...agg.words]
-    .map((w, i) => ({ ...w, sort: (i * 2654435761) % 1000 }))
-    .sort((a, b) => a.sort - b.sort);
-  return `<div class="cloud">${words
-    .map((w, i) => {
-      const scale = max > 1 ? (w.count - 1) / (max - 1) : 0.4;
-      const size = 1.4 + scale * 3.4; // rem-ish via vw clamp below
-      const color = CLOUD_COLORS[i % CLOUD_COLORS.length];
-      return `<span style="font-size:clamp(${(size * 0.55).toFixed(2)}rem, ${(size * 1.1).toFixed(2)}vw, ${(size * 1.15).toFixed(2)}rem); color:${color}; animation-delay:${(i % 12) * 0.04}s">${esc(w.word)}</span>`;
-    })
-    .join("")}</div>`;
+
+  const words = [...agg.words].sort((a, b) => b.count - a.count).slice(0, 50);
+  const max = words[0].count;
+  const min = words[words.length - 1].count;
+
+  const meas = renderCloud._ctx || (renderCloud._ctx = document.createElement("canvas").getContext("2d"));
+  const placed = [];
+  const collides = (r) =>
+    placed.some((p) => !(r.x + r.w < p.x || p.x + p.w < r.x || r.y + r.h < p.y || p.y + p.h < r.y));
+
+  const nodes = [];
+  words.forEach((w, i) => {
+    // Aggressive size curve: repeated words visibly dominate.
+    const t = max > min ? (w.count - min) / (max - min) : (max > 1 ? 1 : 0);
+    const size = Math.round(24 + Math.pow(t, 0.75) * 72); // 24 → 96px
+    const rot = i !== 0 && i % 3 === 2 && w.word.length <= 10; // every third word stands up
+    meas.font = `800 ${size}px Manrope, sans-serif`;
+    let tw = meas.measureText(w.word).width;
+    if (w.count > 1) {
+      meas.font = `800 ${Math.round(size * 0.42)}px Manrope, sans-serif`;
+      tw += meas.measureText(` ×${w.count}`).width + 4;
+    }
+    const th = size * 1.02;
+    const bw = (rot ? th : tw) + 12;
+    const bh = (rot ? tw : th) + 8;
+
+    let x = 0, y = 0, a = 0, ok = false;
+    for (let step = 0; step < 2500; step++) {
+      const rad = 3 * a;
+      x = Math.cos(a) * rad * 1.5; // elliptical spiral suits a wide screen
+      y = Math.sin(a) * rad * 0.58;
+      const rect = { x: x - bw / 2, y: y - bh / 2, w: bw, h: bh };
+      if (!collides(rect)) { placed.push(rect); ok = true; break; }
+      a += 0.28;
+    }
+    if (ok) nodes.push({ ...w, x, y, size, rot, color: CLOUD_COLORS[i % CLOUD_COLORS.length], delay: (i % 14) * 0.05 });
+  });
+
+  const pad = 24;
+  const minX = Math.min(...placed.map((p) => p.x)) - pad;
+  const maxX = Math.max(...placed.map((p) => p.x + p.w)) + pad;
+  const minY = Math.min(...placed.map((p) => p.y)) - pad;
+  const maxY = Math.max(...placed.map((p) => p.y + p.h)) + pad;
+
+  return `<svg viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}"
+      style="width:100%;max-height:62vh" role="img" aria-label="class word cloud">
+    ${nodes
+      .map(
+        (n) => `<text x="${n.x}" y="${n.y}" text-anchor="middle" dominant-baseline="middle"
+          font-weight="800" font-size="${n.size}" fill="${n.color}"
+          ${n.rot ? `transform="rotate(90 ${n.x} ${n.y})"` : ""}
+          style="animation:fade-in 0.5s ${n.delay}s ease both">${esc(n.word)}${n.count > 1 ? `<tspan font-size="${Math.round(n.size * 0.42)}" fill="${n.color}" opacity="0.65" dx="4">×${n.count}</tspan>` : ""}</text>`
+      )
+      .join("")}
+  </svg>`;
 }
 
 const CHOICE_COLOR_SETS = {
