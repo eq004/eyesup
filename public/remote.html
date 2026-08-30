@@ -78,6 +78,16 @@
   .launch-grid .rbtn { flex-direction: column; gap: 0.15rem; font-size: 0.72rem; padding: 0.7rem 0.2rem; margin: 0; }
   .launch-grid .rbtn .ic { font-size: 1.3rem; }
 
+  .thumb-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.45rem; }
+  .thumb {
+    width: 100%;
+    border-radius: 10px;
+    background: #fff;
+    border: 3px solid transparent;
+    cursor: pointer;
+  }
+  .thumb.spot { border-color: #edc27a; box-shadow: 0 0 12px rgba(237, 194, 122, 0.5); }
+
   .timer-row { display: flex; gap: 0.5rem; align-items: center; }
   .timer-row .rbtn { margin: 0; padding: 0.65rem 0.4rem; font-size: 0.85rem; flex: 1; }
   .timer-live { font-variant-numeric: tabular-nums; font-weight: 800; color: #9db1ff; min-width: 52px; text-align: center; }

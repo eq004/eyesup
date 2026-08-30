@@ -146,6 +146,12 @@ function render() {
     ${nextStep
       ? `<button class="rbtn accent" data-act="next">▶ Next: ${esc(MODE_NAMES[nextStep.mode] || nextStep.mode)}${nextStep.prompt ? " — " + esc(nextStep.prompt.slice(0, 32)) + (nextStep.prompt.length > 32 ? "…" : "") : ""}</button>`
       : ""}
+    ${itx && (itx.mode === "sketch" || itx.mode === "annotate") && itx.responses.length
+      ? `<h3 class="sec">Tap a drawing → big on the projector</h3>
+         <div class="thumb-grid">${itx.responses
+           .map((r) => `<img class="thumb ${itx.spotlightId === r.studentId ? "spot" : ""}" data-spot="${r.studentId}" src="${r.payload.image}" alt="drawing by ${esc(r.name || "student")}" />`)
+           .join("")}</div>`
+      : ""}
 
     <h3 class="sec">Launch — say it aloud, tap it</h3>
     <div class="launch-grid">${QUICK_LAUNCH
@@ -171,6 +177,9 @@ function render() {
   );
   main.querySelectorAll("[data-launch]").forEach(
     (b) => (b.onclick = () => send({ type: "launch", mode: b.dataset.launch, prompt: "" }))
+  );
+  main.querySelectorAll("[data-spot]").forEach(
+    (img) => (img.onclick = () => send({ type: "spotlight_response", studentId: img.dataset.spot }))
   );
 }
 

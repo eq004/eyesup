@@ -219,6 +219,24 @@
   }
   .sketch-card img { display: block; width: clamp(160px, 18vw, 240px); border-radius: 10px; }
 
+  .spot-stage { animation: pop-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .spot-img {
+    max-height: 56vh;
+    max-width: 82%;
+    border-radius: 16px;
+    background: #fff;
+    padding: 8px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  }
+  .spot-strip {
+    display: flex;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 1.2rem;
+    opacity: 0.55;
+  }
+  .spot-strip img { height: clamp(44px, 7vh, 70px); border-radius: 8px; background: #fff; }
+
   .pct-badge {
     font-size: 0.55em;
     font-weight: 800;

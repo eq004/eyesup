@@ -435,10 +435,21 @@ function renderStructured(agg) {
     .join("")}</div>`;
 }
 
-/* Sketch gallery. */
+/* Sketch gallery — with a teacher-driven spotlight for discussing one big. */
 function renderSketches(agg) {
   if (!agg.sketches.length) {
-    return `<p class="waiting-note">${agg.total ? `${agg.total} sketch${agg.total === 1 ? "" : "es"} in — your teacher will reveal them.` : "Sketches will appear here…"}</p>`;
+    return `<p class="waiting-note">${agg.total ? `${agg.total} sketch${agg.total === 1 ? "" : "es"} in…` : "Sketches will appear here…"}</p>`;
+  }
+  if (agg.spotlight) {
+    const rest = agg.sketches.filter((s) => s.sid !== agg.spotlight.sid);
+    return `
+      <div class="spot-stage">
+        <img class="spot-img" src="${agg.spotlight.image}" alt="spotlighted drawing" />
+        ${agg.spotlight.name ? `<div class="sketch-name" style="font-size:clamp(1.1rem,2.2vw,1.7rem)">${esc(agg.spotlight.name)}</div>` : ""}
+      </div>
+      ${rest.length ? `<div class="spot-strip">${rest
+        .map((s) => `<img src="${s.image}" alt="sketch thumbnail" />`)
+        .join("")}</div>` : ""}`;
   }
   return `<div class="answers">${agg.sketches
     .map((s, i) => `<div class="sketch-card" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/>${s.name ? `<div class="sketch-name">${esc(s.name)}</div>` : ""}</div>`)

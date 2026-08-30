@@ -307,8 +307,8 @@ function openComposer(key, keepImage) {
     const modSel = document.createElement("select");
     modSel.id = "modSel";
     modSel.innerHTML = `
-      <option value="1">🛡 I approve notes before they appear</option>
-      <option value="0">⚡ Notes go straight to the board</option>`;
+      <option value="0">⚡ Notes go straight to the board</option>
+      <option value="1">🛡 I approve notes before they appear</option>`;
     modSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(modSel);
   }
@@ -632,7 +632,14 @@ function renderLive() {
     const source = itx.imageUrl
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.78rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
-    body = source + revealCards((r) => `<img src="${r.payload.image}" alt="student drawing" style="height:90px;border-radius:8px;background:#fff;border:1px solid var(--line)" />`);
+    const hint = itx.responses.length
+      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click a drawing to blow it up on the projector; click again to shrink it back.</p>`
+      : "";
+    body = source + hint + revealCards((r) =>
+      `<img src="${r.payload.image}" alt="student drawing" data-spot="${r.studentId}"
+        style="height:90px;border-radius:8px;background:#fff;cursor:zoom-in;border:3px solid ${itx.spotlightId === r.studentId ? "var(--amber)" : "var(--line)"}" />
+       ${itx.spotlightId === r.studentId ? `<span style="font-size:0.72rem;font-weight:800;color:var(--amber)">◉ BIG ON SCREEN</span>` : ""}`
+    );
   } else if (itx.mode === "phonics") {
     body = revealCards((r) => phonChips(r.payload.parts));
   } else if (TEXT_MODES.has(itx.mode)) {
@@ -663,6 +670,9 @@ function renderLive() {
   area.querySelectorAll("[data-reveal]").forEach(
     (b) => (b.onclick = () => send({ type: "reveal", studentId: b.dataset.reveal }))
   );
+  area.querySelectorAll("[data-spot]").forEach((img) => {
+    img.onclick = () => send({ type: "spotlight_response", studentId: img.dataset.spot });
+  });
   area.querySelectorAll("[data-note]").forEach((b) => {
     b.onclick = () => {
       const [sid, i] = b.dataset.note.split("|");

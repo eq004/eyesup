@@ -377,6 +377,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     correct: correctIdx,
     answerRevealed: false,
     showNames: false, // teacher can flip names onto the projector per interaction
+    spotlightId: null, // sketch/annotate: one response blown up big on the projector
     // Post-its: teacher chooses at launch — screen notes first, or straight up.
     moderated: mode === "post_its" ? moderated !== false : null,
     // One contribution each, or several (the default).
@@ -525,10 +526,15 @@ function aggregate(session, itx) {
   }
 
   if (itx.mode === "sketch" || itx.mode === "annotate") {
-    const revealed = responses
-      .filter((r) => r.revealed)
-      .map((r) => ({ image: r.payload.image, name: nm(r) }));
-    return { ...base, sketches: revealed, revealedCount: revealed.length };
+    const revealed = [...itx.responses.entries()]
+      .filter(([, r]) => r.revealed)
+      .map(([sid, r]) => ({ sid, image: r.payload.image, name: nm(r) }));
+    const spot = itx.spotlightId && itx.responses.get(itx.spotlightId);
+    const spotlight =
+      spot && spot.revealed
+        ? { image: spot.payload.image, name: itx.showNames ? spot.name : undefined, sid: itx.spotlightId }
+        : null;
+    return { ...base, sketches: revealed, spotlight, revealedCount: revealed.length };
   }
 
   if (itx.mode === "phonics") {
@@ -586,6 +592,7 @@ function teacherState(session) {
           moderated: itx.moderated,
           multi: itx.multi,
           showNames: itx.showNames,
+          spotlightId: itx.spotlightId,
           open: itx.open,
           resultsVisible: itx.resultsVisible,
           responses: [...itx.responses.entries()].map(([sid, r]) => ({
@@ -928,8 +935,9 @@ async function handle(ws, msg) {
     const record = {
       name: student.name,
       payload,
-      // Live modes are effectively revealed on arrival; written/drawn ones wait for the teacher.
-      revealed: !isRevealMode(itx.mode),
+      // Everything goes straight to the screen by default — the teacher's
+      // controls take things down rather than put things up.
+      revealed: true,
       at: Date.now(),
     };
     if (itx.mode === "post_its") {
@@ -994,6 +1002,11 @@ async function handle(ws, msg) {
           r.revealed = true;
           if (Array.isArray(r.noteRevealed)) r.noteRevealed = r.noteRevealed.map(() => true);
         }
+      break;
+    }
+    case "spotlight_response": {
+      const itx = session.interaction;
+      if (itx) itx.spotlightId = itx.spotlightId === msg.studentId ? null : msg.studentId || null;
       break;
     }
     case "toggle_names": {
