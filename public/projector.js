@@ -43,6 +43,8 @@ function esc(s) {
 
 /* ---------------- connection ---------------- */
 
+const send = (obj) => ws && ws.readyState === 1 && ws.send(JSON.stringify(obj));
+
 function connect() {
   ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
   ws.onopen = () => {
@@ -260,6 +262,11 @@ function renderInteraction(itx) {
   }
 
   stage.innerHTML = promptBlock(itx) + body + progressLine(itx);
+
+  // Interactive whiteboard: tap a drawing on the board itself to spotlight it.
+  stage.querySelectorAll("[data-spot]").forEach((el) => {
+    el.onclick = () => send({ type: "spotlight_response", studentId: el.dataset.spot });
+  });
 }
 
 /* Mindmap — submissions branch out around the central concept. */
@@ -516,16 +523,17 @@ function renderSketches(agg) {
     const rest = agg.sketches.filter((s) => s.sid !== agg.spotlight.sid);
     return `
       <div class="spot-stage">
-        <img class="spot-img" src="${agg.spotlight.image}" alt="spotlighted drawing" />
+        <img class="spot-img tappable" data-spot="${agg.spotlight.sid}" src="${agg.spotlight.image}" alt="spotlighted drawing — tap to shrink" />
         ${agg.spotlight.name ? `<div class="sketch-name" style="font-size:clamp(1.1rem,2.2vw,1.7rem)">${esc(agg.spotlight.name)}</div>` : ""}
       </div>
       ${rest.length ? `<div class="spot-strip">${rest
-        .map((s) => `<img src="${s.image}" alt="sketch thumbnail" />`)
+        .map((s) => `<img class="tappable" data-spot="${s.sid}" src="${s.image}" alt="sketch thumbnail — tap to spotlight" />`)
         .join("")}</div>` : ""}`;
   }
   return `<div class="answers">${agg.sketches
-    .map((s, i) => `<div class="sketch-card" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/>${s.name ? `<div class="sketch-name">${esc(s.name)}</div>` : ""}</div>`)
-    .join("")}</div>`;
+    .map((s, i) => `<div class="sketch-card tappable" data-spot="${s.sid}" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/>${s.name ? `<div class="sketch-name">${esc(s.name)}</div>` : ""}</div>`)
+    .join("")}</div>
+    <p class="tap-hint">👆 tap a drawing to make it big</p>`;
 }
 
 /* A real packed word cloud: biggest word at the centre, the rest spiral

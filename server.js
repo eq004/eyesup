@@ -1084,7 +1084,18 @@ async function handle(ws, msg) {
 
   /* ---- teacher actions ---- */
 
-  if (ws.meta.role !== "teacher") return;
+  if (ws.meta.role !== "teacher") {
+    // The projector often runs on an interactive whiteboard: allow
+    // tap-to-spotlight straight from the board — and only that.
+    if (ws.meta.role === "projector" && type === "spotlight_response") {
+      const itx = session.interaction;
+      if (itx && (itx.mode === "sketch" || itx.mode === "annotate")) {
+        itx.spotlightId = itx.spotlightId === msg.studentId ? null : msg.studentId || null;
+        broadcast(session);
+      }
+    }
+    return;
+  }
 
   switch (type) {
     case "launch": {
