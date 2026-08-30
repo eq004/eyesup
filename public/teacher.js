@@ -21,6 +21,8 @@ const MODES = {
   mindmap:       { icon: "🕸️", name: "Mindmap",      hint: "Ideas branch around a concept",   opts: null,
                    ph: "The central concept, e.g. “Generative AI”", multiOpt: true },
   post_its:      { icon: "🗒️", name: "Post-its",     hint: "Sticky notes fill the board — screened or straight up", opts: null, postits: true, multiOpt: true },
+  phonics:       { icon: "🔤", name: "Phonics Keyboard", hint: "Say a word — students build it from sounds", opts: null,
+                   ph: "Optional: show the word/question on screens — or just say it aloud" },
   /* written recall */
   short_answer:  { icon: "✏️", name: "Short Answer",  hint: "Written replies, reveal in turn", opts: null },
   picture_prompt:{ icon: "🖼️", name: "Picture Prompt", hint: "Put an image up — students write about it", opts: null, imageUpload: true,
@@ -57,7 +59,7 @@ const MODES = {
 
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
-  { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its"] },
+  { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics"] },
   { label: "✏️ Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
@@ -70,7 +72,22 @@ const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" || m === "example_nonexample" || m === "post_its";
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" ||
+  m === "example_nonexample" || m === "post_its" || m === "phonics";
+
+// Phonics grapheme categories — mirrors the student keyboard's colours.
+function phonCat(p) {
+  if (p === "-e") return "sil";
+  if (["a", "e", "i", "o", "u", "oo"].includes(p)) return "vow";
+  if (["ch", "sh", "th", "ph", "ck", "wh", "ng", "qu"].includes(p)) return "dig";
+  if (["ow", "er", "ar", "ai", "ay", "ee", "ea", "igh", "oa", "oi", "oy"].includes(p)) return "team";
+  return "let";
+}
+function phonChips(parts) {
+  return `<span class="phon-word">${(parts || [])
+    .map((p) => `<span class="phon-chip pc-${phonCat(p)}">${esc(p === "-e" ? "e" : p)}</span>`)
+    .join("")}</span>`;
+}
 
 const $ = (id) => document.getElementById(id);
 let ws = null;
@@ -613,6 +630,8 @@ function renderLive() {
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.78rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
     body = source + revealCards((r) => `<img src="${r.payload.image}" alt="student drawing" style="height:90px;border-radius:8px;background:#fff;border:1px solid var(--line)" />`);
+  } else if (itx.mode === "phonics") {
+    body = revealCards((r) => phonChips(r.payload.parts));
   } else if (TEXT_MODES.has(itx.mode)) {
     const source = itx.imageUrl
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="prompt image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /></div>`

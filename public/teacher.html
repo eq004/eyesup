@@ -360,6 +360,19 @@
   button.note-chip:hover { opacity: 0.9; }
   .note-chip.on-board { opacity: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.12); border-color: var(--green); }
 
+  .phon-word { display: inline-flex; gap: 2px; flex-wrap: wrap; }
+  .phon-chip {
+    padding: 0.15rem 0.4rem;
+    border-radius: 5px;
+    font-weight: 800;
+    font-size: 0.95rem;
+    background: #efe9d8; color: #3a3524;
+  }
+  .phon-chip.pc-vow { background: #ffd6e0; color: #7a2740; }
+  .phon-chip.pc-dig { background: #cdeccb; color: #245c2a; }
+  .phon-chip.pc-team { background: #ddd2ec; color: #4b3670; }
+  .phon-chip.pc-sil { background: #bfe3d9; color: #1f5c4d; font-style: italic; }
+
   .venn-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8rem; margin-top: 1.1rem; }
   .venn-col { border: 1px solid var(--line); border-radius: 10px; padding: 0.6rem 0.7rem; background: var(--paper); }
   .venn-head { font-weight: 800; font-size: 0.8rem; color: var(--accent-ink); }

@@ -32,7 +32,28 @@ const MODE_NAMES = {
   venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice", post_its: "🗒️ Post-its",
   smiley: "😊 Smiley Review", scale: "🎚️ Scale", annotate: "🖍️ Annotate",
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
+  phonics: "🔤 Phonics Keyboard",
 };
+
+/* Phonics keyboard layout & colours */
+const PHON_ROWS = [
+  ["qu", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+  ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+  ["z", "x", "c", "v", "b", "n", "m"],
+];
+const PHON_EXTRAS = [
+  ["-e", "a", "e", "i", "o", "u", "oo"],
+  ["ch", "sh", "th", "ph", "ck", "wh", "ng"],
+  ["ow", "er", "ar", "ai", "ay", "ee", "ea", "igh", "oa", "oi", "oy"],
+];
+function phonCat(p) {
+  if (p === "-e") return "sil";
+  if (["a", "e", "i", "o", "u", "oo"].includes(p)) return "vow";
+  if (["ch", "sh", "th", "ph", "ck", "wh", "ng", "qu"].includes(p)) return "dig";
+  if (["ow", "er", "ar", "ai", "ay", "ee", "ea", "igh", "oa", "oi", "oy"].includes(p)) return "team";
+  return "let";
+}
+let phonParts = []; // graphemes tapped so far
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -133,6 +154,7 @@ function render(force) {
     matchShuffle = null;
     vennItems = [];
     postNotes = [];
+    phonParts = [];
     sprintDeadline = null;
     if (sprintTimer) { clearInterval(sprintTimer); sprintTimer = null; }
   }
@@ -491,6 +513,44 @@ function renderInteraction(itx) {
         if (matches.some((m) => Number.isNaN(m))) return;
         submit({ matches });
       };
+    });
+    return;
+  }
+
+  /* --- phonics keyboard: build the word from graphemes --- */
+  if (itx.mode === "phonics") {
+    const key = (p, wide) =>
+      `<button class="phon-key pc-${phonCat(p)}${wide ? " wide" : ""}" data-p="${p}">${p === "-e" ? "silent e" : esc(p)}</button>`;
+    show(`${h}
+      <div class="phon-strip-row">
+        <div class="phon-strip" id="phonStrip"></div>
+        <button class="phon-ctl" id="phonBack" title="Backspace">⌫</button>
+        <button class="phon-ctl" id="phonClear" title="Clear">✕</button>
+      </div>
+      <div class="phon-board">
+        ${PHON_ROWS.map((row) => `<div class="phon-row">${row.map((p) => key(p)).join("")}</div>`).join("")}
+        <div class="phon-divider"></div>
+        ${PHON_EXTRAS.map((row) => `<div class="phon-row">${row.map((p) => key(p, p === "-e")).join("")}</div>`).join("")}
+      </div>
+      <button class="btn send" id="sendBtn">Send my word</button>
+      <p class="hint">Tap the sounds in order to build your word.</p>`, () => {
+      const strip = $("phonStrip");
+      const paint = () => {
+        strip.innerHTML = phonParts.length
+          ? phonParts
+              .map((p) => `<span class="phon-chip pc-${phonCat(p)}">${esc(p === "-e" ? "e" : p)}</span>`)
+              .join("")
+          : `<span class="phon-placeholder">your word builds here…</span>`;
+      };
+      paint();
+      screenEl.querySelectorAll(".phon-key").forEach((b) => (b.onclick = () => {
+        if (phonParts.length >= 14) return;
+        phonParts.push(b.dataset.p);
+        paint();
+      }));
+      $("phonBack").onclick = () => { phonParts.pop(); paint(); };
+      $("phonClear").onclick = () => { phonParts = []; paint(); };
+      $("sendBtn").onclick = () => { if (phonParts.length) submit({ parts: phonParts }); };
     });
     return;
   }

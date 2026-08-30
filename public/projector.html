@@ -337,6 +337,28 @@
   .smiley-cell .p { color: var(--chalk-dim); font-size: clamp(0.85rem, 1.5vw, 1.2rem); }
   .smiley-cell.leader .n { color: #8fd6a9; }
 
+  /* phonics builds */
+  .build-card {
+    display: inline-flex;
+    gap: 4px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--night-line);
+    border-radius: 16px;
+    padding: 0.8rem 1rem;
+    animation: pop-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .build-seg {
+    padding: 0.3rem 0.65rem;
+    border-radius: 8px;
+    font-weight: 800;
+    font-size: clamp(1.3rem, 3vw, 2.2rem);
+    background: #efe9d8; color: #3a3524;
+  }
+  .build-seg.bs-vow { background: #ffb8c9; color: #6b1f36; }
+  .build-seg.bs-dig { background: #a9dfa5; color: #1d4a22; }
+  .build-seg.bs-team { background: #c9b8e8; color: #3a2760; }
+  .build-seg.bs-sil { background: #9fd6c4; color: #174a3d; font-style: italic; }
+
   /* post-it board */
   .sticky-board {
     display: flex;

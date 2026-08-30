@@ -23,8 +23,16 @@ const MODE_TAGS = {
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
   venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
-  picture_prompt: "Picture Prompt", picture_vote: "Picture Vote",
+  picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
 };
+
+function phonCat(p) {
+  if (p === "-e") return "sil";
+  if (["a", "e", "i", "o", "u", "oo"].includes(p)) return "vow";
+  if (["ch", "sh", "th", "ph", "ck", "wh", "ng", "qu"].includes(p)) return "dig";
+  if (["ow", "er", "ar", "ai", "ay", "ee", "ea", "igh", "oa", "oi", "oy"].includes(p)) return "team";
+  return "let";
+}
 
 const CLOUD_COLORS = ["#aab8ff", "#f4f2ea", "#8fd6a9", "#edc27a", "#9db1ff", "#e0a7f0"];
 
@@ -234,6 +242,8 @@ function renderInteraction(itx) {
     body = renderBars(itx, agg);
   } else if (agg.ranked) {
     body = renderRanked(agg);
+  } else if (agg.builds) {
+    body = renderBuilds(agg);
   } else if (agg.sketches) {
     body = renderSketches(agg);
   } else if (agg.fields) {
@@ -345,6 +355,22 @@ function renderSmileys(itx, agg) {
         <div class="p">${pct}%</div>
       </div>`;
     })
+    .join("")}</div>`;
+}
+
+/* Phonics — revealed word builds, grapheme by grapheme. */
+function renderBuilds(agg) {
+  if (!agg.builds.length) {
+    return `<p class="waiting-note">${agg.total
+      ? `${agg.total} word${agg.total === 1 ? "" : "s"} built — your teacher will reveal them.`
+      : "Words appear here as the class builds them…"}</p>`;
+  }
+  return `<div class="answers">${agg.builds
+    .map(
+      (b, i) => `<div class="build-card" style="animation-delay:${(i % 8) * 0.06}s">${b.parts
+        .map((p) => `<span class="build-seg bs-${phonCat(p)}">${esc(p === "-e" ? "e" : p)}</span>`)
+        .join("")}</div>`
+    )
     .join("")}</div>`;
 }
 

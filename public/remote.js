@@ -23,7 +23,7 @@ const MODE_NAMES = {
   finish_sentence: "📝 Finish Sentence", quick_challenge: "🚀 Challenge",
   three_two_one: "3️⃣ 3-2-1", notice_wonder: "👀 Notice/Wonder", before_after: "🔄 Before/After",
   ask_question: "❓ Ask a Question", sketch: "🎨 Sketch", annotate: "🖍️ Annotate",
-  picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
+  picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote", phonics: "🔤 Phonics",
 };
 
 // Launchable from the remote with zero setup — the question lives in your voice.
@@ -34,13 +34,14 @@ const QUICK_LAUNCH = [
   "short_answer", "predict", "retrieval_sprint",
   "exit_ticket", "muddiest_point", "ask_question",
   "three_two_one", "notice_wonder", "sketch",
+  "phonics",
 ];
 
 const REVEAL_MODES = new Set([
   "short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point",
   "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection",
   "finish_sentence", "quick_challenge", "picture_prompt", "three_two_one",
-  "notice_wonder", "before_after", "sketch", "annotate", "example_nonexample", "post_its",
+  "notice_wonder", "before_after", "sketch", "annotate", "example_nonexample", "post_its", "phonics",
 ]);
 
 function esc(s) {

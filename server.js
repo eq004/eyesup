@@ -313,11 +313,20 @@ const STRUCTURED_FIELDS = {
 
 const TIME_LIMITS = { retrieval_sprint: 60 }; // seconds
 
+// Phonics keyboard: the graphemes students may build words from.
+// "-e" is the silent-e tile (renders as e, flagged for the teacher).
+const PHONICS_TOKENS = new Set([
+  ..."abcdefghijklmnopqrstuvwxyz",
+  "qu", "oo", "ch", "sh", "th", "ph", "ck", "wh", "ng",
+  "ow", "er", "ar", "ai", "ay", "ee", "ea", "igh", "oa", "oi", "oy", "-e",
+]);
+
 // Does the teacher gate this response type onto the projector?
 function isRevealMode(mode) {
   return (
     TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] ||
-    mode === "sketch" || mode === "annotate" || mode === "example_nonexample" || mode === "post_its"
+    mode === "sketch" || mode === "annotate" || mode === "example_nonexample" ||
+    mode === "post_its" || mode === "phonics"
   );
 }
 
@@ -517,6 +526,11 @@ function aggregate(session, itx) {
     return { ...base, sketches: revealed, revealedCount: revealed.length };
   }
 
+  if (itx.mode === "phonics") {
+    const revealed = responses.filter((r) => r.revealed).map((r) => ({ parts: r.payload.parts }));
+    return { ...base, builds: revealed, revealedCount: revealed.length };
+  }
+
   // Text modes — projector only sees responses the teacher has revealed.
   const revealed = responses
     .filter((r) => r.revealed)
@@ -683,6 +697,10 @@ function buildSummary(session) {
       item.venn = { labels: itx.options, regions: agg.regions.map((r) => r.slice(0, 8)) };
     if (itx.mode === "post_its")
       item.answers = [...itx.responses.values()].flatMap((r) => r.payload.notes || []).slice(0, 60);
+    if (itx.mode === "phonics")
+      item.answers = [...itx.responses.values()]
+        .map((r) => (r.payload.parts || []).map((p) => (p === "-e" ? "e" : p)).join("·"))
+        .slice(0, 40);
     if (itx.mode === "scale") item.scale = { labels: itx.options, avg: agg.avg };
     if (itx.mode === "example_nonexample")
       item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
@@ -1178,6 +1196,14 @@ function sanitizePayload(itx, payload) {
     let parts = Array.isArray(payload.parts) ? payload.parts : [];
     parts = fields.map((_, i) => String(parts[i] || "").trim().slice(0, 400));
     return parts.some(Boolean) ? { parts } : null;
+  }
+
+  if (itx.mode === "phonics") {
+    const parts = (Array.isArray(payload.parts) ? payload.parts : [])
+      .map((p) => String(p).toLowerCase())
+      .filter((p) => PHONICS_TOKENS.has(p))
+      .slice(0, 14);
+    return parts.length ? { parts } : null;
   }
 
   if (itx.mode === "sketch" || itx.mode === "annotate") {
