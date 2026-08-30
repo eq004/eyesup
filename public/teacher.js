@@ -51,6 +51,13 @@ const MODES = {
   match_up:      { icon: "🧩", name: "Match Up",      hint: "Match terms to definitions or examples", pairs: { min: 2, max: 6 } },
   venn:          { icon: "◉", name: "Venn Diagram",   hint: "Sort ideas into two overlapping circles", opts: { min: 2, max: 2, labels: "Circle" },
                    ph: "The sorting question, e.g. “Which features belong where?”", multiOpt: true },
+  /* practise & test */
+  spelling:      { icon: "🔡", name: "Spelling Test", hint: "You say the words aloud — students type, auto-marked", opts: { min: 1, max: 10, labels: "Word" },
+                   ph: "Optional title, e.g. “Week 7 words”" },
+  cloze:         { icon: "▭", name: "Cloze Passage",  hint: "Paste a passage; [bracket] the hidden words", clozeUI: true,
+                   ph: "Optional instruction, e.g. “Fill the gaps”" },
+  working:       { icon: "🧮", name: "Working Out",   hint: "Calculator pad that records every step", workingUI: true,
+                   ph: "The problem — or write it on the board" },
   /* draw */
   sketch:        { icon: "🎨", name: "Sketch It",     hint: "Draw understanding instead of writing", opts: null },
   annotate:      { icon: "🖍️", name: "Annotate",     hint: "Upload an image — students draw on it", opts: null, imageUpload: true,
@@ -63,6 +70,7 @@ const CATEGORIES = [
   { label: "✏️ Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
+  { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working"] },
   { label: "🎨 Draw", modes: ["sketch", "annotate"] },
 ];
 
@@ -73,7 +81,18 @@ const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
 const revealMode = (m) =>
   TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" ||
-  m === "example_nonexample" || m === "post_its" || m === "phonics";
+  m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working";
+
+// Same forgiving marker the server uses (case/space-insensitive, numeric-aware).
+function markMatch(attempt, target) {
+  const a = String(attempt || "").trim().toLowerCase();
+  const t = String(target || "").trim().toLowerCase();
+  if (!a) return false;
+  if (a === t) return true;
+  const na = Number(a.replace(",", "."));
+  const nt = Number(t.replace(",", "."));
+  return Number.isFinite(na) && Number.isFinite(nt) && Math.abs(na - nt) < 1e-9;
+}
 
 // Phonics grapheme categories — mirrors the student keyboard's colours.
 function phonCat(p) {
@@ -303,6 +322,26 @@ function openComposer(key, keepImage) {
     multiSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(multiSel);
   }
+  if (m.clozeUI) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `
+      <textarea id="clozeText" rows="5" maxlength="1500"
+        placeholder="Paste the passage and put [square brackets] around each hidden word.&#10;e.g. Plants make food by [photosynthesis] using light from the [sun]."
+        style="width:100%;margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.6rem 0.8rem;font-size:0.9rem;background:#fff;resize:vertical"></textarea>
+      <select id="clozeMode" style="margin-top:0.45rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem">
+        <option value="type">⌨️ Students type the missing words</option>
+        <option value="bank">🧺 Word bank — students pick from your bracketed words</option>
+      </select>`;
+    opts.appendChild(wrap);
+  }
+  if (m.workingUI) {
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.id = "expectedAns";
+    inp.maxLength = 30;
+    inp.placeholder = "Correct answer (optional — turns on auto-check)";
+    opts.appendChild(inp);
+  }
   if (m.postits) {
     const modSel = document.createElement("select");
     modSel.id = "modSel";
@@ -388,9 +427,19 @@ function readComposer() {
     toast("Choose an image first — that's the thing they'll draw on");
     return null;
   }
+  let passage, wordBank;
+  if (m.clozeUI) {
+    passage = $("clozeText").value;
+    if (!/\[[^\]]+\]/.test(passage)) {
+      toast("Put [square brackets] around at least one hidden word");
+      return null;
+    }
+    wordBank = $("clozeMode").value === "bank";
+  }
+  const expected = m.workingUI ? $("expectedAns").value.trim() || undefined : undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined };
+  return { mode: composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected };
 }
 
 /* ---------------- rendering ---------------- */
@@ -642,6 +691,44 @@ function renderLive() {
     );
   } else if (itx.mode === "phonics") {
     body = revealCards((r) => phonChips(r.payload.parts));
+  } else if (itx.mode === "spelling" || itx.mode === "cloze") {
+    const targets = itx.mode === "spelling" ? itx.words : itx.cloze.answers;
+    const attemptsOf = (r) => (itx.mode === "spelling" ? r.payload.answers : r.payload.fills);
+    const stats = agg?.stats || [];
+    body = `
+      <div class="agg-bars">${stats
+        .map((s, i) => `
+        <div class="agg-bar">
+          <div class="lbl"><span>${i + 1}. ${esc(s.target)}</span>
+            <span>${s.correct}/${agg.total} ✓${s.wrongTop.length ? ` · slips: ${s.wrongTop.map((w) => esc(w.text)).join(", ")}` : ""}</span></div>
+          <div class="track"><div class="fill" style="width:${agg.total ? (s.correct / agg.total) * 100 : 0}%"></div></div>
+        </div>`)
+        .join("")}</div>
+      <div class="responses">${itx.responses
+        .map((r) => `
+        <div class="resp-card">
+          <span class="who">${esc(r.name || "")}</span>
+          <span class="what">${targets
+            .map((t, i) => {
+              const a = attemptsOf(r)[i] || "";
+              return `<span style="font-weight:700;color:${markMatch(a, t) ? "var(--green)" : "var(--red)"}">${esc(a || "—")}</span>`;
+            })
+            .join(" · ")}</span>
+        </div>`)
+        .join("")}</div>`;
+  } else if (itx.mode === "working") {
+    const dist = agg?.answerDist || [];
+    const distHtml = dist.length
+      ? bars(dist.map((d) => `${d.answer}${d.ok === true ? " ✓" : d.ok === false ? " ✗" : ""}`), dist.map((d) => d.count))
+      : "";
+    body =
+      (itx.expected ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Auto-checking against <b>${esc(itx.expected)}</b></p>` : "") +
+      distHtml +
+      revealCards((r) => {
+        const ok = itx.expected ? markMatch(r.payload.answer, itx.expected) : null;
+        return `${(r.payload.lines || []).map((l) => `<span style="font-family:ui-monospace,monospace;font-size:0.82rem;color:var(--ink-soft);display:block">${esc(l)}</span>`).join("")}
+          <b style="color:${ok === false ? "var(--red)" : ok ? "var(--green)" : "var(--ink)"}">= ${esc(r.payload.answer || "—")}${ok === true ? " ✓" : ok === false ? " ✗" : ""}</b>`;
+      });
   } else if (TEXT_MODES.has(itx.mode)) {
     const source = itx.imageUrl
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="prompt image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /></div>`

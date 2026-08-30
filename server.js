@@ -326,14 +326,14 @@ function isRevealMode(mode) {
   return (
     TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] ||
     mode === "sketch" || mode === "annotate" || mode === "example_nonexample" ||
-    mode === "post_its" || mode === "phonics"
+    mode === "post_its" || mode === "phonics" || mode === "working"
   );
 }
 
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -351,6 +351,38 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     // A continuum needs two ends; sensible defaults keep launch instant.
     opts = [(opts && opts[0]) || "Disagree", (opts && opts[1]) || "Agree"];
   }
+  // Spelling test: the words live server-side only — students never receive them.
+  let words = null;
+  if (mode === "spelling") {
+    words = (options || []).map((o) => String(o).trim()).filter(Boolean).slice(0, 10);
+    opts = null;
+  }
+
+  // Cloze: parse "[bracketed]" answers out of the passage.
+  let cloze = null;
+  let bank = null;
+  if (mode === "cloze") {
+    const text = String(passage || "").slice(0, 1500);
+    const parts = [];
+    const answers = [];
+    const re = /\[([^\]]{1,40})\]/g;
+    let last = 0, m;
+    while ((m = re.exec(text))) {
+      parts.push(text.slice(last, m.index));
+      answers.push(m[1].trim());
+      last = re.lastIndex;
+    }
+    parts.push(text.slice(last));
+    if (answers.length) cloze = { parts, answers };
+    if (cloze && wordBank) {
+      bank = [...cloze.answers];
+      for (let i = bank.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [bank[i], bank[j]] = [bank[j], bank[i]];
+      }
+    }
+  }
+
   let imageUrl = null;
   if (
     (mode === "annotate" || mode === "picture_prompt" || mode === "picture_vote") &&
@@ -375,6 +407,10 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     timeLimit: TIME_LIMITS[mode] || null,
     imageUrl,
     correct: correctIdx,
+    words, // spelling
+    cloze, // cloze passage {parts, answers}
+    bank, // cloze word bank (shuffled answers) or null
+    expected: mode === "working" ? String(expected || "").trim().slice(0, 30) || null : null,
     answerRevealed: false,
     showNames: false, // teacher can flip names onto the projector per interaction
     spotlightId: null, // sketch/annotate: one response blown up big on the projector
@@ -385,9 +421,9 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     open: true,
     // Live-building modes show results as they arrive; written/drawn answers
     // are revealed by the teacher (gradually or all at once).
-    // Quiz questions hide results until the teacher shows them, so nobody
-    // bandwagons onto the popular answer.
-    resultsVisible: mode !== "multi_choice",
+    // Quiz/test-style modes hide results until the teacher shows them, so
+    // nobody bandwagons — and spellings/answers don't leak mid-test.
+    resultsVisible: !["multi_choice", "spelling", "cloze", "working"].includes(mode),
     responses: new Map(), // studentId -> {name, payload, revealed, at}
     startedAt: Date.now(),
   };
@@ -544,6 +580,55 @@ function aggregate(session, itx) {
     return { ...base, builds: revealed, revealedCount: revealed.length };
   }
 
+  if (itx.mode === "spelling" || itx.mode === "cloze") {
+    // Auto-marked: per target word/blank, how many got it, and the
+    // most common wrong attempts (misconception gold).
+    const targets = itx.mode === "spelling" ? itx.words : itx.cloze.answers;
+    const getAttempt = (r, i) =>
+      (itx.mode === "spelling" ? r.payload.answers : r.payload.fills)[i] || "";
+    const stats = targets.map((target, i) => {
+      let correct = 0;
+      const wrong = new Map();
+      for (const r of responses) {
+        const a = getAttempt(r, i);
+        if (markMatch(a, target)) correct += 1;
+        else if (a) wrong.set(a.toLowerCase(), (wrong.get(a.toLowerCase()) || 0) + 1);
+      }
+      const wrongTop = [...wrong.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([text, count]) => ({ text, count }));
+      return { target, correct, wrongTop };
+    });
+    const out = { ...base, stats };
+    if (itx.mode === "cloze") out.parts = itx.cloze.parts;
+    return out;
+  }
+
+  if (itx.mode === "working") {
+    const revealed = responses
+      .filter((r) => r.revealed)
+      .map((r) => ({
+        lines: r.payload.lines,
+        answer: r.payload.answer,
+        name: nm(r),
+        ok: itx.expected ? markMatch(r.payload.answer, itx.expected) : null,
+      }));
+    const dist = new Map();
+    for (const r of responses) {
+      const a = r.payload.answer || "(no answer)";
+      dist.set(a, (dist.get(a) || 0) + 1);
+    }
+    const answerDist = [...dist.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([answer, count]) => ({
+        answer, count,
+        ok: itx.expected ? markMatch(answer, itx.expected) : null,
+      }));
+    return { ...base, workings: revealed, answerDist, expected: itx.expected };
+  }
+
   // Text modes — projector only sees responses the teacher has revealed.
   const revealed = responses
     .filter((r) => r.revealed)
@@ -585,6 +670,9 @@ function teacherState(session) {
           options: itx.options,
           pairs: itx.pairs,
           fields: itx.fields,
+          words: itx.words,
+          cloze: itx.cloze,
+          expected: itx.expected,
           timeLimit: itx.timeLimit,
           imageUrl: itx.imageUrl,
           correct: itx.correct,
@@ -657,6 +745,11 @@ function studentState(session, student) {
             fields: itx.fields,
             multi: itx.multi,
             imageUrl: itx.imageUrl,
+            // test modes: students get counts/structure, never the answers
+            wordCount: itx.words ? itx.words.length : null,
+            clozeParts: itx.cloze ? itx.cloze.parts : null,
+            clozeBank: itx.bank,
+            hasExpected: !!itx.expected,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
@@ -678,6 +771,18 @@ function broadcast(session) {
 /* ------------------------------------------------------------------ */
 /* Summary                                                            */
 /* ------------------------------------------------------------------ */
+
+// Forgiving compare for auto-marking: case/space-insensitive; numbers
+// compare numerically ("0.50" matches ".5").
+function markMatch(attempt, target) {
+  const a = String(attempt || "").trim().toLowerCase();
+  const t = String(target || "").trim().toLowerCase();
+  if (!a) return false;
+  if (a === t) return true;
+  const na = Number(a.replace(",", "."));
+  const nt = Number(t.replace(",", "."));
+  return Number.isFinite(na) && Number.isFinite(nt) && Math.abs(na - nt) < 1e-9;
+}
 
 // One readable line per response, for the per-student export.
 function describePayload(itx, p) {
@@ -701,6 +806,19 @@ function describePayload(itx, p) {
   if (STRUCTURED_FIELDS[itx.mode])
     return (p.parts || []).filter(Boolean).join("  ·  ");
   if (itx.mode === "sketch" || itx.mode === "annotate") return "(drawing submitted)";
+  if (itx.mode === "spelling")
+    return itx.words
+      .map((w, i) => `${p.answers[i] || "—"}${markMatch(p.answers[i], w) ? " ✓" : ` ✗(${w})`}`)
+      .join(", ");
+  if (itx.mode === "cloze")
+    return itx.cloze.answers
+      .map((w, i) => `${p.fills[i] || "—"}${markMatch(p.fills[i], w) ? " ✓" : ` ✗(${w})`}`)
+      .join(", ");
+  if (itx.mode === "working") {
+    const work = (p.lines || []).join(";  ");
+    const ok = itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : "";
+    return `${work}${work ? "  →  " : ""}${p.answer || "—"}${ok}`;
+  }
   return p.text || "";
 }
 
@@ -750,6 +868,16 @@ function buildSummary(session) {
     if (itx.mode === "sketch" || itx.mode === "annotate") item.sketchCount = itx.responses.size;
     if (itx.mode === "venn")
       item.venn = { labels: itx.options, regions: agg.regions.map((r) => r.slice(0, 8)) };
+    if (itx.mode === "spelling" || itx.mode === "cloze")
+      item.distribution = agg.stats.map((s) => ({
+        label: `${s.target}${s.wrongTop.length ? `  (common slip: ${s.wrongTop[0].text})` : ""}`,
+        count: s.correct,
+      }));
+    if (itx.mode === "working" && agg.answerDist)
+      item.distribution = agg.answerDist.map((d) => ({
+        label: `${d.answer}${d.ok === true ? " ✓" : d.ok === false ? " ✗" : ""}`,
+        count: d.count,
+      }));
     if (itx.mode === "post_its")
       item.answers = [...itx.responses.values()].flatMap((r) => r.payload.notes || []).slice(0, 60);
     if (itx.mode === "phonics")
@@ -1044,6 +1172,9 @@ async function handle(ws, msg) {
         correct: Number.isInteger(it.correct) ? it.correct : null,
         moderated: typeof it.moderated === "boolean" ? it.moderated : undefined,
         multi: typeof it.multi === "boolean" ? it.multi : undefined,
+        passage: typeof it.passage === "string" ? it.passage.slice(0, 1500) : undefined,
+        wordBank: typeof it.wordBank === "boolean" ? it.wordBank : undefined,
+        expected: typeof it.expected === "string" ? it.expected.slice(0, 30) : undefined,
         image:
           typeof it.image === "string" && it.image.startsWith("data:image/") && it.image.length < 900000
             ? it.image
@@ -1279,6 +1410,31 @@ function sanitizePayload(itx, payload) {
       .filter((p) => PHONICS_TOKENS.has(p))
       .slice(0, 14);
     return parts.length ? { parts } : null;
+  }
+
+  if (itx.mode === "spelling") {
+    const n = itx.words.length;
+    const answers = Array.from({ length: n }, (_, i) =>
+      String((payload.answers || [])[i] || "").trim().slice(0, 40)
+    );
+    return answers.some(Boolean) ? { answers } : null;
+  }
+
+  if (itx.mode === "cloze") {
+    const n = itx.cloze.answers.length;
+    const fills = Array.from({ length: n }, (_, i) =>
+      String((payload.fills || [])[i] || "").trim().slice(0, 40)
+    );
+    return fills.some(Boolean) ? { fills } : null;
+  }
+
+  if (itx.mode === "working") {
+    const lines = (Array.isArray(payload.lines) ? payload.lines : [])
+      .map((l) => String(l).trim().slice(0, 60))
+      .filter(Boolean)
+      .slice(0, 12);
+    const answer = String(payload.answer || "").trim().slice(0, 30);
+    return answer || lines.length ? { lines, answer } : null;
   }
 
   if (itx.mode === "sketch" || itx.mode === "annotate") {

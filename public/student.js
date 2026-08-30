@@ -33,6 +33,7 @@ const MODE_NAMES = {
   smiley: "😊 Smiley Review", scale: "🎚️ Scale", annotate: "🖍️ Annotate",
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
   phonics: "🔤 Phonics Keyboard",
+  spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", working: "🧮 Working Out",
 };
 
 /* Phonics keyboard layout & colours */
@@ -54,6 +55,8 @@ function phonCat(p) {
   return "let";
 }
 let phonParts = []; // graphemes tapped so far
+let workLines = []; // working-out: completed calculation lines
+let workCur = ""; // working-out: line being typed
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -155,6 +158,8 @@ function render(force) {
     vennItems = [];
     postNotes = [];
     phonParts = [];
+    workLines = [];
+    workCur = "";
     sprintDeadline = null;
     if (sprintTimer) { clearInterval(sprintTimer); sprintTimer = null; }
   }
@@ -512,6 +517,104 @@ function renderInteraction(itx) {
         const matches = [...screenEl.querySelectorAll("select[data-m]")].map((s) => parseInt(s.value, 10));
         if (matches.some((m) => Number.isNaN(m))) return;
         submit({ matches });
+      };
+    });
+    return;
+  }
+
+  /* --- spelling test: numbered boxes, autocorrect off --- */
+  if (itx.mode === "spelling") {
+    const n = itx.wordCount || 0;
+    show(`${h}
+      <div class="spell-list">${Array.from({ length: n }, (_, i) => `
+        <label class="spell-row"><span class="spell-num">${i + 1}</span>
+          <input type="text" data-sp="${i}" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+        </label>`).join("")}</div>
+      <button class="btn send" id="sendBtn">Send my spellings</button>
+      <p class="hint">Listen for each word, type it next to its number.</p>`, () => {
+      screenEl.querySelector("[data-sp]")?.focus();
+      $("sendBtn").onclick = () => {
+        const answers = [...screenEl.querySelectorAll("[data-sp]")].map((i) => i.value.trim());
+        if (answers.some(Boolean)) submit({ answers });
+      };
+    });
+    return;
+  }
+
+  /* --- cloze passage: fill the gaps inline --- */
+  if (itx.mode === "cloze" && itx.clozeParts) {
+    const parts = itx.clozeParts;
+    const bank = itx.clozeBank;
+    const gap = (i) =>
+      bank
+        ? `<select class="cloze-gap" data-cz="${i}"><option value="">___</option>${bank.map((w) => `<option value="${esc(w)}">${esc(w)}</option>`).join("")}</select>`
+        : `<input class="cloze-gap" data-cz="${i}" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="____" />`;
+    show(`${h}
+      <div class="cloze-text">${parts
+        .map((p, i) => `${esc(p)}${i < parts.length - 1 ? gap(i) : ""}`)
+        .join("")}</div>
+      <button class="btn send" id="sendBtn">Send</button>`, () => {
+      screenEl.querySelector("[data-cz]")?.focus();
+      $("sendBtn").onclick = () => {
+        const fills = [...screenEl.querySelectorAll("[data-cz]")].map((i) => i.value.trim());
+        if (fills.some(Boolean)) submit({ fills });
+      };
+    });
+    return;
+  }
+
+  /* --- working out: a calculator that remembers every step --- */
+  if (itx.mode === "working") {
+    show(`${h}
+      <div class="work-pad">
+        <div class="work-lines" id="workLines"></div>
+        <div class="work-cur" id="workCur">&nbsp;</div>
+      </div>
+      <div class="work-keys">
+        ${["7","8","9","÷","4","5","6","×","1","2","3","−","0",".","(",")"].map((k) => `<button class="wk" data-k="${k}">${k}</button>`).join("")}
+        <button class="wk op" data-k="+">+</button>
+        <button class="wk op" id="wkBack">⌫</button>
+        <button class="wk op" id="wkClear">C</button>
+        <button class="wk eq" id="wkEq">=</button>
+      </div>
+      <div class="work-ans-row">
+        <span>My answer:</span>
+        <input id="workAns" maxlength="30" autocomplete="off" inputmode="decimal" />
+      </div>
+      <button class="btn send" id="sendBtn">Send answer + working</button>
+      <p class="hint">Every “=” you press is saved as a line of working.</p>`, () => {
+      const linesEl = $("workLines"), curEl = $("workCur");
+      const paint = () => {
+        linesEl.innerHTML = workLines.map((l) => `<div>${esc(l)}</div>`).join("");
+        curEl.textContent = workCur || " ";
+        linesEl.scrollTop = linesEl.scrollHeight;
+      };
+      paint();
+      const evalLine = (s) => {
+        const js = s.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
+        if (!/^[\d+\-*/().\s]+$/.test(js) || !/\d/.test(js)) return null;
+        try {
+          const v = Function(`"use strict";return (${js})`)();
+          if (!Number.isFinite(v)) return null;
+          return Math.round(v * 1e9) / 1e9;
+        } catch { return null; }
+      };
+      screenEl.querySelectorAll(".wk[data-k]").forEach((b) => (b.onclick = () => {
+        if (workCur.length < 40) { workCur += b.dataset.k; paint(); }
+      }));
+      $("wkBack").onclick = () => { workCur = workCur.slice(0, -1); paint(); };
+      $("wkClear").onclick = () => { workCur = ""; paint(); };
+      $("wkEq").onclick = () => {
+        const v = evalLine(workCur);
+        if (v === null) { curEl.textContent = workCur + "  ⚠"; return; }
+        if (workLines.length < 12) workLines.push(`${workCur} = ${v}`);
+        workCur = String(v);
+        $("workAns").value = String(v);
+        paint();
+      };
+      $("sendBtn").onclick = () => {
+        const answer = $("workAns").value.trim();
+        if (answer || workLines.length) submit({ lines: workLines, answer });
       };
     });
     return;

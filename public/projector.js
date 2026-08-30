@@ -24,6 +24,7 @@ const MODE_TAGS = {
   venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
   picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
+  spelling: "Spelling Test", cloze: "Fill the Gaps", working: "Show Your Working",
 };
 
 function phonCat(p) {
@@ -244,6 +245,12 @@ function renderInteraction(itx) {
     body = renderRanked(agg);
   } else if (agg.builds) {
     body = renderBuilds(agg);
+  } else if (itx.mode === "spelling") {
+    body = renderMarkedStats(agg, "How we spelled them");
+  } else if (itx.mode === "cloze") {
+    body = renderCloze(agg);
+  } else if (itx.mode === "working") {
+    body = renderWorkings(agg);
   } else if (agg.sketches) {
     body = renderSketches(agg);
   } else if (agg.fields) {
@@ -356,6 +363,71 @@ function renderSmileys(itx, agg) {
       </div>`;
     })
     .join("")}</div>`;
+}
+
+/* Spelling / cloze reveal — per-target accuracy plus the common slips. */
+function renderMarkedStats(agg, ariaLabel) {
+  if (!agg.total) return `<p class="waiting-note">Waiting for answers…</p>`;
+  return `<div class="bars" aria-label="${ariaLabel}">${agg.stats
+    .map((s) => {
+      const pct = Math.round((s.correct / agg.total) * 100);
+      const cls = pct >= 70 ? "c-green" : pct >= 40 ? "c-amber" : "c-red";
+      return `
+      <div class="pbar ${cls}">
+        <div class="top"><span>${esc(s.target)}${s.wrongTop.length ? ` <small style="color:var(--chalk-dim);font-size:0.62em">we also wrote: ${s.wrongTop.map((w) => esc(w.text)).join(", ")}</small>` : ""}</span>
+        <span class="pct">${pct}% ✓</span></div>
+        <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+/* Cloze reveal — the passage with answers restored + accuracy per gap. */
+function renderCloze(agg) {
+  if (!agg.total) return `<p class="waiting-note">Waiting for answers…</p>`;
+  const passage = agg.parts
+    .map((p, i) => {
+      if (i >= agg.stats.length) return esc(p);
+      const s = agg.stats[i];
+      const pct = Math.round((s.correct / agg.total) * 100);
+      const col = pct >= 70 ? "#8fd6a9" : pct >= 40 ? "#edc27a" : "#e79191";
+      return `${esc(p)}<span class="cloze-fill" style="border-color:${col}">${esc(s.target)}<small>${pct}%</small></span>`;
+    })
+    .join("");
+  const slips = agg.stats.filter((s) => s.wrongTop.length);
+  return `
+    <div class="cloze-reveal">${passage}</div>
+    ${slips.length ? `<p class="waiting-note" style="margin-top:1.2rem;font-size:clamp(0.9rem,1.6vw,1.2rem)">Common slips: ${slips
+      .map((s) => `${esc(s.wrongTop[0].text)} (for ${esc(s.target)})`)
+      .join(" · ")}</p>` : ""}`;
+}
+
+/* Working out — answer spread plus the working stacks. */
+function renderWorkings(agg) {
+  const distr = agg.answerDist.length
+    ? `<div class="bars" style="max-width:760px;margin-bottom:1.6rem">${agg.answerDist
+        .map((d) => {
+          const max = Math.max(...agg.answerDist.map((x) => x.count));
+          const cls = d.ok === true ? "c-green" : d.ok === false ? "c-red" : "";
+          return `<div class="pbar ${cls}">
+            <div class="top"><span>${esc(d.answer)}${d.ok === true ? " ✓" : ""}</span><span class="pct">${d.count}</span></div>
+            <div class="track"><div class="fill" style="width:${(d.count / max) * 100}%"></div></div>
+          </div>`;
+        })
+        .join("")}</div>`
+    : "";
+  const cards = agg.workings.length
+    ? `<div class="answers">${agg.workings
+        .map(
+          (w, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s;font-family:ui-monospace,monospace;font-size:clamp(0.85rem,1.6vw,1.2rem)">
+            ${(w.lines || []).map((l) => `<div style="color:var(--chalk-dim)">${esc(l)}</div>`).join("")}
+            <b>= ${esc(w.answer || "—")}${w.ok === true ? " ✓" : w.ok === false ? " ✗" : ""}</b>
+            ${nameTag(w.name)}
+          </div>`
+        )
+        .join("")}</div>`
+    : `<p class="waiting-note">Workings appear here…</p>`;
+  return distr + cards;
 }
 
 /* Phonics — revealed word builds, grapheme by grapheme. */
