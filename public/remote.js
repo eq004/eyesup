@@ -53,6 +53,7 @@ function creds() {
   return {
     code: (sessionStorage.getItem("eyesup_remote_code") || "").toUpperCase(),
     password: sessionStorage.getItem("eyesup_remote_pw") || "",
+    token: localStorage.getItem("eyesup_token") || "", // account token (shared with dashboard on same browser)
   };
 }
 
@@ -60,13 +61,14 @@ function connect() {
   ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
   ws.onopen = () => {
     $("conn").textContent = "";
-    const { code, password } = creds();
-    if (code) ws.send(JSON.stringify({ type: "teacher_resume", code, password }));
+    const { code, password, token } = creds();
+    if (code) ws.send(JSON.stringify({ type: "teacher_resume", code, password, token }));
   };
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === "error") {
-      needPw = msg.error === "bad_password";
+      needPw = msg.error === "bad_password" || msg.error === "auth_required";
+      if (msg.error === "auth_required") localStorage.removeItem("eyesup_token");
       if (msg.error === "no_session") sessionStorage.removeItem("eyesup_remote_code");
       state = null;
       renderGate(msg.error);
@@ -185,23 +187,47 @@ setInterval(() => {
 function renderGate(err) {
   $("topInfo").textContent = "";
   const preset = (new URLSearchParams(location.search).get("code") || creds().code || "").toUpperCase();
+  const hasToken = !!creds().token;
   main.innerHTML = `
     <div class="gate">
       <div style="font-size:2.5rem">📱</div>
       <h2 style="font-family:var(--font-display);margin-top:0.5rem">Teacher remote</h2>
       <p style="color:#9aa0b5;font-size:0.9rem;margin-top:0.3rem">Controls your live session while the projector shows the class screen.</p>
       <input id="codeIn" maxlength="4" placeholder="SESSION CODE" value="${esc(preset)}" autocomplete="off" />
-      ${needPw || err === "bad_password" ? `<input id="pwIn" type="password" placeholder="Teacher password" autocomplete="current-password" />` : ""}
-      ${err === "bad_password" ? `<p class="err">Password didn't match — try again.</p>` : ""}
-      ${err === "no_session" ? `<p class="err">No live session with that code.</p>` : ""}
+      ${hasToken && err !== "auth_required" ? "" : `
+        <input id="userIn" placeholder="Your username" autocomplete="username" />
+        <input id="pwIn" type="password" placeholder="Your password" autocomplete="current-password" />`}
+      ${err === "bad_password" || err === "auth_required" ? `<p class="err">Sign-in didn't match — try again.</p>` : ""}
+      ${err === "no_session" ? `<p class="err">No live session with that code (or it isn't yours).</p>` : ""}
       <button class="rbtn accent" id="goBtn" style="margin-top:0.8rem">Connect</button>
     </div>`;
-  const go = () => {
+  const go = async () => {
     const code = $("codeIn").value.trim().toUpperCase();
     if (code.length !== 4) return;
     sessionStorage.setItem("eyesup_remote_code", code);
-    if ($("pwIn")) sessionStorage.setItem("eyesup_remote_pw", $("pwIn").value);
-    send({ type: "teacher_resume", code, password: sessionStorage.getItem("eyesup_remote_pw") || "" });
+    if ($("userIn")) {
+      // Account sign-in; if the server has no database, fall back to the
+      // shared teacher password (local mode).
+      try {
+        const res = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: $("userIn").value, password: $("pwIn").value }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem("eyesup_token", data.token);
+        } else if (data.error === "storage_off") {
+          sessionStorage.setItem("eyesup_remote_pw", $("pwIn").value);
+        } else {
+          renderGate("auth_required");
+          $("codeIn").value = code;
+          return;
+        }
+      } catch { /* try the resume anyway */ }
+    }
+    const { password, token } = creds();
+    send({ type: "teacher_resume", code, password, token });
   };
   $("goBtn").onclick = go;
   main.querySelectorAll("input").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter") go(); }));

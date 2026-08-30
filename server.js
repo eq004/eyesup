@@ -10,7 +10,9 @@
 const os = require("os");
 const path = require("path");
 const http = require("http");
+const crypto = require("crypto");
 const express = require("express");
+const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 
 // The address other devices in the room (iPads, phones) can reach us on.
@@ -24,6 +26,9 @@ function lanAddress() {
 }
 
 const PORT = process.env.PORT || 4630;
+// When set: gates the teacher dashboard (password mode without a database,
+// signup invite code in account mode). Students never need it.
+const TEACHER_PASSWORD = process.env.TEACHER_PASSWORD || "";
 
 /* ------------------------------------------------------------------ */
 /* Optional persistent storage (Supabase/Postgres via DATABASE_URL).  */
@@ -48,11 +53,48 @@ if (process.env.DATABASE_URL) {
       summary jsonb NOT NULL,
       UNIQUE (code, created_at)
     )`)
+    .then(() =>
+      db.query(`CREATE TABLE IF NOT EXISTS teachers (
+        id serial PRIMARY KEY,
+        username text UNIQUE NOT NULL,
+        display_name text,
+        pass_hash text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`)
+    )
+    .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_id int`))
+    .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_name text`))
     .then(() => console.log("Storage connected — lessons persist to Postgres"))
     .catch((e) => {
       console.error("Storage init failed (continuing without):", e.message);
       db = null;
     });
+}
+
+/* ---- teacher accounts (active only in database mode) ----
+   Tokens are stateless: HMAC over the account's password hash, so they
+   survive server restarts and die if the password changes. */
+
+const AUTH_SECRET = TEACHER_PASSWORD || "eyesup-local-secret";
+
+function signToken(id, passHash) {
+  const mac = crypto.createHmac("sha256", AUTH_SECRET).update(`${id}:${passHash}`).digest("hex");
+  return `${id}.${mac}`;
+}
+
+async function teacherFromToken(token) {
+  if (!db || typeof token !== "string" || !token.includes(".")) return null;
+  const id = parseInt(token.split(".")[0], 10);
+  if (!Number.isInteger(id)) return null;
+  try {
+    const { rows } = await db.query(
+      `SELECT id, username, display_name, pass_hash FROM teachers WHERE id = $1`, [id]
+    );
+    if (!rows[0]) return null;
+    return token === signToken(rows[0].id, rows[0].pass_hash) ? rows[0] : null;
+  } catch {
+    return null;
+  }
 }
 
 // Debounced write of the session's full summary — every response nudges it,
@@ -65,22 +107,20 @@ function persistSession(session) {
       const summary = buildSummary(session);
       if (!summary.interactionCount) return; // nothing worth keeping yet
       await db.query(
-        `INSERT INTO lessons (code, title, created_at, saved_at, summary)
-         VALUES ($1, $2, $3, now(), $4)
+        `INSERT INTO lessons (code, title, created_at, saved_at, summary, teacher_id, teacher_name)
+         VALUES ($1, $2, $3, now(), $4, $5, $6)
          ON CONFLICT (code, created_at)
-         DO UPDATE SET title = $2, saved_at = now(), summary = $4`,
-        [session.code, session.title, new Date(session.createdAt), summary]
+         DO UPDATE SET title = $2, saved_at = now(), summary = $4, teacher_id = $5, teacher_name = $6`,
+        [session.code, session.title, new Date(session.createdAt), summary,
+         session.teacherId ?? null, session.teacherName ?? null]
       );
     } catch (e) {
       console.error("persist failed:", e.message);
     }
   }, 4000);
 }
-// When set, the teacher dashboard (and reports) require this password.
-// Students and the projector never need it — they only need a session code.
-const TEACHER_PASSWORD = process.env.TEACHER_PASSWORD || "";
-
 const app = express();
+app.use(express.json({ limit: "16kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // Friendly routes
@@ -101,18 +141,59 @@ app.get("/api/image/:code/:id", (req, res) => {
   res.type(m[1]).send(Buffer.from(m[2], "base64"));
 });
 
-// Past lessons archive (requires DATABASE_URL). Password-gated like reports.
-app.get("/api/lessons", async (req, res) => {
-  if (!db) return res.json({ storage: false, lessons: [] });
-  if (TEACHER_PASSWORD && req.query.pw !== TEACHER_PASSWORD)
-    return res.status(403).json({ error: "bad_password" });
+/* ---- teacher accounts (database mode) ---- */
+
+app.post("/api/signup", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const { invite, username, password, name } = req.body || {};
+  if (TEACHER_PASSWORD && invite !== TEACHER_PASSWORD)
+    return res.status(403).json({ error: "bad_invite" });
+  const u = String(username || "").trim().toLowerCase();
+  if (!/^[a-z0-9_.-]{3,24}$/.test(u)) return res.status(400).json({ error: "bad_username" });
+  if (String(password || "").length < 6) return res.status(400).json({ error: "bad_pass" });
+  const hash = bcrypt.hashSync(String(password), 10);
   try {
     const { rows } = await db.query(
-      `SELECT id, code, title, created_at,
+      `INSERT INTO teachers (username, display_name, pass_hash)
+       VALUES ($1, $2, $3) RETURNING id, username, display_name, pass_hash`,
+      [u, String(name || "").trim().slice(0, 40) || u, hash]
+    );
+    res.json({ token: signToken(rows[0].id, rows[0].pass_hash), name: rows[0].display_name, username: u });
+  } catch (e) {
+    if (String(e.message).includes("duplicate")) return res.status(409).json({ error: "taken" });
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+app.post("/api/login", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  try {
+    const u = String(req.body?.username || "").trim().toLowerCase();
+    const { rows } = await db.query(`SELECT * FROM teachers WHERE username = $1`, [u]);
+    const t = rows[0];
+    if (!t || !bcrypt.compareSync(String(req.body?.password || ""), t.pass_hash))
+      return res.status(403).json({ error: "bad_login" });
+    res.json({ token: signToken(t.id, t.pass_hash), name: t.display_name, username: t.username });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+// Past lessons archive — each teacher sees their own (plus pre-account legacy rows).
+app.get("/api/lessons", async (req, res) => {
+  if (!db) return res.json({ storage: false, lessons: [] });
+  const t = await teacherFromToken(req.query.t);
+  if (!t) return res.status(403).json({ error: "auth_required" });
+  try {
+    const { rows } = await db.query(
+      `SELECT id, code, title, created_at, teacher_name,
               summary->>'participatedCount' AS participated,
               summary->>'joinedCount' AS joined,
               summary->>'interactionCount' AS interactions
-       FROM lessons ORDER BY created_at DESC LIMIT 200`
+       FROM lessons
+       WHERE teacher_id = $1 OR teacher_id IS NULL
+       ORDER BY created_at DESC LIMIT 200`,
+      [t.id]
     );
     res.json({ storage: true, lessons: rows });
   } catch (e) {
@@ -122,10 +203,13 @@ app.get("/api/lessons", async (req, res) => {
 
 app.get("/api/lessons/:id", async (req, res) => {
   if (!db) return res.status(404).json({ error: "storage_off" });
-  if (TEACHER_PASSWORD && req.query.pw !== TEACHER_PASSWORD)
-    return res.status(403).json({ error: "bad_password" });
+  const t = await teacherFromToken(req.query.t);
+  if (!t) return res.status(403).json({ error: "auth_required" });
   try {
-    const { rows } = await db.query(`SELECT * FROM lessons WHERE id = $1`, [req.params.id]);
+    const { rows } = await db.query(
+      `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
+      [req.params.id, t.id]
+    );
     if (!rows[0]) return res.status(404).json({ error: "not_found" });
     const r = rows[0];
     res.json({ ...r.summary, code: r.code, title: r.title, createdAt: new Date(r.created_at).getTime() });
@@ -136,7 +220,17 @@ app.get("/api/lessons/:id", async (req, res) => {
 
 // Summary as JSON for the printable report. The session code is the key,
 // same trust model as joining the room.
-app.get("/api/summary/:code", (req, res) => {
+app.get("/api/summary/:code", async (req, res) => {
+  if (db) {
+    // Account mode: only the session's owner may pull its report.
+    const t = await teacherFromToken(req.query.t);
+    if (!t) return res.status(403).json({ error: "auth_required" });
+    const session = sessions.get(String(req.params.code || "").toUpperCase());
+    if (!session) return res.status(404).json({ error: "no_session" });
+    if (session.teacherId != null && session.teacherId !== t.id)
+      return res.status(403).json({ error: "auth_required" });
+    return res.json({ ...buildSummary(session), code: session.code, createdAt: session.createdAt });
+  }
   if (TEACHER_PASSWORD && req.query.pw !== TEACHER_PASSWORD)
     return res.status(403).json({ error: "bad_password" });
   const session = sessions.get(String(req.params.code || "").toUpperCase());
@@ -447,6 +541,7 @@ function teacherState(session) {
     title: session.title,
     lanHost: `${lanAddress()}:${PORT}`, // so the dashboard can QR the phone remote locally
     storage: !!db, // lessons persist to Postgres
+    teacherName: session.teacherName || null,
     phase: session.phase,
     timer: session.timer,
     focus: session.focus,
@@ -630,6 +725,7 @@ function buildSummary(session) {
   return {
     type: "summary",
     title: session.title,
+    teacherName: session.teacherName || null,
     joinedCount: session.everJoined.size,
     participatedCount: participants.size,
     interactionCount: all.length,
@@ -658,11 +754,7 @@ wss.on("connection", (ws) => {
     } catch {
       return;
     }
-    try {
-      handle(ws, msg);
-    } catch (err) {
-      console.error("handler error:", err);
-    }
+    handle(ws, msg).catch((err) => console.error("handler error:", err));
   });
 
   ws.on("close", () => {
@@ -679,25 +771,44 @@ wss.on("connection", (ws) => {
   });
 });
 
-function handle(ws, msg) {
+// In database mode teachers authenticate with an account token; without a
+// database the shared TEACHER_PASSWORD gate applies (local dev).
+async function authTeacher(msg) {
+  if (db) {
+    const t = await teacherFromToken(msg.token);
+    return t ? { ok: true, teacher: t } : { ok: false, error: "auth_required" };
+  }
+  if (TEACHER_PASSWORD && msg.password !== TEACHER_PASSWORD)
+    return { ok: false, error: "bad_password" };
+  return { ok: true, teacher: null };
+}
+
+async function handle(ws, msg) {
   const { type } = msg;
 
   /* ---- connection / identity ---- */
 
   if (type === "teacher_create") {
-    if (TEACHER_PASSWORD && msg.password !== TEACHER_PASSWORD)
-      return safeSend(ws, { type: "error", error: "bad_password" });
+    const auth = await authTeacher(msg);
+    if (!auth.ok) return safeSend(ws, { type: "error", error: auth.error });
     const session = createSession(ws);
+    if (auth.teacher) {
+      session.teacherId = auth.teacher.id;
+      session.teacherName = auth.teacher.display_name;
+    }
     ws.meta = { role: "teacher", code: session.code };
     broadcast(session);
     return;
   }
 
   if (type === "teacher_resume") {
-    if (TEACHER_PASSWORD && msg.password !== TEACHER_PASSWORD)
-      return safeSend(ws, { type: "error", error: "bad_password" });
+    const auth = await authTeacher(msg);
+    if (!auth.ok) return safeSend(ws, { type: "error", error: auth.error });
     const session = sessions.get(String(msg.code || "").toUpperCase());
     if (!session) return safeSend(ws, { type: "error", error: "no_session" });
+    // A session belongs to its teacher — others can't take it over.
+    if (session.teacherId != null && auth.teacher?.id !== session.teacherId)
+      return safeSend(ws, { type: "error", error: "no_session" });
     session.teachers.add(ws);
     ws.meta = { role: "teacher", code: session.code };
     broadcast(session);

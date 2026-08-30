@@ -82,11 +82,22 @@ let composerModeKey = null;
 function teacherPw() {
   return sessionStorage.getItem("eyesup_pw") || "";
 }
+function teacherToken() {
+  return localStorage.getItem("eyesup_token") || "";
+}
+// Auth credential for HTTP links/fetches: account token (database mode)
+// or the legacy shared password (local mode).
+function authQuery() {
+  const t = teacherToken();
+  if (t) return `t=${encodeURIComponent(t)}`;
+  return teacherPw() ? `pw=${encodeURIComponent(teacherPw())}` : "";
+}
 
 function attach() {
   const code = sessionStorage.getItem("eyesup_teacher_code");
-  if (code) ws.send(JSON.stringify({ type: "teacher_resume", code, password: teacherPw() }));
-  else ws.send(JSON.stringify({ type: "teacher_create", password: teacherPw() }));
+  const creds = { token: teacherToken(), password: teacherPw() };
+  if (code) ws.send(JSON.stringify({ type: "teacher_resume", code, ...creds }));
+  else ws.send(JSON.stringify({ type: "teacher_create", ...creds }));
 }
 
 function connect() {
@@ -94,6 +105,11 @@ function connect() {
   ws.onopen = attach;
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
+    if (msg.type === "error" && msg.error === "auth_required") {
+      localStorage.removeItem("eyesup_token");
+      showAuthOverlay();
+      return;
+    }
     if (msg.type === "error" && msg.error === "bad_password") {
       $("pwError").style.display = teacherPw() ? "block" : "none";
       sessionStorage.removeItem("eyesup_pw");
@@ -103,7 +119,7 @@ function connect() {
     }
     if (msg.type === "error" && msg.error === "no_session") {
       sessionStorage.removeItem("eyesup_teacher_code");
-      ws.send(JSON.stringify({ type: "teacher_create", password: teacherPw() }));
+      ws.send(JSON.stringify({ type: "teacher_create", token: teacherToken(), password: teacherPw() }));
       return;
     }
     if (msg.type === "summary") {
@@ -117,6 +133,7 @@ function connect() {
     if (msg.type === "state") {
       state = msg;
       $("pwOverlay").classList.remove("show");
+      $("authOverlay").classList.remove("show");
       sessionStorage.setItem("eyesup_teacher_code", state.code);
       render();
       scheduleAutosave();
@@ -369,6 +386,8 @@ function render() {
   $("joinUrl").textContent = `${location.host}/join`;
   $("openProjector").href = `/projector?code=${state.code}`;
   $("lessonsBtn").style.display = state.storage ? "" : "none";
+  $("whoAmI").textContent = teacherToken() ? localStorage.getItem("eyesup_teacher_name") || "" : "";
+  $("signOutBtn").style.display = teacherToken() ? "" : "none";
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
   $("qrToggle").textContent = state.showJoin ? "🔳 QR is up" : "🔳 QR";
   $("studentCount").textContent = state.students.length;
@@ -702,7 +721,7 @@ function renderSummary(s) {
     <div style="margin-top:1.4rem;display:flex;gap:0.6rem">
       <button class="btn primary" id="closeSummary">Back to the room</button>
       <a class="btn" id="exportPdf" target="_blank" rel="noopener"
-         href="/report?code=${state.code}${teacherPw() ? `&pw=${encodeURIComponent(teacherPw())}` : ""}"
+         href="/report?code=${state.code}${authQuery() ? `&${authQuery()}` : ""}"
          style="text-decoration:none">🖨 Export as PDF</a>
     </div>`;
   $("summaryOverlay").classList.add("show");
@@ -747,14 +766,14 @@ $("lessonsBtn").onclick = async () => {
   $("lessonsList").innerHTML = `<p style="color:var(--muted)">Loading…</p>`;
   $("lessonsOverlay").classList.add("show");
   try {
-    const res = await fetch(`/api/lessons${teacherPw() ? `?pw=${encodeURIComponent(teacherPw())}` : ""}`);
+    const res = await fetch(`/api/lessons${authQuery() ? `?${authQuery()}` : ""}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     $("lessonsList").innerHTML = data.lessons.length
       ? data.lessons
           .map((l) => {
             const when = new Date(l.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-            const href = `/report?lesson=${l.id}${teacherPw() ? `&pw=${encodeURIComponent(teacherPw())}` : ""}`;
+            const href = `/report?lesson=${l.id}${authQuery() ? `&${authQuery()}` : ""}`;
             return `<a href="${href}" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:10px;padding:0.65rem 0.9rem;margin-bottom:0.5rem;background:var(--paper)">
               <b>${esc(l.title || "Untitled lesson")}</b> <span style="color:var(--muted);font-size:0.8rem">· ${esc(l.code)}</span><br/>
               <span style="color:var(--ink-soft);font-size:0.82rem">${esc(when)} — ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions</span>
@@ -961,6 +980,77 @@ document.addEventListener("drop", (e) => {
     setComposerImage(dataUrl);
   });
 });
+
+/* ---------------- teacher account gate ---------------- */
+
+let authMode = "login";
+
+function showAuthOverlay(mode) {
+  authMode = mode || (localStorage.getItem("eyesup_has_account") ? "login" : "signup");
+  const fields = $("authFields");
+  $("tabLogin").classList.toggle("primary", authMode === "login");
+  $("tabSignup").classList.toggle("primary", authMode === "signup");
+  fields.innerHTML =
+    authMode === "login"
+      ? `<input id="aUser" placeholder="Username" autocomplete="username" />
+         <input id="aPass" type="password" placeholder="Password" autocomplete="current-password" />`
+      : `<input id="aInvite" placeholder="Invite code (from whoever runs this site)" />
+         <input id="aName" placeholder="Your name, as students/reports see it" maxlength="40" />
+         <input id="aUser" placeholder="Choose a username (letters/numbers)" autocomplete="username" />
+         <input id="aPass" type="password" placeholder="Choose a password (6+ characters)" autocomplete="new-password" />`;
+  fields.querySelectorAll("input").forEach((i) => {
+    i.style.cssText = "border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font-size:0.95rem";
+    i.onkeydown = (e) => { if (e.key === "Enter") $("authGo").click(); };
+  });
+  $("authGo").textContent = authMode === "login" ? "Sign in" : "Create account";
+  $("authError").style.display = "none";
+  $("authOverlay").classList.add("show");
+  fields.querySelector("input")?.focus();
+}
+
+const AUTH_ERRORS = {
+  bad_login: "Username or password didn't match.",
+  bad_invite: "That invite code isn't right.",
+  taken: "That username is taken — pick another.",
+  bad_username: "Usernames are 3–24 characters: letters, numbers, dots, dashes.",
+  bad_pass: "Password needs at least 6 characters.",
+};
+
+$("tabLogin").onclick = () => showAuthOverlay("login");
+$("tabSignup").onclick = () => showAuthOverlay("signup");
+$("authGo").onclick = async () => {
+  const body =
+    authMode === "login"
+      ? { username: $("aUser").value, password: $("aPass").value }
+      : { invite: $("aInvite").value.trim(), name: $("aName").value, username: $("aUser").value, password: $("aPass").value };
+  try {
+    const res = await fetch(authMode === "login" ? "/api/login" : "/api/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      $("authError").textContent = AUTH_ERRORS[data.error] || "That didn't work — try again.";
+      $("authError").style.display = "block";
+      return;
+    }
+    localStorage.setItem("eyesup_token", data.token);
+    localStorage.setItem("eyesup_teacher_name", data.name || data.username);
+    localStorage.setItem("eyesup_has_account", "1");
+    $("authOverlay").classList.remove("show");
+    if (ws && ws.readyState === 1) attach();
+  } catch {
+    $("authError").textContent = "Couldn't reach the server — try again.";
+    $("authError").style.display = "block";
+  }
+};
+
+$("signOutBtn").onclick = () => {
+  localStorage.removeItem("eyesup_token");
+  sessionStorage.removeItem("eyesup_teacher_code");
+  location.reload();
+};
 
 $("pwGo").onclick = () => {
   const pw = $("pwInput").value;

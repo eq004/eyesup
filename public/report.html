@@ -125,6 +125,8 @@ async function load() {
   const params = new URLSearchParams(location.search);
   const code = (params.get("code") || "").toUpperCase();
   const pw = params.get("pw") || "";
+  const tkn = params.get("t") || "";
+  const authQ = tkn ? `t=${encodeURIComponent(tkn)}` : pw ? `pw=${encodeURIComponent(pw)}` : "";
   const page = document.getElementById("page");
   let s;
   let recovered = false;
@@ -133,9 +135,9 @@ async function load() {
   const lessonId = params.get("lesson");
   if (lessonId) {
     try {
-      const res = await fetch(`/api/lessons/${encodeURIComponent(lessonId)}${pw ? `?pw=${encodeURIComponent(pw)}` : ""}`);
+      const res = await fetch(`/api/lessons/${encodeURIComponent(lessonId)}${authQ ? `?${authQ}` : ""}`);
       if (res.status === 403) {
-        page.innerHTML = `<div class="err"><h2>Teacher password needed.</h2><p>Open this report via “Past lessons” on the teacher dashboard.</p></div>`;
+        page.innerHTML = `<div class="err"><h2>Sign-in needed.</h2><p>Open this report via “Past lessons” on the teacher dashboard.</p></div>`;
         return;
       }
       if (!res.ok) throw new Error();
@@ -149,9 +151,9 @@ async function load() {
   }
 
   try {
-    const res = await fetch(`/api/summary/${code}${pw ? `?pw=${encodeURIComponent(pw)}` : ""}`);
+    const res = await fetch(`/api/summary/${code}${authQ ? `?${authQ}` : ""}`);
     if (res.status === 403) {
-      page.innerHTML = `<div class="err"><h2>Teacher password needed.</h2><p>Open this report via the “Export as PDF” button on the teacher dashboard — it carries the password for you.</p></div>`;
+      page.innerHTML = `<div class="err"><h2>Sign-in needed.</h2><p>Open this report via the “Export as PDF” button on the teacher dashboard — it carries your sign-in for you.</p></div>`;
       return;
     }
     if (!res.ok) throw new Error();
@@ -229,7 +231,7 @@ function renderReport(s, recovered) {
     ${recovered ? `<p style="background:var(--accent-soft);color:var(--accent-ink);border-radius:10px;padding:0.6rem 0.9rem;font-size:0.85rem;font-weight:600;margin-bottom:1.2rem">♻️ The live session has ended — this report was recovered from the dashboard's autosave on this computer (saved ${esc(new Date(s.createdAt).toLocaleTimeString())}).</p>` : ""}
     <div class="report-head">
       <h1>${s.title ? esc(s.title) : "Recall session report"}</h1>
-      <div class="meta">${s.title ? "Recall session · " : ""}Session <b>${esc(s.code)}</b><br/>${esc(when)}</div>
+      <div class="meta">${s.teacherName ? `Taught by <b>${esc(s.teacherName)}</b> · ` : ""}Session <b>${esc(s.code)}</b><br/>${esc(when)}</div>
     </div>
     <div class="stat-row">
       <div class="stat"><div class="v">${s.participatedCount}/${s.joinedCount}</div><div class="k">students participated</div></div>
