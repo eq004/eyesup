@@ -366,14 +366,14 @@ function isRevealMode(mode) {
   return (
     TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] ||
     mode === "sketch" || mode === "annotate" || mode === "example_nonexample" ||
-    mode === "post_its" || mode === "phonics" || mode === "working"
+    mode === "post_its" || mode === "phonics" || mode === "working" || mode === "counters"
   );
 }
 
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -450,7 +450,8 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     words, // spelling
     cloze, // cloze passage {parts, answers}
     bank, // cloze word bank (shuffled answers) or null
-    expected: mode === "working" ? String(expected || "").trim().slice(0, 30) || null : null,
+    expected: ["working", "counters"].includes(mode) ? String(expected || "").trim().slice(0, 30) || null : null,
+    counterKind: mode === "counters" ? (counterKind === "base10" ? "base10" : "colors") : null,
     answerRevealed: false,
     showNames: false, // teacher can flip names onto the projector per interaction
     spotlightId: null, // sketch/annotate: one response blown up big on the projector
@@ -463,7 +464,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     // are revealed by the teacher (gradually or all at once).
     // Quiz/test-style modes hide results until the teacher shows them, so
     // nobody bandwagons — and spellings/answers don't leak mid-test.
-    resultsVisible: !["multi_choice", "spelling", "cloze", "working"].includes(mode),
+    resultsVisible: !["multi_choice", "spelling", "cloze", "working", "counters"].includes(mode),
     responses: new Map(), // studentId -> {name, payload, revealed, at}
     startedAt: Date.now(),
   };
@@ -493,6 +494,9 @@ function buildSpotlight(itx) {
   if (m === "phonics") return { kind: "phonics", parts: r.payload.parts, name, sid: key };
   if (m === "working")
     return { kind: "working", lines: r.payload.lines, answer: r.payload.answer,
+             ok: itx.expected ? markMatch(r.payload.answer, itx.expected) : null, name, sid: key };
+  if (m === "counters")
+    return { kind: "board", items: r.payload.items, counterKind: itx.counterKind, answer: r.payload.answer,
              ok: itx.expected ? markMatch(r.payload.answer, itx.expected) : null, name, sid: key };
   if (STRUCTURED_FIELDS[m]) return { kind: "structured", fields: itx.fields, parts: r.payload.parts, name, sid: key };
   if (m === "example_nonexample")
@@ -668,6 +672,28 @@ function aggregate(session, itx) {
     return out;
   }
 
+  if (itx.mode === "counters") {
+    const boards = [...itx.responses.entries()]
+      .filter(([, r]) => r.revealed)
+      .map(([sid, r]) => ({
+        sid,
+        items: r.payload.items,
+        answer: r.payload.answer,
+        name: nm(r),
+        ok: itx.expected ? markMatch(r.payload.answer, itx.expected) : null,
+      }));
+    const dist = new Map();
+    for (const r of responses) {
+      const a = r.payload.answer || "(no answer)";
+      dist.set(a, (dist.get(a) || 0) + 1);
+    }
+    const answerDist = [...dist.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([answer, count]) => ({ answer, count, ok: itx.expected ? markMatch(answer, itx.expected) : null }));
+    return { ...base, boards, counterKind: itx.counterKind, answerDist, expected: itx.expected };
+  }
+
   if (itx.mode === "working") {
     const revealed = [...itx.responses.entries()]
       .filter(([, r]) => r.revealed)
@@ -737,6 +763,7 @@ function teacherState(session) {
           words: itx.words,
           cloze: itx.cloze,
           expected: itx.expected,
+          counterKind: itx.counterKind,
           timeLimit: itx.timeLimit,
           imageUrl: itx.imageUrl,
           correct: itx.correct,
@@ -814,6 +841,7 @@ function studentState(session, student) {
             clozeParts: itx.cloze ? itx.cloze.parts : null,
             clozeBank: itx.bank,
             hasExpected: !!itx.expected,
+            counterKind: itx.counterKind,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
@@ -883,6 +911,21 @@ function describePayload(itx, p) {
     const ok = itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : "";
     return `${work}${work ? "  →  " : ""}${p.answer || "—"}${ok}`;
   }
+  if (itx.mode === "counters") {
+    const ok = itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : "";
+    if (itx.counterKind === "base10") {
+      const tens = (p.items || []).filter((i) => i.k === 0).length;
+      const ones = (p.items || []).filter((i) => i.k === 1).length;
+      return `${tens} tens + ${ones} ones  →  ${p.answer || "—"}${ok}`;
+    }
+    const names = ["red", "blue", "yellow", "green"];
+    const byColor = names
+      .map((c, i) => ({ c, n: (p.items || []).filter((it) => it.k === i).length }))
+      .filter((x) => x.n)
+      .map((x) => `${x.n} ${x.c}`)
+      .join(", ");
+    return `${(p.items || []).length} counters${byColor ? ` (${byColor})` : ""}  →  ${p.answer || "—"}${ok}`;
+  }
   return p.text || "";
 }
 
@@ -937,7 +980,7 @@ function buildSummary(session) {
         label: `${s.target}${s.wrongTop.length ? `  (common slip: ${s.wrongTop[0].text})` : ""}`,
         count: s.correct,
       }));
-    if (itx.mode === "working" && agg.answerDist)
+    if ((itx.mode === "working" || itx.mode === "counters") && agg.answerDist)
       item.distribution = agg.answerDist.map((d) => ({
         label: `${d.answer}${d.ok === true ? " ✓" : d.ok === false ? " ✗" : ""}`,
         count: d.count,
@@ -1250,6 +1293,7 @@ async function handle(ws, msg) {
         passage: typeof it.passage === "string" ? it.passage.slice(0, 1500) : undefined,
         wordBank: typeof it.wordBank === "boolean" ? it.wordBank : undefined,
         expected: typeof it.expected === "string" ? it.expected.slice(0, 30) : undefined,
+        counterKind: typeof it.counterKind === "string" ? it.counterKind : undefined,
         image:
           typeof it.image === "string" && it.image.startsWith("data:image/") && it.image.length < 900000
             ? it.image
@@ -1529,6 +1573,19 @@ function sanitizePayload(itx, payload) {
       String((payload.fills || [])[i] || "").trim().slice(0, 40)
     );
     return fills.some(Boolean) ? { fills } : null;
+  }
+
+  if (itx.mode === "counters") {
+    const items = (Array.isArray(payload.items) ? payload.items : [])
+      .map((it) => ({
+        k: Number(it?.k),
+        x: Math.max(0, Math.min(100, Number(it?.x))),
+        y: Math.max(0, Math.min(100, Number(it?.y))),
+      }))
+      .filter((it) => Number.isInteger(it.k) && it.k >= 0 && it.k <= 3 && Number.isFinite(it.x) && Number.isFinite(it.y))
+      .slice(0, 40);
+    const answer = String(payload.answer || "").trim().slice(0, 30);
+    return items.length || answer ? { items, answer } : null;
   }
 
   if (itx.mode === "working") {

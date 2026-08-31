@@ -25,7 +25,22 @@ const MODE_TAGS = {
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
   picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
   spelling: "Spelling Test", cloze: "Fill the Gaps", working: "Show Your Working",
+  counters: "Build It With Counters",
 };
+
+const COUNTER_COLORS = ["#e05252", "#4a7de0", "#e8c33c", "#3f9e5f"];
+function boardSvg(items, kind, width) {
+  const inner = (items || [])
+    .map((it) =>
+      kind === "base10"
+        ? it.k === 0
+          ? `<rect x="${it.x - 2}" y="${it.y - 9}" width="4" height="18" rx="1" fill="#e8913c" stroke="#9c5a1d" stroke-width="0.4"/>`
+          : `<rect x="${it.x - 2}" y="${it.y - 2}" width="4" height="4" rx="0.8" fill="#4a7de0" stroke="#2c4f96" stroke-width="0.4"/>`
+        : `<circle cx="${it.x}" cy="${it.y}" r="3.4" fill="${COUNTER_COLORS[it.k] || "#999"}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`
+    )
+    .join("");
+  return `<svg viewBox="0 0 100 62" style="width:${width};background:#f4f2ea;border-radius:10px" aria-label="counter board">${inner}</svg>`;
+}
 
 function phonCat(p) {
   if (p === "-e") return "sil";
@@ -253,6 +268,8 @@ function renderInteraction(itx) {
     body = renderCloze(agg);
   } else if (itx.mode === "working") {
     body = renderWorkings(agg);
+  } else if (itx.mode === "counters") {
+    body = renderCounterBoards(agg);
   } else if (agg.sketches) {
     body = renderSketches(agg);
   } else if (agg.fields) {
@@ -301,6 +318,9 @@ function renderGenericSpotlight(s) {
     inner = `<div class="spot-text" style="font-family:ui-monospace,monospace;text-align:left">
       ${(s.lines || []).map((l) => `<div style="color:var(--chalk-dim)">${esc(l)}</div>`).join("")}
       <b>= ${esc(s.answer || "—")}${s.ok === true ? " ✓" : s.ok === false ? " ✗" : ""}</b></div>`;
+  } else if (s.kind === "board") {
+    inner = `${boardSvg(s.items, s.counterKind, "min(640px, 74vw)")}
+      <div class="spot-text" style="margin-top:0.6rem">= ${esc(s.answer || "—")}${s.ok === true ? " ✓" : s.ok === false ? " ✗" : ""}</div>`;
   }
   return `<div class="spot-stage">
     <div class="spot-card">${inner}${s.name ? `<div class="sketch-name" style="font-size:clamp(1rem,2vw,1.5rem)">${esc(s.name)}</div>` : ""}</div>
@@ -473,6 +493,34 @@ function renderWorkings(agg) {
         )
         .join("")}</div>`
     : `<p class="waiting-note">Workings appear here…</p>`;
+  return distr + cards;
+}
+
+/* Counters — every child's board, with their answer. */
+function renderCounterBoards(agg) {
+  const distr = agg.answerDist.length
+    ? `<div class="bars" style="max-width:700px;margin-bottom:1.4rem">${agg.answerDist
+        .map((d) => {
+          const max = Math.max(...agg.answerDist.map((x) => x.count));
+          const cls = d.ok === true ? "c-green" : d.ok === false ? "c-red" : "";
+          return `<div class="pbar ${cls}">
+            <div class="top"><span>${esc(d.answer)}${d.ok === true ? " ✓" : ""}</span><span class="pct">${d.count}</span></div>
+            <div class="track"><div class="fill" style="width:${(d.count / max) * 100}%"></div></div>
+          </div>`;
+        })
+        .join("")}</div>`
+    : "";
+  const cards = agg.boards.length
+    ? `<div class="answers">${agg.boards
+        .map(
+          (b, i) => `<div class="answer-card tappable" data-spot="${b.sid}" style="animation-delay:${(i % 8) * 0.06}s;padding:0.8rem">
+            ${boardSvg(b.items, agg.counterKind, "clamp(150px, 19vw, 240px)")}
+            <div style="font-weight:800;margin-top:0.4rem">= ${esc(b.answer || "—")}${b.ok === true ? " ✓" : b.ok === false ? " ✗" : ""}</div>
+            ${nameTag(b.name)}
+          </div>`
+        )
+        .join("")}</div>`
+    : `<p class="waiting-note">Boards appear here…</p>`;
   return distr + cards;
 }
 

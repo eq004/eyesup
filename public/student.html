@@ -138,6 +138,38 @@
   }
   select.cloze-gap { width: auto; min-width: 110px; }
 
+  /* counters */
+  .ctr-tray {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    background: var(--surface);
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 0.6rem 0.8rem;
+  }
+  .ctr-src { flex-shrink: 0; box-shadow: var(--shadow); border: 2px solid rgba(0,0,0,0.15); touch-action: none; }
+  .ctr-src:active { transform: scale(1.15); }
+  .ctr-tray-lbl { font-size: 0.75rem; color: var(--muted); text-align: left; line-height: 1.25; }
+  .ctr-board {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 100 / 62;
+    background: repeating-linear-gradient(0deg, #f4f2ea, #f4f2ea 24px, #eeece2 24px, #eeece2 25px);
+    border: 1.5px solid var(--line);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    touch-action: none;
+    overflow: hidden;
+  }
+  .ctr-piece {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+    touch-action: none;
+    cursor: grab;
+  }
+
   /* working out */
   .work-pad {
     background: #23252e;

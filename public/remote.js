@@ -55,6 +55,7 @@ const MODES = {
   spelling:      { icon: "🔡", name: "Spelling Test", opts: { min: 1, max: 10, labels: "Word" } },
   cloze:         { icon: "▭", name: "Cloze", clozeUI: true },
   working:       { icon: "🧮", name: "Working Out", workingUI: true, ph: "The problem — or say it aloud" },
+  counters:      { icon: "🟠", name: "Counters", workingUI: true, countersUI: true, ph: "The equation, e.g. “3 + 4 = ?”" },
   sketch:        { icon: "🎨", name: "Sketch It" },
   annotate:      { icon: "🖍️", name: "Annotate", imageUpload: true },
 };
@@ -65,7 +66,7 @@ const CATEGORIES = [
   { label: "Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
-  { label: "Practise & test", modes: ["spelling", "cloze", "working"] },
+  { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters"] },
   { label: "Draw", modes: ["sketch", "annotate"] },
 ];
 
@@ -73,7 +74,7 @@ const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_tic
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "example_nonexample", "post_its", "phonics", "working"].includes(m);
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "example_nonexample", "post_its", "phonics", "working", "counters"].includes(m);
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -205,6 +206,15 @@ function lineFor(itx, p) {
   if (m === "spelling") return itx.words.map((w, i) => `${p.answers[i] || "—"}${markMatch(p.answers[i], w) ? "✓" : "✗"}`).join(" ");
   if (m === "cloze") return itx.cloze.answers.map((w, i) => `${p.fills[i] || "—"}${markMatch(p.fills[i], w) ? "✓" : "✗"}`).join(" ");
   if (m === "working") return `${(p.lines || []).join("; ")}${p.lines?.length ? " → " : ""}${p.answer || "—"}${itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : ""}`;
+  if (m === "counters") {
+    const ok = itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : "";
+    if (itx.counterKind === "base10") {
+      const t = (p.items || []).filter((i) => i.k === 0).length;
+      const o = (p.items || []).filter((i) => i.k === 1).length;
+      return `${t} tens + ${o} ones → ${p.answer || "—"}${ok}`;
+    }
+    return `${(p.items || []).length} counters → ${p.answer || "—"}${ok}`;
+  }
   return p.text || "";
 }
 
@@ -285,7 +295,7 @@ function renderLiveResponses(itx) {
     else if (agg.values) out += `<h3 class="sec">Scale</h3><div class="status">avg <b>${agg.avg ?? "—"}</b> / 100 · ${agg.values.length} placed</div>`;
   }
 
-  if (["spelling", "cloze", "scale", "ranking", "put_in_order", "match_up"].includes(itx.mode) && itx.responses.length) {
+  if (["spelling", "cloze", "scale", "ranking", "put_in_order", "match_up", "counters"].includes(itx.mode) && itx.responses.length) {
     out += `<h3 class="sec">By student</h3>` + itx.responses
       .map((r) => `<div class="resp-row"><span class="rr-who">${esc(r.name || "")}</span><span class="rr-what">${esc(lineFor(itx, r.payload) || "")}</span></div>`)
       .join("");
@@ -361,6 +371,7 @@ function openComposer(key) {
     `<div class="pair-row"><input class="rin" data-cleft maxlength="60" placeholder="Term ${i + 1}${i < m.pairs.min ? "" : " (opt)"}" /><span class="pair-eq">↔</span><input class="rin" data-cright maxlength="60" placeholder="Match" /></div>`).join("");
   if (m.clozeUI) fields += `<textarea class="rin" id="cCloze" rows="5" maxlength="1500" placeholder="Paste the passage; put [brackets] around hidden words"></textarea>
     <select class="rin" id="cClozeMode"><option value="type">⌨️ Students type</option><option value="bank">🧺 Word bank</option></select>`;
+  if (m.countersUI) fields += `<select class="rin" id="cKind"><option value="colors">🔴 Coloured counters</option><option value="base10">🔟 Tens & ones</option></select>`;
   if (m.workingUI) fields += `<input class="rin" id="cExpected" maxlength="30" placeholder="Correct answer (optional, auto-checks)" />`;
   if (m.imageUpload) fields += `<input class="rin" type="file" id="cImg" accept="image/*" />
     <img id="cImgPrev" alt="" style="display:none;max-height:110px;border-radius:10px;margin-bottom:0.5rem" />`;
@@ -409,10 +420,11 @@ function readComposer() {
     wordBank = $("cClozeMode").value === "bank";
   }
   if (m.workingUI) expected = $("cExpected").value.trim() || undefined;
+  const counterKind = m.countersUI ? $("cKind").value : undefined;
   if (m.imageUpload && !composerImage) { toast("Choose an image first"); return null; }
   const moderated = m.postits ? $("cMod").value !== "0" : undefined;
   const multi = m.multiOpt ? $("cMulti").value !== "0" : undefined;
-  return { mode: composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected };
+  return { mode: composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind };
 }
 
 /* ---------------- PLAN tab ---------------- */

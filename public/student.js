@@ -34,6 +34,7 @@ const MODE_NAMES = {
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
   phonics: "🔤 Phonics Keyboard",
   spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", working: "🧮 Working Out",
+  counters: "🟠 Counters",
 };
 
 /* Phonics keyboard layout & colours */
@@ -57,6 +58,7 @@ function phonCat(p) {
 let phonParts = []; // graphemes tapped so far
 let workLines = []; // working-out: completed calculation lines
 let workCur = ""; // working-out: line being typed
+let counterItems = []; // counters: {k, x, y} pieces on the board (percent coords)
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -160,6 +162,7 @@ function render(force) {
     phonParts = [];
     workLines = [];
     workCur = "";
+    counterItems = [];
     sprintDeadline = null;
     if (sprintTimer) { clearInterval(sprintTimer); sprintTimer = null; }
   }
@@ -559,6 +562,109 @@ function renderInteraction(itx) {
         const fills = [...screenEl.querySelectorAll("[data-cz]")].map((i) => i.value.trim());
         if (fills.some(Boolean)) submit({ fills });
       };
+    });
+    return;
+  }
+
+  /* --- counters: drag manipulatives to build the maths --- */
+  if (itx.mode === "counters") {
+    const base10 = itx.counterKind === "base10";
+    const COLORS = ["#e05252", "#4a7de0", "#e8c33c", "#3f9e5f"];
+    const tray = base10
+      ? `<button class="ctr-src" data-k="0" style="background:#e8913c;width:26px;height:64px;border-radius:6px" title="a ten"></button>
+         <button class="ctr-src" data-k="1" style="background:#4a7de0;width:26px;height:26px;border-radius:6px" title="a one"></button>
+         <span class="ctr-tray-lbl">← tap or drag<br/>tens &amp; ones</span>`
+      : COLORS.map((c, i) => `<button class="ctr-src" data-k="${i}" style="background:${c};width:34px;height:34px;border-radius:50%"></button>`).join("") +
+        `<span class="ctr-tray-lbl">← tap or drag counters</span>`;
+    show(`${h}
+      <div class="ctr-tray">${tray}</div>
+      <div class="ctr-board" id="ctrBoard"></div>
+      <p class="hint" id="ctrCount" style="margin-top:0.4rem"></p>
+      <div class="work-ans-row">
+        <span>My answer:</span>
+        <input id="ctrAns" maxlength="30" autocomplete="off" inputmode="numeric" />
+      </div>
+      <button class="btn send" id="sendBtn">Send</button>
+      <p class="hint">Drag a piece off the board to remove it.</p>`, () => {
+      const board = $("ctrBoard");
+      let ansTouched = false;
+      const valueOf = () =>
+        base10
+          ? counterItems.filter((i) => i.k === 0).length * 10 + counterItems.filter((i) => i.k === 1).length
+          : counterItems.length;
+      const describe = () => {
+        if (base10) {
+          const t = counterItems.filter((i) => i.k === 0).length;
+          const o = counterItems.filter((i) => i.k === 1).length;
+          return `${t} ten${t === 1 ? "" : "s"} + ${o} one${o === 1 ? "" : "s"} = ${valueOf()}`;
+        }
+        return `${counterItems.length} counter${counterItems.length === 1 ? "" : "s"} on the board`;
+      };
+      const paint = () => {
+        board.innerHTML = counterItems
+          .map((it, i) =>
+            base10
+              ? it.k === 0
+                ? `<div class="ctr-piece" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:5%;height:30%;background:#e8913c;border-radius:4px"></div>`
+                : `<div class="ctr-piece" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:5%;height:8%;background:#4a7de0;border-radius:4px"></div>`
+              : `<div class="ctr-piece" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:7%;height:11.3%;background:${COLORS[it.k]};border-radius:50%"></div>`
+          )
+          .join("");
+        $("ctrCount").textContent = describe();
+        if (!ansTouched) $("ctrAns").value = counterItems.length ? String(valueOf()) : "";
+        board.querySelectorAll(".ctr-piece").forEach((el) => (el.onpointerdown = (e) => startDrag(e, +el.dataset.i)));
+      };
+      const pctPos = (e) => {
+        const r = board.getBoundingClientRect();
+        return {
+          x: Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100)),
+          y: Math.max(0, Math.min(100, ((e.clientY - r.top) / r.height) * 100)),
+          inside: e.clientX >= r.left - 10 && e.clientX <= r.right + 10 && e.clientY >= r.top - 30 && e.clientY <= r.bottom + 30,
+        };
+      };
+      const startDrag = (e, idx) => {
+        e.preventDefault();
+        const sx = e.clientX, sy = e.clientY;
+        let moved = false;
+        const move = (ev) => {
+          if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 8) moved = true;
+          const p = pctPos(ev);
+          counterItems[idx].x = p.x;
+          counterItems[idx].y = p.y;
+          paint();
+        };
+        const up = (ev) => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+          // A real drag ending off the board removes the piece; a simple tap keeps it.
+          if (moved && !pctPos(ev).inside) {
+            counterItems.splice(idx, 1);
+            paint();
+          }
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      };
+      screenEl.querySelectorAll(".ctr-src").forEach((src) => {
+        src.onpointerdown = (e) => {
+          e.preventDefault();
+          if (counterItems.length >= 40) return;
+          // Tap drops it in a tidy spot; dragging carries it to wherever you release.
+          counterItems.push({
+            k: +src.dataset.k,
+            x: 12 + (counterItems.length % 8) * 10,
+            y: 20 + (Math.floor(counterItems.length / 8) % 4) * 22,
+          });
+          paint();
+          startDrag(e, counterItems.length - 1);
+        };
+      });
+      $("ctrAns").oninput = () => (ansTouched = true);
+      $("sendBtn").onclick = () => {
+        const answer = $("ctrAns").value.trim();
+        if (counterItems.length || answer) submit({ items: counterItems, answer });
+      };
+      paint();
     });
     return;
   }

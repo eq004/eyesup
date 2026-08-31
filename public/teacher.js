@@ -58,6 +58,8 @@ const MODES = {
                    ph: "Optional instruction, e.g. “Fill the gaps”" },
   working:       { icon: "🧮", name: "Working Out",   hint: "Calculator pad that records every step", workingUI: true,
                    ph: "The problem — or write it on the board" },
+  counters:      { icon: "🟠", name: "Counters",      hint: "Drag counters or tens & ones to build the maths", workingUI: true, countersUI: true,
+                   ph: "The equation, e.g. “3 + 4 = ?”" },
   /* draw */
   sketch:        { icon: "🎨", name: "Sketch It",     hint: "Draw understanding instead of writing", opts: null },
   annotate:      { icon: "🖍️", name: "Annotate",     hint: "Upload an image — students draw on it", opts: null, imageUpload: true,
@@ -70,7 +72,7 @@ const CATEGORIES = [
   { label: "✏️ Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
-  { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working"] },
+  { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters"] },
   { label: "🎨 Draw", modes: ["sketch", "annotate"] },
 ];
 
@@ -81,7 +83,22 @@ const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
 const revealMode = (m) =>
   TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" ||
-  m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working";
+  m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" || m === "counters";
+
+const COUNTER_COLORS = ["#e05252", "#4a7de0", "#e8c33c", "#3f9e5f"];
+// Recreate a student's manipulative board as a small SVG.
+function boardSvg(items, kind, width) {
+  const inner = (items || [])
+    .map((it) =>
+      kind === "base10"
+        ? it.k === 0
+          ? `<rect x="${it.x - 2}" y="${it.y - 9}" width="4" height="18" rx="1" fill="#e8913c" stroke="#9c5a1d" stroke-width="0.4"/>`
+          : `<rect x="${it.x - 2}" y="${it.y - 2}" width="4" height="4" rx="0.8" fill="#4a7de0" stroke="#2c4f96" stroke-width="0.4"/>`
+        : `<circle cx="${it.x}" cy="${it.y}" r="3.4" fill="${COUNTER_COLORS[it.k] || "#999"}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`
+    )
+    .join("");
+  return `<svg viewBox="0 0 100 62" style="width:${width};background:#f2f0e9;border-radius:8px;border:1px solid #ddd8cc" aria-label="counter board">${inner}</svg>`;
+}
 
 // Same forgiving marker the server uses (case/space-insensitive, numeric-aware).
 function markMatch(attempt, target) {
@@ -334,6 +351,15 @@ function openComposer(key, keepImage) {
       </select>`;
     opts.appendChild(wrap);
   }
+  if (m.countersUI) {
+    const kindSel = document.createElement("select");
+    kindSel.id = "kindSel";
+    kindSel.innerHTML = `
+      <option value="colors">🔴 Coloured counters</option>
+      <option value="base10">🔟 Tens & ones (place value)</option>`;
+    kindSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    opts.appendChild(kindSel);
+  }
   if (m.workingUI) {
     const inp = document.createElement("input");
     inp.type = "text";
@@ -437,9 +463,10 @@ function readComposer() {
     wordBank = $("clozeMode").value === "bank";
   }
   const expected = m.workingUI ? $("expectedAns").value.trim() || undefined : undefined;
+  const counterKind = m.countersUI ? $("kindSel").value : undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected };
+  return { mode: composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind };
 }
 
 /* ---------------- rendering ---------------- */
@@ -716,6 +743,16 @@ function renderLive() {
             .join(" · ")}</span>
         </div>`)
         .join("")}</div>`;
+  } else if (itx.mode === "counters") {
+    const dist = agg?.answerDist || [];
+    body =
+      (itx.expected ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Auto-checking against <b>${esc(itx.expected)}</b></p>` : "") +
+      (dist.length ? bars(dist.map((d) => `${d.answer}${d.ok === true ? " ✓" : d.ok === false ? " ✗" : ""}`), dist.map((d) => d.count)) : "") +
+      revealCards((r) => {
+        const ok = itx.expected ? markMatch(r.payload.answer, itx.expected) : null;
+        return `${boardSvg(r.payload.items, itx.counterKind, "150px")}
+          <b style="margin-left:0.5rem;color:${ok === false ? "var(--red)" : ok ? "var(--green)" : "var(--ink)"}">= ${esc(r.payload.answer || "—")}${ok === true ? " ✓" : ok === false ? " ✗" : ""}</b>`;
+      });
   } else if (itx.mode === "working") {
     const dist = agg?.answerDist || [];
     const distHtml = dist.length
