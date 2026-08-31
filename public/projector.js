@@ -34,8 +34,11 @@ function boardSvg(items, kind, width) {
     .map((it) =>
       kind === "base10"
         ? it.k === 0
-          ? `<rect x="${it.x - 2}" y="${it.y - 9}" width="4" height="18" rx="1" fill="#e8913c" stroke="#9c5a1d" stroke-width="0.4"/>`
-          : `<rect x="${it.x - 2}" y="${it.y - 2}" width="4" height="4" rx="0.8" fill="#4a7de0" stroke="#2c4f96" stroke-width="0.4"/>`
+          ? `<g><rect x="${it.x - 2}" y="${it.y - 10}" width="4" height="20" fill="#7f8ff0" stroke="#4a3fb5" stroke-width="0.5"/>${Array.from(
+              { length: 9 },
+              (_, s) => `<line x1="${it.x - 2}" y1="${it.y - 10 + 2 * (s + 1)}" x2="${it.x + 2}" y2="${it.y - 10 + 2 * (s + 1)}" stroke="#4a3fb5" stroke-width="0.3"/>`
+            ).join("")}</g>`
+          : `<rect x="${it.x - 2}" y="${it.y - 2}" width="4" height="4" fill="#7f8ff0" stroke="#4a3fb5" stroke-width="0.5"/>`
         : `<circle cx="${it.x}" cy="${it.y}" r="3.4" fill="${COUNTER_COLORS[it.k] || "#999"}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`
     )
     .join("");
@@ -217,8 +220,9 @@ function renderLobby() {
 }
 
 function promptBlock(itx) {
+  const tag = itx.mode === "counters" && itx.counterKind === "base10" ? "Tens & Ones" : MODE_TAGS[itx.mode] || itx.mode;
   return `
-    <div class="q-tag">${MODE_TAGS[itx.mode] || itx.mode}</div>
+    <div class="q-tag">${tag}</div>
     <h1 class="prompt">${itx.prompt ? esc(itx.prompt) : `<span class="aloud">Listen to the question…</span>`}</h1>`;
 }
 

@@ -58,8 +58,10 @@ const MODES = {
                    ph: "Optional instruction, e.g. “Fill the gaps”" },
   working:       { icon: "🧮", name: "Working Out",   hint: "Calculator pad that records every step", workingUI: true,
                    ph: "The problem — or write it on the board" },
-  counters:      { icon: "🟠", name: "Counters",      hint: "Drag counters or tens & ones to build the maths", workingUI: true, countersUI: true,
+  counters:      { icon: "🟠", name: "Counters",      hint: "Drag coloured counters to build the maths", workingUI: true, forceKind: "colors",
                    ph: "The equation, e.g. “3 + 4 = ?”" },
+  tens_ones:     { icon: "🔟", name: "Tens & Ones",   hint: "Base-ten blocks — build the number", workingUI: true, forceKind: "base10", launchAs: "counters",
+                   ph: "e.g. “Build 47” or “30 + 17 = ?”" },
   /* draw */
   sketch:        { icon: "🎨", name: "Sketch It",     hint: "Draw understanding instead of writing", opts: null },
   annotate:      { icon: "🖍️", name: "Annotate",     hint: "Upload an image — students draw on it", opts: null, imageUpload: true,
@@ -72,7 +74,7 @@ const CATEGORIES = [
   { label: "✏️ Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
-  { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters"] },
+  { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones"] },
   { label: "🎨 Draw", modes: ["sketch", "annotate"] },
 ];
 
@@ -92,8 +94,11 @@ function boardSvg(items, kind, width) {
     .map((it) =>
       kind === "base10"
         ? it.k === 0
-          ? `<rect x="${it.x - 2}" y="${it.y - 9}" width="4" height="18" rx="1" fill="#e8913c" stroke="#9c5a1d" stroke-width="0.4"/>`
-          : `<rect x="${it.x - 2}" y="${it.y - 2}" width="4" height="4" rx="0.8" fill="#4a7de0" stroke="#2c4f96" stroke-width="0.4"/>`
+          ? `<g><rect x="${it.x - 2}" y="${it.y - 10}" width="4" height="20" fill="#7f8ff0" stroke="#4a3fb5" stroke-width="0.5"/>${Array.from(
+              { length: 9 },
+              (_, s) => `<line x1="${it.x - 2}" y1="${it.y - 10 + 2 * (s + 1)}" x2="${it.x + 2}" y2="${it.y - 10 + 2 * (s + 1)}" stroke="#4a3fb5" stroke-width="0.3"/>`
+            ).join("")}</g>`
+          : `<rect x="${it.x - 2}" y="${it.y - 2}" width="4" height="4" fill="#7f8ff0" stroke="#4a3fb5" stroke-width="0.5"/>`
         : `<circle cx="${it.x}" cy="${it.y}" r="3.4" fill="${COUNTER_COLORS[it.k] || "#999"}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`
     )
     .join("");
@@ -463,10 +468,10 @@ function readComposer() {
     wordBank = $("clozeMode").value === "bank";
   }
   const expected = m.workingUI ? $("expectedAns").value.trim() || undefined : undefined;
-  const counterKind = m.countersUI ? $("kindSel").value : undefined;
+  const counterKind = m.forceKind || undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind };
 }
 
 /* ---------------- rendering ---------------- */
@@ -539,7 +544,8 @@ function updateTimerDisplay() {
 }
 setInterval(updateTimerDisplay, 250);
 
-function modeTag(mode) {
+function modeTag(mode, counterKind) {
+  if (mode === "counters" && counterKind === "base10") return "🔟 Tens & Ones";
   const m = MODES[mode] || { icon: "", name: mode };
   return `${m.icon} ${m.name}`;
 }
@@ -777,7 +783,7 @@ function renderLive() {
     <div class="live">
       <div class="live-top">
         <div class="live-q">
-          <span class="mode-tag">${modeTag(itx.mode)}</span>
+          <span class="mode-tag">${modeTag(itx.mode, itx.counterKind)}</span>
           <h2>${itx.prompt ? esc(itx.prompt) : `<span class="aloud">Question asked aloud 🎤</span>`}</h2>
           <span class="status-line ${itx.open ? "open" : "closed"}">${itx.open ? "● Responses open" : "■ Responses closed"}</span>
         </div>

@@ -55,7 +55,8 @@ const MODES = {
   spelling:      { icon: "🔡", name: "Spelling Test", opts: { min: 1, max: 10, labels: "Word" } },
   cloze:         { icon: "▭", name: "Cloze", clozeUI: true },
   working:       { icon: "🧮", name: "Working Out", workingUI: true, ph: "The problem — or say it aloud" },
-  counters:      { icon: "🟠", name: "Counters", workingUI: true, countersUI: true, ph: "The equation, e.g. “3 + 4 = ?”" },
+  counters:      { icon: "🟠", name: "Counters", workingUI: true, forceKind: "colors", ph: "The equation, e.g. “3 + 4 = ?”" },
+  tens_ones:     { icon: "🔟", name: "Tens & Ones", workingUI: true, forceKind: "base10", launchAs: "counters", ph: "e.g. “Build 47”" },
   sketch:        { icon: "🎨", name: "Sketch It" },
   annotate:      { icon: "🖍️", name: "Annotate", imageUpload: true },
 };
@@ -66,7 +67,7 @@ const CATEGORIES = [
   { label: "Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
-  { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters"] },
+  { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones"] },
   { label: "Draw", modes: ["sketch", "annotate"] },
 ];
 
@@ -87,7 +88,8 @@ function markMatch(a, t) {
   const nx = Number(x.replace(",", ".")), ny = Number(y.replace(",", "."));
   return Number.isFinite(nx) && Number.isFinite(ny) && Math.abs(nx - ny) < 1e-9;
 }
-function modeName(m) {
+function modeName(m, counterKind) {
+  if (m === "counters" && counterKind === "base10") return "🔟 Tens & Ones";
   const md = MODES[m];
   return md ? `${md.icon} ${md.name}` : m;
 }
@@ -235,7 +237,7 @@ function renderLive() {
   if (itx) {
     status = `
       <div class="status">
-        <div class="mode">${modeName(itx.mode)}</div>
+        <div class="mode">${modeName(itx.mode, itx.counterKind)}</div>
         <div class="q">${itx.prompt ? esc(itx.prompt) : "🎤 asked aloud"}</div>
         <div class="meta">
           <span><b>${itx.responses.length}</b>/${state.students.length} responded</span>
@@ -371,7 +373,6 @@ function openComposer(key) {
     `<div class="pair-row"><input class="rin" data-cleft maxlength="60" placeholder="Term ${i + 1}${i < m.pairs.min ? "" : " (opt)"}" /><span class="pair-eq">↔</span><input class="rin" data-cright maxlength="60" placeholder="Match" /></div>`).join("");
   if (m.clozeUI) fields += `<textarea class="rin" id="cCloze" rows="5" maxlength="1500" placeholder="Paste the passage; put [brackets] around hidden words"></textarea>
     <select class="rin" id="cClozeMode"><option value="type">⌨️ Students type</option><option value="bank">🧺 Word bank</option></select>`;
-  if (m.countersUI) fields += `<select class="rin" id="cKind"><option value="colors">🔴 Coloured counters</option><option value="base10">🔟 Tens & ones</option></select>`;
   if (m.workingUI) fields += `<input class="rin" id="cExpected" maxlength="30" placeholder="Correct answer (optional, auto-checks)" />`;
   if (m.imageUpload) fields += `<input class="rin" type="file" id="cImg" accept="image/*" />
     <img id="cImgPrev" alt="" style="display:none;max-height:110px;border-radius:10px;margin-bottom:0.5rem" />`;
@@ -420,11 +421,11 @@ function readComposer() {
     wordBank = $("cClozeMode").value === "bank";
   }
   if (m.workingUI) expected = $("cExpected").value.trim() || undefined;
-  const counterKind = m.countersUI ? $("cKind").value : undefined;
+  const counterKind = m.forceKind || undefined;
   if (m.imageUpload && !composerImage) { toast("Choose an image first"); return null; }
   const moderated = m.postits ? $("cMod").value !== "0" : undefined;
   const multi = m.multiOpt ? $("cMulti").value !== "0" : undefined;
-  return { mode: composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind };
 }
 
 /* ---------------- PLAN tab ---------------- */

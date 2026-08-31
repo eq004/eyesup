@@ -194,8 +194,9 @@ function show(html, after) {
 }
 
 function header(itx) {
+  const tag = itx.mode === "counters" && itx.counterKind === "base10" ? "🔟 Tens & Ones" : MODE_NAMES[itx.mode] || itx.mode;
   return `
-    <span class="mode-tag">${MODE_NAMES[itx.mode] || itx.mode}</span>
+    <span class="mode-tag">${tag}</span>
     <h1 class="q">${itx.prompt ? esc(itx.prompt) : "Listen to your teacher's question 🎤"}</h1>`;
 }
 
@@ -571,8 +572,8 @@ function renderInteraction(itx) {
     const base10 = itx.counterKind === "base10";
     const COLORS = ["#e05252", "#4a7de0", "#e8c33c", "#3f9e5f"];
     const tray = base10
-      ? `<button class="ctr-src" data-k="0" style="background:#e8913c;width:26px;height:64px;border-radius:6px" title="a ten"></button>
-         <button class="ctr-src" data-k="1" style="background:#4a7de0;width:26px;height:26px;border-radius:6px" title="a one"></button>
+      ? `<button class="ctr-src mab-ten" data-k="0" title="a ten"></button>
+         <button class="ctr-src mab-one" data-k="1" title="a one"></button>
          <span class="ctr-tray-lbl">← tap or drag<br/>tens &amp; ones</span>`
       : COLORS.map((c, i) => `<button class="ctr-src" data-k="${i}" style="background:${c};width:34px;height:34px;border-radius:50%"></button>`).join("") +
         `<span class="ctr-tray-lbl">← tap or drag counters</span>`;
@@ -605,8 +606,8 @@ function renderInteraction(itx) {
           .map((it, i) =>
             base10
               ? it.k === 0
-                ? `<div class="ctr-piece" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:5%;height:30%;background:#e8913c;border-radius:4px"></div>`
-                : `<div class="ctr-piece" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:5%;height:8%;background:#4a7de0;border-radius:4px"></div>`
+                ? `<div class="ctr-piece mab-ten" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:5%;height:32%"></div>`
+                : `<div class="ctr-piece mab-one" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:5%;height:8%"></div>`
               : `<div class="ctr-piece" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:7%;height:11.3%;background:${COLORS[it.k]};border-radius:50%"></div>`
           )
           .join("");

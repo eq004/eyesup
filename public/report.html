@@ -248,7 +248,7 @@ function renderReport(s, recovered) {
         who += `<p class="who-note">No response: ${it.noResponse.map(esc).join(", ")}</p>`;
     }
     return `<div class="itx">
-      <span class="mode">${MODE_NAMES[it.mode] || esc(it.mode)}</span>
+      <span class="mode">${it.mode === "counters" && it.counterKind === "base10" ? "Tens & Ones" : MODE_NAMES[it.mode] || esc(it.mode)}</span>
       <h3>${it.prompt ? esc(it.prompt) : "<i>Question asked aloud</i>"}</h3>
       ${body}
       ${who}

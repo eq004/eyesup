@@ -807,6 +807,7 @@ function projectorState(session) {
           prompt: itx.prompt,
           options: itx.options,
           imageUrl: itx.imageUrl,
+          counterKind: itx.counterKind,
           open: itx.open,
           resultsVisible: itx.resultsVisible,
           aggregate: itx.resultsVisible ? aggregate(session, itx) : null,
@@ -973,6 +974,7 @@ function buildSummary(session) {
         .map((r) => r.payload.parts.filter(Boolean).join(" · "))
         .slice(0, 40);
     if (itx.mode === "sketch" || itx.mode === "annotate") item.sketchCount = itx.responses.size;
+    if (itx.mode === "counters") item.counterKind = itx.counterKind;
     if (itx.mode === "venn")
       item.venn = { labels: itx.options, regions: agg.regions.map((r) => r.slice(0, 8)) };
     if (itx.mode === "spelling" || itx.mode === "cloze")
