@@ -97,26 +97,32 @@ async function teacherFromToken(token) {
   }
 }
 
-// Debounced write of the session's full summary — every response nudges it,
-// at most one write per few seconds per session.
+// Write the session's full summary to the database right now.
+async function persistNow(session) {
+  if (!db) return;
+  try {
+    const summary = buildSummary(session);
+    if (!summary.interactionCount) return; // nothing worth keeping yet
+    await db.query(
+      `INSERT INTO lessons (code, title, created_at, saved_at, summary, teacher_id, teacher_name)
+       VALUES ($1, $2, $3, now(), $4, $5, $6)
+       ON CONFLICT (code, created_at)
+       DO UPDATE SET title = $2, saved_at = now(), summary = $4, teacher_id = $5, teacher_name = $6`,
+      [session.code, session.title, new Date(session.createdAt), summary,
+       session.teacherId ?? null, session.teacherName ?? null]
+    );
+  } catch (e) {
+    console.error("persist failed:", e.message);
+  }
+}
+
+// Debounced variant — every response nudges it, at most one write per few
+// seconds per session.
 function persistSession(session) {
   if (!db || session.persistTimer) return;
-  session.persistTimer = setTimeout(async () => {
+  session.persistTimer = setTimeout(() => {
     session.persistTimer = null;
-    try {
-      const summary = buildSummary(session);
-      if (!summary.interactionCount) return; // nothing worth keeping yet
-      await db.query(
-        `INSERT INTO lessons (code, title, created_at, saved_at, summary, teacher_id, teacher_name)
-         VALUES ($1, $2, $3, now(), $4, $5, $6)
-         ON CONFLICT (code, created_at)
-         DO UPDATE SET title = $2, saved_at = now(), summary = $4, teacher_id = $5, teacher_name = $6`,
-        [session.code, session.title, new Date(session.createdAt), summary,
-         session.teacherId ?? null, session.teacherName ?? null]
-      );
-    } catch (e) {
-      console.error("persist failed:", e.message);
-    }
+    persistNow(session);
   }, 4000);
 }
 const app = express();
@@ -1315,6 +1321,34 @@ async function handle(ws, msg) {
     case "get_summary": {
       safeSend(ws, buildSummary(session));
       return; // no broadcast needed
+    }
+    case "new_lesson": {
+      // Back-to-back classes: archive & end this lesson, then move the
+      // teacher's screens (dashboard, remotes, projectors) to a fresh one.
+      if (session.interaction) {
+        session.history.push(session.interaction);
+        session.interaction = null;
+      }
+      session.phase = "ended";
+      if (session.persistTimer) {
+        clearTimeout(session.persistTimer);
+        session.persistTimer = null;
+      }
+      persistNow(session); // guaranteed flush to the archive
+
+      const fresh = createSession(ws);
+      fresh.teacherId = session.teacherId;
+      fresh.teacherName = session.teacherName;
+      fresh.teachers = new Set(session.teachers);
+      fresh.projectors = session.projectors;
+      session.teachers = new Set();
+      session.projectors = new Set();
+      for (const t of fresh.teachers) t.meta = { role: "teacher", code: fresh.code };
+      for (const p of fresh.projectors) p.meta = { role: "projector", code: fresh.code };
+
+      broadcast(session); // the outgoing class sees "that's a wrap"
+      broadcast(fresh); // the projector flips to the new join screen
+      return;
     }
     case "end_session": {
       if (session.interaction) {

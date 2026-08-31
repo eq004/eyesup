@@ -141,6 +141,7 @@ function connect() {
     }
     if (msg.type === "state") {
       state = msg;
+      sessionStorage.setItem("eyesup_remote_code", state.code); // follows "new lesson" switches
       $("tabbar").style.display = "";
       render();
     }
@@ -544,6 +545,7 @@ function renderMore() {
     <h3 class="sec">Lesson</h3>
     <input class="rin" id="titleIn" maxlength="80" placeholder="Class / lesson title…" value="${esc(state.title || "")}" />
     <button class="rbtn accent" id="finishBtn">✅ Finish & summarise</button>
+    <button class="rbtn" id="newLessonBtn">🆕 New lesson (next class)</button>
 
     <h3 class="sec">Sharing</h3>
     <button class="rbtn" id="copyJoin">🔗 Copy student join link</button>
@@ -556,6 +558,10 @@ function renderMore() {
     ${creds().token ? `<button class="rbtn warn" id="signOut">↪ Sign out</button>` : ""}`;
 
   $("titleIn").onchange = () => { send({ type: "set_title", title: $("titleIn").value }); toast("Title saved"); };
+  $("newLessonBtn").onclick = () => {
+    if (confirm("Start a fresh lesson? This one is archived and ends for the students in the room."))
+      send({ type: "new_lesson" });
+  };
   $("finishBtn").onclick = () => { userSummaryWanted = true; send({ type: "get_summary" }); };
   $("copyJoin").onclick = () => { navigator.clipboard?.writeText(`${location.origin}/join?code=${state.code}`); toast("Join link copied"); };
   const lb = $("lessonsBtn");

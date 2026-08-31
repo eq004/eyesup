@@ -934,6 +934,10 @@ $("closePreview").onclick = () => {
   $("phoneFrame").src = "about:blank"; // disconnects the preview student so the roster stays honest
 };
 $("eyesUpTop").onclick = () => send({ type: "eyes_up" });
+$("newLessonBtn").onclick = () => {
+  if (confirm("Start a fresh lesson?\n\nThis one is saved to the archive, its session ends for the students in the room, and you get a new class code."))
+    send({ type: "new_lesson" });
+};
 $("endBtn").onclick = () => {
   userSummaryWanted = true;
   send({ type: "get_summary" });
