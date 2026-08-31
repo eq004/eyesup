@@ -862,12 +862,24 @@ $("codeChip").onclick = () => {
 };
 $("copyLink").onclick = $("codeChip").onclick;
 $("qrToggle").onclick = () => send({ type: "toggle_join" });
-$("remoteBtn").onclick = () => {
+$("remoteBtn").onclick = async () => {
   if (!state) return;
   const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
   const host = isLocal && state.lanHost ? state.lanHost : location.host;
   const proto = isLocal ? "http:" : location.protocol;
-  const url = `${proto}//${host}/remote?code=${state.code}`;
+  let url = `${proto}//${host}/remote?code=${state.code}`;
+  // Signed in? Mint a one-time pairing code so the phone signs in by itself.
+  if (teacherToken()) {
+    try {
+      const res = await fetch("/api/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ t: teacherToken() }),
+      });
+      const data = await res.json();
+      if (res.ok) url += `&pair=${encodeURIComponent(data.pair)}`;
+    } catch { /* plain URL still works — the phone will just ask to sign in */ }
+  }
   $("remoteUrl").textContent = url.replace(/^https?:\/\//, "");
   try {
     const qr = qrcode(0, "M");

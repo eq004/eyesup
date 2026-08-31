@@ -179,6 +179,40 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+/* ---- phone pairing: the signed-in dashboard mints a one-time code so
+   the QR logs the phone in automatically. Short-lived, single-use. ---- */
+
+const pairCodes = new Map(); // pair -> {teacherId, expires}
+
+app.post("/api/pair", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await teacherFromToken(req.body?.t);
+  if (!t) return res.status(403).json({ error: "auth_required" });
+  const pair = crypto.randomBytes(8).toString("base64url");
+  pairCodes.set(pair, { teacherId: t.id, expires: Date.now() + 10 * 60 * 1000 });
+  res.json({ pair });
+});
+
+app.post("/api/pair/claim", async (req, res) => {
+  const key = String(req.body?.pair || "");
+  const rec = pairCodes.get(key);
+  pairCodes.delete(key); // single use, success or not
+  if (!db || !rec || rec.expires < Date.now())
+    return res.status(403).json({ error: "bad_pair" });
+  try {
+    const { rows } = await db.query(`SELECT * FROM teachers WHERE id = $1`, [rec.teacherId]);
+    if (!rows[0]) return res.status(403).json({ error: "bad_pair" });
+    res.json({ token: signToken(rows[0].id, rows[0].pass_hash), name: rows[0].display_name, username: rows[0].username });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of pairCodes) if (v.expires < now) pairCodes.delete(k);
+}, 60 * 1000);
+
 // Past lessons archive — each teacher sees their own (plus pre-account legacy rows).
 app.get("/api/lessons", async (req, res) => {
   if (!db) return res.json({ storage: false, lessons: [] });

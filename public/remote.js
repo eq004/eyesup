@@ -641,5 +641,29 @@ function renderGate(err) {
   main.querySelectorAll("input").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter") go(); }));
 }
 
-renderGate();
-connect();
+/* Boot: a QR from the signed-in dashboard carries ?pair=… — claim it so
+   the phone signs in and joins with zero typing. */
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const urlCode = (params.get("code") || "").toUpperCase();
+  if (urlCode) sessionStorage.setItem("eyesup_remote_code", urlCode);
+  const pair = params.get("pair");
+  if (pair) {
+    try {
+      const res = await fetch("/api/pair/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pair }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem("eyesup_token", data.token);
+        localStorage.setItem("eyesup_teacher_name", data.name || data.username);
+        localStorage.setItem("eyesup_has_account", "1");
+      }
+    } catch { /* fall back to the sign-in gate */ }
+    history.replaceState(null, "", urlCode ? `/remote?code=${urlCode}` : "/remote");
+  }
+  renderGate();
+  connect(); // onopen auto-resumes with the stored code + fresh token
+})();
