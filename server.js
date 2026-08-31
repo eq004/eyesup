@@ -473,11 +473,39 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
 /* Aggregation (what the projector shows)                             */
 /* ------------------------------------------------------------------ */
 
+// The spotlighted response (any card type), enlarged on the projector.
+// spotlightId is a studentId, or "studentId|noteIndex" for post-it notes.
+function buildSpotlight(itx) {
+  if (!itx.spotlightId) return null;
+  const [sid, noteIdx] = String(itx.spotlightId).split("|");
+  const r = itx.responses.get(sid);
+  if (!r || !r.revealed) return null;
+  const name = itx.showNames && !ANON_MODES.has(itx.mode) ? r.name : undefined;
+  const key = itx.spotlightId;
+  const m = itx.mode;
+  if (m === "sketch" || m === "annotate") return { kind: "image", image: r.payload.image, name, sid: key };
+  if (m === "post_its") {
+    const i = parseInt(noteIdx, 10);
+    const note = (r.payload.notes || [])[i];
+    if (note == null || !r.noteRevealed?.[i]) return null;
+    return { kind: "text", text: note, name, sid: key };
+  }
+  if (m === "phonics") return { kind: "phonics", parts: r.payload.parts, name, sid: key };
+  if (m === "working")
+    return { kind: "working", lines: r.payload.lines, answer: r.payload.answer,
+             ok: itx.expected ? markMatch(r.payload.answer, itx.expected) : null, name, sid: key };
+  if (STRUCTURED_FIELDS[m]) return { kind: "structured", fields: itx.fields, parts: r.payload.parts, name, sid: key };
+  if (m === "example_nonexample")
+    return { kind: "text", text: `${itx.options[r.payload.choice]}${r.payload.text ? " — " + r.payload.text : ""}`, name, sid: key };
+  if (TEXT_MODES.has(m)) return { kind: "text", text: r.payload.text, name, sid: key };
+  return null;
+}
+
 function aggregate(session, itx) {
   if (!itx) return null;
   const responses = [...itx.responses.values()];
   const total = responses.length;
-  const base = { mode: itx.mode, total };
+  const base = { mode: itx.mode, total, spotlight: buildSpotlight(itx) };
   // Names reach the projector only while the teacher's toggle is on.
   const nm = (r) => (itx.showNames && !ANON_MODES.has(itx.mode) ? r.name : undefined);
 
@@ -541,10 +569,10 @@ function aggregate(session, itx) {
     // Only approved notes reach the board; the teacher sees everything.
     const stickies = [];
     let totalNotes = 0;
-    for (const r of responses) {
+    for (const [sid, r] of itx.responses.entries()) {
       (r.payload.notes || []).forEach((text, i) => {
         totalNotes += 1;
-        if (r.noteRevealed?.[i]) stickies.push({ text, name: nm(r) });
+        if (r.noteRevealed?.[i]) stickies.push({ text, name: nm(r), sid: `${sid}|${i}` });
       });
     }
     return { ...base, stickies, totalNotes };
@@ -588,16 +616,16 @@ function aggregate(session, itx) {
       const i = r.payload.choice;
       if (Number.isInteger(i) && i >= 0 && i < counts.length) counts[i] += 1;
     }
-    const revealed = responses
-      .filter((r) => r.revealed && r.payload.text)
-      .map((r) => ({ text: r.payload.text, choiceLabel: itx.options[r.payload.choice], name: nm(r) }));
+    const revealed = [...itx.responses.entries()]
+      .filter(([, r]) => r.revealed && r.payload.text)
+      .map(([sid, r]) => ({ text: r.payload.text, choiceLabel: itx.options[r.payload.choice], name: nm(r), sid }));
     return { ...base, options: itx.options, counts, revealed };
   }
 
   if (STRUCTURED_FIELDS[itx.mode]) {
-    const revealed = responses
-      .filter((r) => r.revealed)
-      .map((r) => ({ parts: r.payload.parts, name: nm(r) }));
+    const revealed = [...itx.responses.entries()]
+      .filter(([, r]) => r.revealed)
+      .map(([sid, r]) => ({ parts: r.payload.parts, name: nm(r), sid }));
     return { ...base, fields: itx.fields, revealed, revealedCount: revealed.length };
   }
 
@@ -605,18 +633,13 @@ function aggregate(session, itx) {
     const revealed = [...itx.responses.entries()]
       .filter(([, r]) => r.revealed)
       .map(([sid, r]) => ({ sid, image: r.payload.image, name: nm(r) }));
-    const spot = itx.spotlightId && itx.responses.get(itx.spotlightId);
-    const spotlight =
-      spot && spot.revealed
-        ? { image: spot.payload.image, name: itx.showNames ? spot.name : undefined, sid: itx.spotlightId }
-        : null;
-    return { ...base, sketches: revealed, spotlight, revealedCount: revealed.length };
+    return { ...base, sketches: revealed, revealedCount: revealed.length };
   }
 
   if (itx.mode === "phonics") {
-    const revealed = responses
-      .filter((r) => r.revealed)
-      .map((r) => ({ parts: r.payload.parts, name: nm(r) }));
+    const revealed = [...itx.responses.entries()]
+      .filter(([, r]) => r.revealed)
+      .map(([sid, r]) => ({ parts: r.payload.parts, name: nm(r), sid }));
     return { ...base, builds: revealed, revealedCount: revealed.length };
   }
 
@@ -646,9 +669,10 @@ function aggregate(session, itx) {
   }
 
   if (itx.mode === "working") {
-    const revealed = responses
-      .filter((r) => r.revealed)
-      .map((r) => ({
+    const revealed = [...itx.responses.entries()]
+      .filter(([, r]) => r.revealed)
+      .map(([sid, r]) => ({
+        sid,
         lines: r.payload.lines,
         answer: r.payload.answer,
         name: nm(r),
@@ -670,9 +694,9 @@ function aggregate(session, itx) {
   }
 
   // Text modes — projector only sees responses the teacher has revealed.
-  const revealed = responses
-    .filter((r) => r.revealed)
-    .map((r) => ({ text: r.payload.text, name: nm(r) }));
+  const revealed = [...itx.responses.entries()]
+    .filter(([, r]) => r.revealed)
+    .map(([sid, r]) => ({ text: r.payload.text, name: nm(r), sid }));
   return { ...base, revealed, revealedCount: revealed.length };
 }
 
@@ -1129,7 +1153,7 @@ async function handle(ws, msg) {
     // tap-to-spotlight straight from the board — and only that.
     if (ws.meta.role === "projector" && type === "spotlight_response") {
       const itx = session.interaction;
-      if (itx && (itx.mode === "sketch" || itx.mode === "annotate")) {
+      if (itx && isRevealMode(itx.mode)) {
         itx.spotlightId = itx.spotlightId === msg.studentId ? null : msg.studentId || null;
         broadcast(session);
       }

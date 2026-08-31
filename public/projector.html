@@ -223,6 +223,16 @@
   .tap-hint { margin-top: 1.1rem; color: var(--chalk-dim); font-size: clamp(0.8rem, 1.3vw, 1rem); opacity: 0.7; }
 
   .spot-stage { animation: pop-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .spot-card {
+    display: inline-block;
+    max-width: min(1000px, 88%);
+    background: rgba(255,255,255,0.07);
+    border: 1px solid var(--night-line);
+    border-radius: 24px;
+    padding: 2.2rem 2.8rem;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  }
+  .spot-text { font-size: clamp(1.5rem, 3.4vw, 2.8rem); line-height: 1.4; font-weight: 600; }
   .spot-img {
     max-height: 56vh;
     max-width: 82%;

@@ -261,12 +261,51 @@ function renderInteraction(itx) {
     body = renderAnswers(itx, agg);
   }
 
+  // A spotlighted response (any type, except sketch which has its own stage)
+  // replaces the body until tapped away.
+  if (agg?.spotlight && !["sketch", "annotate"].includes(itx.mode)) {
+    body = renderGenericSpotlight(agg.spotlight);
+  }
+
   stage.innerHTML = promptBlock(itx) + body + progressLine(itx);
 
-  // Interactive whiteboard: tap a drawing on the board itself to spotlight it.
-  stage.querySelectorAll("[data-spot]").forEach((el) => {
-    el.onclick = () => send({ type: "spotlight_response", studentId: el.dataset.spot });
-  });
+  // Interactive whiteboard: tap a response to spotlight it; while one is
+  // up, tapping anywhere else takes the board back to normal.
+  if (agg?.spotlight) {
+    stage.onclick = (e) => {
+      const hit = e.target.closest("[data-spot]");
+      send({ type: "spotlight_response", studentId: hit ? hit.dataset.spot : null });
+    };
+  } else {
+    stage.onclick = null;
+    stage.querySelectorAll("[data-spot]").forEach((el) => {
+      el.onclick = () => send({ type: "spotlight_response", studentId: el.dataset.spot });
+    });
+  }
+}
+
+/* Any non-drawing response, blown up big for discussion. */
+function renderGenericSpotlight(s) {
+  let inner = "";
+  if (s.kind === "text") {
+    inner = `<div class="spot-text">${esc(s.text)}</div>`;
+  } else if (s.kind === "structured") {
+    inner = `<div class="spot-text" style="text-align:left">${s.fields
+      .map((f, i) => (s.parts[i] ? `<div style="margin-bottom:0.5em"><b style="color:var(--glow);font-size:0.55em">${esc(f)}</b><br/>${esc(s.parts[i])}</div>` : ""))
+      .join("")}</div>`;
+  } else if (s.kind === "phonics") {
+    inner = `<div class="build-card" style="transform:scale(1.8);margin:3rem 0">${s.parts
+      .map((p) => `<span class="build-seg bs-${phonCat(p)}">${esc(p === "-e" ? "e" : p)}</span>`)
+      .join("")}</div>`;
+  } else if (s.kind === "working") {
+    inner = `<div class="spot-text" style="font-family:ui-monospace,monospace;text-align:left">
+      ${(s.lines || []).map((l) => `<div style="color:var(--chalk-dim)">${esc(l)}</div>`).join("")}
+      <b>= ${esc(s.answer || "—")}${s.ok === true ? " ✓" : s.ok === false ? " ✗" : ""}</b></div>`;
+  }
+  return `<div class="spot-stage">
+    <div class="spot-card">${inner}${s.name ? `<div class="sketch-name" style="font-size:clamp(1rem,2vw,1.5rem)">${esc(s.name)}</div>` : ""}</div>
+    <p class="tap-hint">tap anywhere to go back</p>
+  </div>`;
 }
 
 /* Mindmap — submissions branch out around the central concept. */
@@ -426,7 +465,7 @@ function renderWorkings(agg) {
   const cards = agg.workings.length
     ? `<div class="answers">${agg.workings
         .map(
-          (w, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s;font-family:ui-monospace,monospace;font-size:clamp(0.85rem,1.6vw,1.2rem)">
+          (w, i) => `<div class="answer-card tappable" data-spot="${w.sid}" style="animation-delay:${(i % 8) * 0.06}s;font-family:ui-monospace,monospace;font-size:clamp(0.85rem,1.6vw,1.2rem)">
             ${(w.lines || []).map((l) => `<div style="color:var(--chalk-dim)">${esc(l)}</div>`).join("")}
             <b>= ${esc(w.answer || "—")}${w.ok === true ? " ✓" : w.ok === false ? " ✗" : ""}</b>
             ${nameTag(w.name)}
@@ -446,7 +485,7 @@ function renderBuilds(agg) {
   }
   return `<div class="answers">${agg.builds
     .map(
-      (b, i) => `<div class="build-wrap" style="animation-delay:${(i % 8) * 0.06}s"><div class="build-card">${b.parts
+      (b, i) => `<div class="build-wrap tappable" data-spot="${b.sid}" style="animation-delay:${(i % 8) * 0.06}s"><div class="build-card">${b.parts
         .map((p) => `<span class="build-seg bs-${phonCat(p)}">${esc(p === "-e" ? "e" : p)}</span>`)
         .join("")}</div>${b.name ? `<div class="sketch-name">${esc(b.name)}</div>` : ""}</div>`
     )
@@ -471,7 +510,7 @@ function renderStickies(agg) {
     .map((s, i) => {
       const rot = ((i * 47) % 7) - 3; // organic tilt, deterministic
       const color = STICKY_COLORS[i % STICKY_COLORS.length];
-      return `<div class="sticky" style="background:${color};transform:rotate(${rot}deg);animation-delay:${(i % 10) * 0.05}s">${esc(s.text)}${s.name ? `<div class="sticky-name">— ${esc(s.name)}</div>` : ""}</div>`;
+      return `<div class="sticky tappable" data-spot="${s.sid}" style="background:${color};transform:rotate(${rot}deg);animation-delay:${(i % 10) * 0.05}s">${esc(s.text)}${s.name ? `<div class="sticky-name">— ${esc(s.name)}</div>` : ""}</div>`;
     })
     .join("")}</div>`;
 }
@@ -496,7 +535,7 @@ function renderMatches(agg) {
 function renderWhys(agg) {
   if (!agg.revealed.length) return "";
   return `<div class="answers" style="margin-top:2rem">${agg.revealed
-    .map((r, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s"><b style="color:var(--glow)">${esc(r.choiceLabel)}</b> — ${esc(r.text)}${nameTag(r.name)}</div>`)
+    .map((r, i) => `<div class="answer-card tappable" data-spot="${r.sid}" style="animation-delay:${(i % 8) * 0.06}s"><b style="color:var(--glow)">${esc(r.choiceLabel)}</b> — ${esc(r.text)}${nameTag(r.name)}</div>`)
     .join("")}</div>`;
 }
 
@@ -507,7 +546,7 @@ function renderStructured(agg) {
   }
   return `<div class="answers">${agg.revealed
     .map(
-      (r, i) => `<div class="answer-card" style="animation-delay:${(i % 6) * 0.07}s">${agg.fields
+      (r, i) => `<div class="answer-card tappable" data-spot="${r.sid}" style="animation-delay:${(i % 6) * 0.07}s">${agg.fields
         .map((f, j) => (r.parts[j] ? `<div style="margin-bottom:0.4em"><b style="color:var(--glow);font-size:0.8em">${esc(f)}</b><br/>${esc(r.parts[j])}</div>` : ""))
         .join("")}${nameTag(r.name)}</div>`
     )
@@ -649,7 +688,7 @@ function renderAnswers(itx, agg) {
     return `${img}<p class="waiting-note">${n ? `${n} response${n === 1 ? "" : "s"} in — your teacher will reveal them.` : "Responses will appear here…"}</p>`;
   }
   return `${img}<div class="answers">${agg.revealed
-    .map((r, i) => `<div class="answer-card" style="animation-delay:${(i % 8) * 0.06}s">${esc(r.text)}${nameTag(r.name)}</div>`)
+    .map((r, i) => `<div class="answer-card tappable" data-spot="${r.sid}" style="animation-delay:${(i % 8) * 0.06}s">${esc(r.text)}${nameTag(r.name)}</div>`)
     .join("")}</div>`;
 }
 
