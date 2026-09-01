@@ -136,6 +136,7 @@ app.get("/join", (_req, res) => res.sendFile(path.join(__dirname, "public/studen
 app.get("/projector", (_req, res) => res.sendFile(path.join(__dirname, "public/projector.html")));
 app.get("/report", (_req, res) => res.sendFile(path.join(__dirname, "public/report.html")));
 app.get("/remote", (_req, res) => res.sendFile(path.join(__dirname, "public/remote.html")));
+app.get("/data", (_req, res) => res.sendFile(path.join(__dirname, "public/data.html")));
 
 // Teacher-uploaded images (annotate mode), served over HTTP so websocket
 // broadcasts stay light — clients just get a URL.

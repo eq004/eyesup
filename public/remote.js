@@ -576,7 +576,9 @@ function renderMore() {
     <button class="rbtn" id="copyJoin">🔗 Copy student join link</button>
     <a class="rbtn" style="text-decoration:none" href="/projector?code=${esc(state.code)}" target="_blank" rel="noopener">📽 Open projector view</a>
 
-    ${state.storage ? `<h3 class="sec">Archive</h3><button class="rbtn" id="lessonsBtn">📚 Past lessons</button><div id="lessonsList"></div>` : ""}
+    ${state.storage ? `<h3 class="sec">Archive</h3>
+      <a class="rbtn" style="text-decoration:none" href="/data" target="_blank" rel="noopener">📈 Data dashboard</a>
+      <button class="rbtn" id="lessonsBtn">📚 Past lessons</button><div id="lessonsList"></div>` : ""}
 
     <h3 class="sec">Account</h3>
     <div class="status"><div class="q">${name ? `Signed in as ${esc(name)}` : "Local mode"}</div></div>

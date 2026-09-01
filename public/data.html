@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eyes Up — Data</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  body { background: var(--paper); }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.9rem 1.5rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header .wordmark { font-size: 1.2rem; }
+  header .spacer { flex: 1; }
+  header a {
+    text-decoration: none;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.45rem 0.9rem;
+    font-weight: 700;
+    font-size: 0.88rem;
+    background: var(--surface);
+  }
+  header a:hover { background: var(--paper); }
+
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 1.4rem 1.5rem 4rem; }
+  .muted { color: var(--muted); }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.9rem; }
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    box-shadow: var(--shadow);
+    animation: rise 0.4s ease both;
+  }
+  .tile .v { font-size: 1.9rem; font-weight: 800; line-height: 1.1; }
+  .tile .k { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    padding: 1.2rem 1.4rem;
+    margin-top: 1.2rem;
+    animation: rise 0.4s ease both;
+  }
+  .card h2 { font-size: 1rem; font-weight: 800; margin-bottom: 0.2rem; }
+  .card .sub { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.9rem; }
+
+  /* lesson bars */
+  .lchart { display: flex; align-items: flex-end; gap: 10px; height: 190px; padding-top: 1.4rem; overflow-x: auto; }
+  .lbar { flex: 1; min-width: 46px; max-width: 90px; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+  .lbar .stack { width: 100%; display: flex; flex-direction: column; justify-content: flex-end; height: 130px; position: relative; }
+  .lbar .joined { background: #e3e6f5; border-radius: 6px 6px 0 0; width: 100%; position: absolute; bottom: 0; }
+  .lbar .part { background: var(--accent); border-radius: 6px 6px 0 0; width: 100%; position: absolute; bottom: 0; transition: background 0.15s ease; }
+  .lbar:hover .part, .lbar.sel .part { background: var(--accent-ink); }
+  .lbar.sel .lab { color: var(--accent-ink); }
+  .lbar .pct { font-size: 0.75rem; font-weight: 800; margin-top: 0.3rem; }
+  .lbar .lab { font-size: 0.68rem; color: var(--muted); text-align: center; line-height: 1.2; margin-top: 0.1rem; white-space: nowrap; }
+
+  /* mode mix */
+  .mix-row { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.45rem; font-size: 0.88rem; }
+  .mix-row .nm { min-width: 170px; font-weight: 700; }
+  .mix-row .track { flex: 1; height: 14px; background: #eef0f6; border-radius: 8px; overflow: hidden; }
+  .mix-row .fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, var(--accent), #7b93ff); }
+  .mix-row .n { min-width: 2.4ch; text-align: right; font-weight: 800; }
+
+  /* lesson detail */
+  .ichart { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding-top: 1.6rem; overflow-x: auto; }
+  .ibar { flex: 1; min-width: 34px; max-width: 64px; display: flex; flex-direction: column; align-items: center; }
+  .ibar .bar { width: 100%; background: linear-gradient(180deg, #7b93ff, var(--accent)); border-radius: 6px 6px 0 0; position: relative; }
+  .ibar .cnt { font-size: 0.72rem; font-weight: 800; margin-top: 0.25rem; }
+  .ibar .ic { font-size: 1rem; margin-top: 0.05rem; }
+  .ibar[title] { cursor: default; }
+
+  table.stab { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+  .stab th {
+    text-align: left;
+    padding: 0.45rem 0.6rem;
+    border-bottom: 2px solid var(--line);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .stab th:hover { color: var(--accent-ink); }
+  .stab td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #efede6; }
+  .stab .bar-cell { width: 40%; }
+  .stab .pbarr { height: 10px; background: #eef0f6; border-radius: 6px; overflow: hidden; }
+  .stab .pfill { height: 100%; border-radius: 6px; }
+  .p-hi { background: #2f9e44; }
+  .p-mid { background: #e8a13c; }
+  .p-lo { background: #d64545; }
+  .search {
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.9rem;
+    width: 220px;
+    margin-bottom: 0.7rem;
+  }
+  .gate { text-align: center; padding: 5rem 1rem; }
+  .gate a { color: var(--accent); font-weight: 700; }
+</style>
+</head>
+<body>
+  <header>
+    <span class="wordmark">Eyes Up <span class="eye">👀</span> <span style="font-family:var(--font-ui);font-weight:600;font-size:0.9rem;color:var(--muted)">· Data</span></span>
+    <span class="spacer"></span>
+    <a href="/teacher">← Back to dashboard</a>
+  </header>
+  <div class="wrap" id="wrap"><div class="gate muted">Loading your data…</div></div>
+  <script src="/data.js"></script>
+</body>
+</html>

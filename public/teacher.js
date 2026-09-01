@@ -528,6 +528,7 @@ function render() {
   $("joinUrl").textContent = `${location.host}/join`;
   $("openProjector").href = `/projector?code=${state.code}`;
   $("lessonsBtn").style.display = state.storage ? "" : "none";
+  $("dataBtn").style.display = state.storage ? "" : "none";
   $("whoAmI").textContent = teacherToken() ? localStorage.getItem("eyesup_teacher_name") || "" : "";
   $("signOutBtn").style.display = teacherToken() ? "" : "none";
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
