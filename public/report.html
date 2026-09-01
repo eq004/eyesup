@@ -100,23 +100,79 @@
 
   .err { text-align: center; padding: 4rem 1rem; color: var(--ink-soft); }
 
+  /* Colours must survive print-to-PDF — browsers strip backgrounds by default. */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  @page { margin: 1.4cm; }
   @media print {
     .print-bar { display: none; }
     .page { padding: 0; max-width: none; }
     body { background: #fff; }
     .stat, .itx { border-color: #ccc; }
+    .itx { page-break-inside: avoid; }
+    svg { max-width: 100%; }
   }
+
+  .cloud-print { text-align: center; margin: 0.6rem 0 0.4rem; }
+  .cloud-print svg { max-height: 330px; width: 100%; }
+
+  .smiley-print { display: flex; justify-content: center; align-items: flex-end; gap: 1.6rem; margin: 0.8rem 0 0.4rem; }
+  .smiley-print .sp-cell { text-align: center; }
+  .smiley-print .sp-face { line-height: 1.1; }
+  .smiley-print .sp-n { font-weight: 800; margin-top: 0.2rem; }
+  .smiley-print .sp-p { color: var(--muted); font-size: 0.78rem; }
 </style>
 </head>
 <body>
   <div class="print-bar">
-    <span class="hint">In the print dialog, choose “Save as PDF”.</span>
-    <button onclick="window.print()">🖨 Export as PDF</button>
+    <span class="hint">A print dialog opens — set the destination/printer to “Save as PDF”.</span>
+    <button onclick="window.print()" style="font-size:1rem;padding:0.6rem 1.5rem">🖨 Print / Save as PDF</button>
   </div>
   <div class="page" id="page"><div class="err">Loading report…</div></div>
 
 <script>
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* Packed word cloud for print — same spiral layout the projector uses,
+   in report-friendly colours. */
+const CLOUD_INK = ["#3d5af1", "#191c26", "#2f9e44", "#c07d10", "#7048ba", "#0e7490"];
+function cloudSvg(wordList) {
+  const words = [...wordList].sort((a, b) => b.count - a.count).slice(0, 50);
+  if (!words.length) return "";
+  const max = words[0].count, min = words[words.length - 1].count;
+  const meas = cloudSvg._ctx || (cloudSvg._ctx = document.createElement("canvas").getContext("2d"));
+  const placed = [];
+  const collides = (r) => placed.some((p) => !(r.x + r.w < p.x || p.x + p.w < r.x || r.y + r.h < p.y || p.y + p.h < r.y));
+  const nodes = [];
+  words.forEach((w, i) => {
+    const t = max > min ? (w.count - min) / (max - min) : (max > 1 ? 1 : 0);
+    const size = Math.round(15 + Math.pow(t, 0.75) * 42);
+    const rot = i !== 0 && i % 3 === 2 && w.word.length <= 10;
+    meas.font = `800 ${size}px Manrope, sans-serif`;
+    const tw = meas.measureText(w.word).width;
+    const th = size * 1.02;
+    const bw = (rot ? th : tw) + 8, bh = (rot ? tw : th) + 6;
+    let x = 0, y = 0, a = 0, ok = false;
+    for (let step = 0; step < 2500; step++) {
+      const rad = 2.4 * a;
+      x = Math.cos(a) * rad * 1.5;
+      y = Math.sin(a) * rad * 0.6;
+      const rect = { x: x - bw / 2, y: y - bh / 2, w: bw, h: bh };
+      if (!collides(rect)) { placed.push(rect); ok = true; break; }
+      a += 0.28;
+    }
+    if (ok) nodes.push({ ...w, x, y, size, rot, color: CLOUD_INK[i % CLOUD_INK.length] });
+  });
+  const pad = 14;
+  const minX = Math.min(...placed.map((p) => p.x)) - pad;
+  const maxX = Math.max(...placed.map((p) => p.x + p.w)) + pad;
+  const minY = Math.min(...placed.map((p) => p.y)) - pad;
+  const maxY = Math.max(...placed.map((p) => p.y + p.h)) + pad;
+  return `<svg viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" role="img" aria-label="word cloud">
+    ${nodes.map((n) => `<text x="${n.x}" y="${n.y}" text-anchor="middle" dominant-baseline="middle"
+      font-weight="800" font-size="${n.size}" fill="${n.color}" font-family="Manrope, sans-serif"
+      ${n.rot ? `transform="rotate(90 ${n.x} ${n.y})"` : ""}>${esc(n.word)}</text>`).join("")}
+  </svg>`;
+}
 
 const MODE_NAMES = {
   word_cloud: "Word Cloud", short_answer: "Short Answer", poll: "Poll",
@@ -206,9 +262,22 @@ function renderReport(s, recovered) {
     <h2 class="sec">Commonly remembered</h2>
     <div class="word-chips">${s.commonWords.map((w) => `<span class="word-chip">${esc(w.word)}<small>×${w.count}</small></span>`).join("")}</div>` : "";
 
-  const items = s.items.map((it) => {
+  const items = s.items.map((it, idx) => {
     let body = "";
-    if (it.distribution) {
+    if (it.mode === "smiley" && it.distribution) {
+      // The smiley chart itself, faces scaled by votes.
+      const total = it.distribution.reduce((a, d) => a + d.count, 0) || 1;
+      const maxN = Math.max(1, ...it.distribution.map((d) => d.count));
+      body = `<div class="smiley-print">${it.distribution
+        .map((d) => `<div class="sp-cell">
+          <div class="sp-face" style="font-size:${Math.round(30 + (d.count / maxN) * 34)}px">${esc(d.label)}</div>
+          <div class="sp-n">${d.count}</div><div class="sp-p">${Math.round((d.count / total) * 100)}%</div>
+        </div>`)
+        .join("")}</div>`;
+    } else if ((it.words && it.words.length) || (it.topWords && it.topWords.length && ["word_cloud", "one_word", "mindmap"].includes(it.mode))) {
+      // The cloud graphic, redrawn exactly from the class's words.
+      body = `<div class="cloud-print">${cloudSvg(it.words || it.topWords)}</div>`;
+    } else if (it.distribution) {
       const max = Math.max(1, ...it.distribution.map((d) => d.count));
       body = `<div class="dist">${it.distribution.map((d) => `
         <div class="row"><span class="lbl">${esc(d.label)}</span>
@@ -248,7 +317,7 @@ function renderReport(s, recovered) {
         who += `<p class="who-note">No response: ${it.noResponse.map(esc).join(", ")}</p>`;
     }
     return `<div class="itx">
-      <span class="mode">${it.mode === "counters" && it.counterKind === "base10" ? "Tens & Ones" : MODE_NAMES[it.mode] || esc(it.mode)}</span>
+      <span class="mode">${idx + 1} · ${it.mode === "counters" && it.counterKind === "base10" ? "Tens & Ones" : MODE_NAMES[it.mode] || esc(it.mode)}</span>
       <h3>${it.prompt ? esc(it.prompt) : "<i>Question asked aloud</i>"}</h3>
       ${body}
       ${who}

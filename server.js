@@ -995,7 +995,10 @@ function buildSummary(session) {
         .map(([, n]) => n)
         .sort();
     }
-    if (WORD_MODES.has(itx.mode)) item.topWords = agg.words.slice(0, 8);
+    if (WORD_MODES.has(itx.mode)) {
+      item.topWords = agg.words.slice(0, 8);
+      item.words = agg.words.slice(0, 50); // full set so the export can redraw the cloud
+    }
     if (CHOICE_MODES.has(itx.mode) || itx.mode === "example_nonexample")
       item.distribution = itx.options.map((o, i) => ({
         label: o + (itx.correct === i ? " ✓" : ""),
