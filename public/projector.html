@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/shared.css" />
 <style>
   body {
-    min-height: 100vh;
+    height: 100vh; /* fixed height so <main> scrolls internally */
     background:
       radial-gradient(1400px 700px at 50% -20%, var(--night-2) 0%, transparent 70%),
       var(--night);
@@ -43,13 +43,17 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
     padding: 1rem 4vw 4vh;
     text-align: center;
     min-height: 0;
+    overflow-y: auto; /* long answer sets scroll instead of clipping */
+    scrollbar-width: thin;
+    scrollbar-color: var(--night-line) transparent;
   }
-  .stage { width: 100%; max-width: 1500px; animation: fade-in 0.35s ease both; }
+  main::-webkit-scrollbar { width: 8px; }
+  main::-webkit-scrollbar-thumb { background: var(--night-line); border-radius: 4px; }
+  /* margin:auto centres short content but lets tall content scroll from the top */
+  .stage { width: 100%; max-width: 1500px; margin: auto; animation: fade-in 0.35s ease both; }
 
   .q-tag {
     display: inline-block;

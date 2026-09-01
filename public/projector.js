@@ -86,6 +86,14 @@ function connect() {
 /* ---------------- render ---------------- */
 
 function render() {
+  // New responses redraw the stage — keep the teacher's scroll position.
+  const mainEl = document.querySelector("main");
+  const keepScroll = mainEl.scrollTop;
+  renderInner();
+  mainEl.scrollTop = keepScroll;
+}
+
+function renderInner() {
   if (!state) return renderCodeEntry(false);
   barCode.textContent = state.code;
   barCount.innerHTML = `<span class="dot"></span> ${state.studentCount} in the room`;
