@@ -34,7 +34,8 @@ const MODES = {
   phonics:       { icon: "🔤", name: "Phonics" },
   short_answer:  { icon: "✏️", name: "Short Answer" },
   picture_prompt:{ icon: "🖼️", name: "Picture Prompt", imageUpload: true },
-  retrieval_sprint:{ icon: "🧠", name: "Sprint 60s" },
+  retrieval_sprint:{ icon: "🧠", name: "Sprint", sprintUI: true },
+  table:         { icon: "📋", name: "Table", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true },
   exit_ticket:   { icon: "🎟️", name: "Exit Ticket" },
   finish_sentence:{ icon: "📝", name: "Finish Sentence", needPrompt: true, ph: "The sentence stem" },
   give_example:  { icon: "💡", name: "Give Example" },
@@ -46,6 +47,7 @@ const MODES = {
   three_two_one: { icon: "3️⃣", name: "3-2-1" },
   notice_wonder: { icon: "👀", name: "Notice/Wonder" },
   before_after:  { icon: "🔄", name: "Before/After" },
+  plus_minus:    { icon: "➕", name: "Plus & Minus", multiOpt: true, ph: "The topic to weigh up" },
   muddiest_point:{ icon: "🌫️", name: "Muddiest" },
   ask_question:  { icon: "❓", name: "Ask Question" },
   ranking:       { icon: "🔢", name: "Ranking", opts: { min: 2, max: 6, labels: "Item" } },
@@ -64,8 +66,8 @@ const MODES = {
 const CATEGORIES = [
   { label: "Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics"] },
-  { label: "Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
-  { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
+  { label: "Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
+  { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones"] },
   { label: "Draw", modes: ["sketch", "annotate"] },
@@ -75,7 +77,7 @@ const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_tic
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "example_nonexample", "post_its", "phonics", "working", "counters"].includes(m);
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "plus_minus"].includes(m);
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -208,6 +210,10 @@ function lineFor(itx, p) {
   if (m === "spelling") return itx.words.map((w, i) => `${p.answers[i] || "—"}${markMatch(p.answers[i], w) ? "✓" : "✗"}`).join(" ");
   if (m === "cloze") return itx.cloze.answers.map((w, i) => `${p.fills[i] || "—"}${markMatch(p.fills[i], w) ? "✓" : "✗"}`).join(" ");
   if (m === "working") return `${(p.lines || []).join("; ")}${p.lines?.length ? " → " : ""}${p.answer || "—"}${itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : ""}`;
+  if (m === "table")
+    return (p.rows || []).map((row) => row.filter(Boolean).join(" | ")).join(" // ");
+  if (m === "plus_minus")
+    return (p.items || []).map((it) => `${it.side === 0 ? "＋" : "−"} ${it.text}`).join(" | ");
   if (m === "counters") {
     const ok = itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : "";
     if (itx.counterKind === "base10") {
@@ -297,7 +303,7 @@ function renderLiveResponses(itx) {
     else if (agg.values) out += `<h3 class="sec">Scale</h3><div class="status">avg <b>${agg.avg ?? "—"}</b> / 100 · ${agg.values.length} placed</div>`;
   }
 
-  if (["spelling", "cloze", "scale", "ranking", "put_in_order", "match_up", "counters"].includes(itx.mode) && itx.responses.length) {
+  if (["spelling", "cloze", "scale", "ranking", "put_in_order", "match_up", "counters", "table"].includes(itx.mode) && itx.responses.length) {
     out += `<h3 class="sec">By student</h3>` + itx.responses
       .map((r) => `<div class="resp-row"><span class="rr-who">${esc(r.name || "")}</span><span class="rr-what">${esc(lineFor(itx, r.payload) || "")}</span></div>`)
       .join("");
@@ -373,6 +379,8 @@ function openComposer(key) {
     `<div class="pair-row"><input class="rin" data-cleft maxlength="60" placeholder="Term ${i + 1}${i < m.pairs.min ? "" : " (opt)"}" /><span class="pair-eq">↔</span><input class="rin" data-cright maxlength="60" placeholder="Match" /></div>`).join("");
   if (m.clozeUI) fields += `<textarea class="rin" id="cCloze" rows="5" maxlength="1500" placeholder="Paste the passage; put [brackets] around hidden words"></textarea>
     <select class="rin" id="cClozeMode"><option value="type">⌨️ Students type</option><option value="bank">🧺 Word bank</option></select>`;
+  if (m.tableUI) fields += `<select class="rin" id="cRows"><option value="1">1 row of answers</option><option value="2">2 rows</option><option value="3">3 rows</option></select>`;
+  if (m.sprintUI) fields += `<select class="rin" id="cDur"><option value="60">⏱ 1 minute</option><option value="120">⏱ 2 minutes</option><option value="180">⏱ 3 minutes</option></select>`;
   if (m.workingUI) fields += `<input class="rin" id="cExpected" maxlength="30" placeholder="Correct answer (optional, auto-checks)" />`;
   if (m.imageUpload) fields += `<input class="rin" type="file" id="cImg" accept="image/*" />
     <img id="cImgPrev" alt="" style="display:none;max-height:110px;border-radius:10px;margin-bottom:0.5rem" />`;
@@ -425,7 +433,9 @@ function readComposer() {
   if (m.imageUpload && !composerImage) { toast("Choose an image first"); return null; }
   const moderated = m.postits ? $("cMod").value !== "0" : undefined;
   const multi = m.multiOpt ? $("cMulti").value !== "0" : undefined;
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind };
+  const tableRows = m.tableUI ? parseInt($("cRows").value, 10) : undefined;
+  const sprintSeconds = m.sprintUI ? parseInt($("cDur").value, 10) : undefined;
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds };
 }
 
 /* ---------------- PLAN tab ---------------- */

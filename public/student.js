@@ -11,6 +11,7 @@ let changingAnswer = false;
 let rankOrder = null; // local ranking order while arranging
 let matchShuffle = null; // shuffled display order for match-up choices
 let vennItems = []; // ideas this student has sorted so far
+let pmItems = []; // plus/minus points sent so far
 let postNotes = []; // sticky notes this student has sent so far
 let sprintDeadline = null; // retrieval-sprint countdown target
 let sprintTimer = null;
@@ -34,7 +35,7 @@ const MODE_NAMES = {
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
   phonics: "🔤 Phonics Keyboard",
   spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", working: "🧮 Working Out",
-  counters: "🟠 Counters",
+  counters: "🟠 Counters", table: "📋 Table", plus_minus: "➕➖ Plus & Minus",
 };
 
 /* Phonics keyboard layout & colours */
@@ -158,6 +159,7 @@ function render(force) {
     rankOrder = null;
     matchShuffle = null;
     vennItems = [];
+    pmItems = [];
     postNotes = [];
     phonParts = [];
     workLines = [];
@@ -174,8 +176,8 @@ function render(force) {
       <p class="state-sub">Responses are closed. Back to the room.</p>`);
   }
 
-  // Venn and Post-its keep their input screen after submitting — students add more one by one.
-  if (state.submitted && !changingAnswer && !["venn", "post_its"].includes(itx.mode)) {
+  // Venn, Post-its and Plus/Minus keep their input screen — students add more one by one.
+  if (state.submitted && !changingAnswer && !["venn", "post_its", "plus_minus"].includes(itx.mode)) {
     return show(`
       <div class="big-emoji">✓</div>
       <div class="state-title">Response received</div>
@@ -469,6 +471,33 @@ function renderInteraction(itx) {
     return;
   }
 
+  /* --- plus & minus: type a point, tap its side --- */
+  if (itx.mode === "plus_minus") {
+    const cap = itx.multi === false ? 1 : 6;
+    const full = pmItems.length >= cap;
+    show(`${h}
+      <input type="text" id="pmInput" autocomplete="off" maxlength="140" placeholder="Type a point…" ${full ? "disabled" : ""} />
+      <div class="venn-btns" style="grid-template-columns:1fr 1fr">
+        <button class="btn choice" data-s="0" style="border-color:#bfe3c9" ${full ? "disabled" : ""}>➕ Positive</button>
+        <button class="btn choice" data-s="1" style="border-color:#f2c4c4" ${full ? "disabled" : ""}>➖ Negative</button>
+      </div>
+      ${pmItems.length
+        ? `<div class="venn-sent">${pmItems.map((it) => `<span class="sent-chip">${it.side === 0 ? "➕" : "➖"} ${esc(it.text)}</span>`).join("")}</div>`
+        : ""}
+      <p class="hint">${full ? "Sent ✓ — eyes up! 👀" : pmItems.length ? `${pmItems.length} sent ✓ — add another, or eyes up.` : cap === 1 ? "One point each — pick your strongest." : "Type a point, then tap which side it belongs on."}</p>`, () => {
+      const input = $("pmInput");
+      if (!full) input.focus();
+      screenEl.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => {
+        const text = input.value.trim();
+        if (!text || pmItems.length >= cap) return;
+        pmItems.push({ text, side: +b.dataset.s });
+        submit({ items: pmItems });
+        render(true);
+      }));
+    });
+    return;
+  }
+
   /* --- venn: type an idea, tap where it belongs, repeat --- */
   if (itx.mode === "venn") {
     const [A, B] = itx.options;
@@ -562,6 +591,29 @@ function renderInteraction(itx) {
       $("sendBtn").onclick = () => {
         const fills = [...screenEl.querySelectorAll("[data-cz]")].map((i) => i.value.trim());
         if (fills.some(Boolean)) submit({ fills });
+      };
+    });
+    return;
+  }
+
+  /* --- table: write into the cells --- */
+  if (itx.mode === "table") {
+    const cols = itx.options || [];
+    const rows = itx.tableRows || 1;
+    show(`${h}
+      <div class="tbl-wrap"><table class="stu-table">
+        <thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>
+        <tbody>${Array.from({ length: rows }, (_, ri) =>
+          `<tr>${cols.map((_, ci) => `<td><textarea data-cell="${ri}-${ci}" rows="3" maxlength="400"></textarea></td>`).join("")}</tr>`
+        ).join("")}</tbody>
+      </table></div>
+      <button class="btn send" id="sendBtn">Send my table</button>`, () => {
+      screenEl.querySelector("textarea")?.focus();
+      $("sendBtn").onclick = () => {
+        const out = Array.from({ length: rows }, (_, ri) =>
+          cols.map((_, ci) => screenEl.querySelector(`[data-cell="${ri}-${ci}"]`).value.trim())
+        );
+        if (out.some((row) => row.some(Boolean))) submit({ rows: out });
       };
     });
     return;

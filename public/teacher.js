@@ -27,7 +27,9 @@ const MODES = {
   short_answer:  { icon: "✏️", name: "Short Answer",  hint: "Written replies, reveal in turn", opts: null },
   picture_prompt:{ icon: "🖼️", name: "Picture Prompt", hint: "Put an image up — students write about it", opts: null, imageUpload: true,
                    ph: "The question about the image — or ask it aloud" },
-  retrieval_sprint:{ icon: "🧠", name: "Retrieval Sprint", hint: "60 seconds — write everything you recall", opts: null },
+  retrieval_sprint:{ icon: "🧠", name: "Retrieval Sprint", hint: "1–3 timed minutes — write everything you recall", opts: null, sprintUI: true },
+  table:         { icon: "📋", name: "Table",         hint: "Students fill a table — compare, sort, KWL", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true,
+                   ph: "The task, e.g. “Compare solids, liquids and gases”" },
   exit_ticket:   { icon: "🎟️", name: "Exit Ticket",  hint: "One thing learned before you leave", opts: null },
   finish_sentence:{ icon: "📝", name: "Finish the Sentence", hint: "Students complete your stem", opts: null,
                    needPrompt: true, ph: "The sentence stem, e.g. “An AI hallucination is…”" },
@@ -43,6 +45,8 @@ const MODES = {
   three_two_one: { icon: "3️⃣", name: "3 – 2 – 1",    hint: "3 ideas · 2 connections · 1 question", opts: null },
   notice_wonder: { icon: "👀", name: "Notice / Wonder", hint: "What do you notice? Wonder?",   opts: null },
   before_after:  { icon: "🔄", name: "Before / After", hint: "How has your thinking changed?", opts: null },
+  plus_minus:    { icon: "➕", name: "Plus & Minus",  hint: "Positives one side, negatives the other", opts: null, multiOpt: true,
+                   ph: "The topic to weigh up, e.g. “Homework” or “Social media”" },
   muddiest_point:{ icon: "🌫️", name: "Muddiest Point", hint: "Anonymous — least clear thing", opts: null },
   ask_question:  { icon: "❓", name: "Ask a Question", hint: "Anonymous — what's still fuzzy?", opts: null },
   /* arrange & match */
@@ -71,8 +75,8 @@ const MODES = {
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics"] },
-  { label: "✏️ Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
-  { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "muddiest_point", "ask_question"] },
+  { label: "✏️ Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
+  { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones"] },
   { label: "🎨 Draw", modes: ["sketch", "annotate"] },
@@ -85,7 +89,13 @@ const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
 const revealMode = (m) =>
   TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" ||
-  m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" || m === "counters";
+  m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" ||
+  m === "counters" || m === "table" || m === "plus_minus";
+
+function miniTable(columns, rows) {
+  return `<table class="mini-table"><thead><tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>
+    <tbody>${(rows || []).map((row) => `<tr>${row.map((c) => `<td>${esc(c || "—")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
 
 const COUNTER_COLORS = ["#e05252", "#4a7de0", "#e8c33c", "#3f9e5f"];
 // Recreate a student's manipulative board as a small SVG.
@@ -365,6 +375,20 @@ function openComposer(key, keepImage) {
     kindSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(kindSel);
   }
+  if (m.tableUI) {
+    const rowsSel = document.createElement("select");
+    rowsSel.id = "rowsSel";
+    rowsSel.innerHTML = `<option value="1">1 row of answers</option><option value="2">2 rows</option><option value="3">3 rows</option>`;
+    rowsSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    opts.appendChild(rowsSel);
+  }
+  if (m.sprintUI) {
+    const durSel = document.createElement("select");
+    durSel.id = "durSel";
+    durSel.innerHTML = `<option value="60">⏱ 1 minute</option><option value="120">⏱ 2 minutes</option><option value="180">⏱ 3 minutes</option>`;
+    durSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    opts.appendChild(durSel);
+  }
   if (m.workingUI) {
     const inp = document.createElement("input");
     inp.type = "text";
@@ -407,7 +431,7 @@ function openComposer(key, keepImage) {
     : key === "put_in_order"
     ? "Enter the steps in the correct order — students see them shuffled."
     : key === "retrieval_sprint"
-    ? "Responses auto-close after 60 seconds."
+    ? "Responses auto-close when the timer runs out."
     : m.needPrompt
     ? "Students need to read this one on their screen."
     : "Tip: the question can live in your voice. Blank prompt = asked aloud.";
@@ -469,9 +493,11 @@ function readComposer() {
   }
   const expected = m.workingUI ? $("expectedAns").value.trim() || undefined : undefined;
   const counterKind = m.forceKind || undefined;
+  const tableRows = m.tableUI ? parseInt($("rowsSel").value, 10) : undefined;
+  const sprintSeconds = m.sprintUI ? parseInt($("durSel").value, 10) : undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds };
 }
 
 /* ---------------- rendering ---------------- */
@@ -749,6 +775,17 @@ function renderLive() {
             .join(" · ")}</span>
         </div>`)
         .join("")}</div>`;
+  } else if (itx.mode === "plus_minus" && agg) {
+    const col = (title, list, color) => `
+      <div class="venn-col">
+        <div class="venn-head" style="color:${color}">${title}</div>
+        <div style="margin-top:0.4rem;display:flex;flex-direction:column;gap:0.3rem">${list
+          .map((it) => `<div style="font-size:0.85rem"><b style="color:var(--muted);font-size:0.75rem">${esc(it.name || "")}</b> ${esc(it.text)}</div>`)
+          .join("") || "<span style='color:var(--muted);font-size:0.8rem'>—</span>"}</div>
+      </div>`;
+    body = `<div class="venn-cols" style="grid-template-columns:1fr 1fr">${col("＋ Positives", agg.plus, "var(--green)")}${col("− Negatives", agg.minus, "var(--red)")}</div>`;
+  } else if (itx.mode === "table") {
+    body = revealCards((r) => miniTable(itx.options, r.payload.rows));
   } else if (itx.mode === "counters") {
     const dist = agg?.answerDist || [];
     body =

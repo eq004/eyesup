@@ -25,7 +25,7 @@ const MODE_TAGS = {
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
   picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
   spelling: "Spelling Test", cloze: "Fill the Gaps", working: "Show Your Working",
-  counters: "Build It With Counters",
+  counters: "Build It With Counters", table: "Fill the Table", plus_minus: "Plus & Minus",
 };
 
 const COUNTER_COLORS = ["#e05252", "#4a7de0", "#e8c33c", "#3f9e5f"];
@@ -282,6 +282,20 @@ function renderInteraction(itx) {
     body = renderWorkings(agg);
   } else if (itx.mode === "counters") {
     body = renderCounterBoards(agg);
+  } else if (itx.mode === "plus_minus") {
+    const col = (title, list, cls) => `
+      <div class="pm-col ${cls}">
+        <h3>${title}</h3>
+        ${list.map((it, i) => `<div class="pm-card tappable" data-spot="${it.sid}" style="animation-delay:${(i % 8) * 0.05}s">${esc(it.text)}${nameTag(it.name)}</div>`).join("") ||
+          `<p class="waiting-note" style="font-size:1rem">…</p>`}
+      </div>`;
+    body = `<div class="pm-board">${col("＋", agg.plus, "pm-plus")}${col("−", agg.minus, "pm-minus")}</div>`;
+  } else if (itx.mode === "table") {
+    body = agg.tables.length
+      ? `<div class="answers">${agg.tables
+          .map((t, i) => `<div class="answer-card tappable" data-spot="${t.sid}" style="animation-delay:${(i % 6) * 0.07}s;padding:0.9rem">${projTable(agg.columns, t.rows)}${nameTag(t.name)}</div>`)
+          .join("")}</div>`
+      : `<p class="waiting-note">Tables appear here as they're filled…</p>`;
   } else if (agg.sketches) {
     body = renderSketches(agg);
   } else if (agg.fields) {
@@ -333,6 +347,8 @@ function renderGenericSpotlight(s) {
   } else if (s.kind === "board") {
     inner = `${boardSvg(s.items, s.counterKind, "min(640px, 74vw)")}
       <div class="spot-text" style="margin-top:0.6rem">= ${esc(s.answer || "—")}${s.ok === true ? " ✓" : s.ok === false ? " ✗" : ""}</div>`;
+  } else if (s.kind === "table") {
+    inner = `<div style="font-size:clamp(1rem,1.9vw,1.5rem)">${projTable(s.columns, s.rows)}</div>`;
   }
   return `<div class="spot-stage">
     <div class="spot-card">${inner}${s.name ? `<div class="sketch-name" style="font-size:clamp(1rem,2vw,1.5rem)">${esc(s.name)}</div>` : ""}</div>
@@ -506,6 +522,11 @@ function renderWorkings(agg) {
         .join("")}</div>`
     : `<p class="waiting-note">Workings appear here…</p>`;
   return distr + cards;
+}
+
+function projTable(columns, rows) {
+  return `<table class="proj-table"><thead><tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>
+    <tbody>${(rows || []).map((row) => `<tr>${row.map((c) => `<td>${esc(c || "—")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
 
 /* Counters — every child's board, with their answer. */

@@ -336,7 +336,7 @@ const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Custom options entered by the teacher at launch.
-const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale", "picture_vote"]);
+const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale", "picture_vote", "table"]);
 
 const FIXED_OPTIONS = {
   agree_disagree: ["Agree", "Unsure", "Disagree"],
@@ -366,14 +366,15 @@ function isRevealMode(mode) {
   return (
     TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] ||
     mode === "sketch" || mode === "annotate" || mode === "example_nonexample" ||
-    mode === "post_its" || mode === "phonics" || mode === "working" || mode === "counters"
+    mode === "post_its" || mode === "phonics" || mode === "working" || mode === "counters" ||
+    mode === "table" || mode === "plus_minus"
   );
 }
 
 // Modes where the teacher chooses "one response each" vs "multiple".
-const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn"]);
+const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -444,7 +445,11 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     options: opts,
     pairs,
     fields: STRUCTURED_FIELDS[mode] || null,
-    timeLimit: TIME_LIMITS[mode] || null,
+    timeLimit:
+      mode === "retrieval_sprint"
+        ? [60, 120, 180].includes(Number(sprintSeconds)) ? Number(sprintSeconds) : 60
+        : TIME_LIMITS[mode] || null,
+    tableRows: mode === "table" ? Math.min(3, Math.max(1, Number(tableRows) || 1)) : null,
     imageUrl,
     correct: correctIdx,
     words, // spelling
@@ -491,6 +496,12 @@ function buildSpotlight(itx) {
     if (note == null || !r.noteRevealed?.[i]) return null;
     return { kind: "text", text: note, name, sid: key };
   }
+  if (m === "plus_minus") {
+    const i = parseInt(noteIdx, 10);
+    const it = (r.payload.items || [])[i];
+    if (!it) return null;
+    return { kind: "text", text: `${it.side === 0 ? "＋" : "−"} ${it.text}`, name, sid: key };
+  }
   if (m === "phonics") return { kind: "phonics", parts: r.payload.parts, name, sid: key };
   if (m === "working")
     return { kind: "working", lines: r.payload.lines, answer: r.payload.answer,
@@ -498,6 +509,8 @@ function buildSpotlight(itx) {
   if (m === "counters")
     return { kind: "board", items: r.payload.items, counterKind: itx.counterKind, answer: r.payload.answer,
              ok: itx.expected ? markMatch(r.payload.answer, itx.expected) : null, name, sid: key };
+  if (m === "table")
+    return { kind: "table", columns: itx.options, rows: r.payload.rows, name, sid: key };
   if (STRUCTURED_FIELDS[m]) return { kind: "structured", fields: itx.fields, parts: r.payload.parts, name, sid: key };
   if (m === "example_nonexample")
     return { kind: "text", text: `${itx.options[r.payload.choice]}${r.payload.text ? " — " + r.payload.text : ""}`, name, sid: key };
@@ -672,6 +685,25 @@ function aggregate(session, itx) {
     return out;
   }
 
+  if (itx.mode === "plus_minus") {
+    const plus = [];
+    const minus = [];
+    for (const [sid, r] of itx.responses.entries()) {
+      if (!r.revealed) continue;
+      (r.payload.items || []).forEach((it, i) => {
+        (it.side === 0 ? plus : minus).push({ text: it.text, name: nm(r), sid: `${sid}|${i}` });
+      });
+    }
+    return { ...base, plus, minus };
+  }
+
+  if (itx.mode === "table") {
+    const tables = [...itx.responses.entries()]
+      .filter(([, r]) => r.revealed)
+      .map(([sid, r]) => ({ rows: r.payload.rows, name: nm(r), sid }));
+    return { ...base, columns: itx.options, tables, revealedCount: tables.length };
+  }
+
   if (itx.mode === "counters") {
     const boards = [...itx.responses.entries()]
       .filter(([, r]) => r.revealed)
@@ -764,6 +796,7 @@ function teacherState(session) {
           cloze: itx.cloze,
           expected: itx.expected,
           counterKind: itx.counterKind,
+          tableRows: itx.tableRows,
           timeLimit: itx.timeLimit,
           imageUrl: itx.imageUrl,
           correct: itx.correct,
@@ -843,6 +876,7 @@ function studentState(session, student) {
             clozeBank: itx.bank,
             hasExpected: !!itx.expected,
             counterKind: itx.counterKind,
+            tableRows: itx.tableRows,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
@@ -912,6 +946,12 @@ function describePayload(itx, p) {
     const ok = itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : "";
     return `${work}${work ? "  →  " : ""}${p.answer || "—"}${ok}`;
   }
+  if (itx.mode === "plus_minus")
+    return (p.items || []).map((it) => `${it.side === 0 ? "＋" : "−"} ${it.text}`).join("  |  ");
+  if (itx.mode === "table")
+    return (p.rows || [])
+      .map((row) => row.map((c, i) => `${itx.options[i]}: ${c || "—"}`).join("  |  "))
+      .join("   //   ");
   if (itx.mode === "counters") {
     const ok = itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : "";
     if (itx.counterKind === "base10") {
@@ -1296,6 +1336,8 @@ async function handle(ws, msg) {
         wordBank: typeof it.wordBank === "boolean" ? it.wordBank : undefined,
         expected: typeof it.expected === "string" ? it.expected.slice(0, 30) : undefined,
         counterKind: typeof it.counterKind === "string" ? it.counterKind : undefined,
+        tableRows: Number.isInteger(it.tableRows) ? it.tableRows : undefined,
+        sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
         image:
           typeof it.image === "string" && it.image.startsWith("data:image/") && it.image.length < 900000
             ? it.image
@@ -1575,6 +1617,30 @@ function sanitizePayload(itx, payload) {
       String((payload.fills || [])[i] || "").trim().slice(0, 40)
     );
     return fills.some(Boolean) ? { fills } : null;
+  }
+
+  if (itx.mode === "plus_minus") {
+    const seen = new Set();
+    let items = (Array.isArray(payload.items) ? payload.items : [])
+      .map((it) => ({ text: String(it?.text || "").trim().replace(/\s+/g, " ").slice(0, 140), side: it?.side }))
+      .filter((it) => it.text && [0, 1].includes(it.side))
+      .filter((it) => {
+        const k = it.side + "|" + it.text.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .slice(0, itx.multi === false ? 1 : 6);
+    return items.length ? { items } : null;
+  }
+
+  if (itx.mode === "table") {
+    const rows = Array.from({ length: itx.tableRows }, (_, ri) =>
+      Array.from({ length: itx.options.length }, (_, ci) =>
+        String((payload.rows?.[ri] || [])[ci] || "").trim().slice(0, 400)
+      )
+    );
+    return rows.some((row) => row.some(Boolean)) ? { rows } : null;
   }
 
   if (itx.mode === "counters") {
