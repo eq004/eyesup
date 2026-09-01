@@ -64,6 +64,7 @@ if (process.env.DATABASE_URL) {
     )
     .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_id int`))
     .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_name text`))
+    .then(() => db.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS favs text`))
     .then(() => console.log("Storage connected — lessons persist to Postgres"))
     .catch((e) => {
       console.error("Storage init failed (continuing without):", e.message);
@@ -88,7 +89,7 @@ async function teacherFromToken(token) {
   if (!Number.isInteger(id)) return null;
   try {
     const { rows } = await db.query(
-      `SELECT id, username, display_name, pass_hash FROM teachers WHERE id = $1`, [id]
+      `SELECT id, username, display_name, pass_hash, favs FROM teachers WHERE id = $1`, [id]
     );
     if (!rows[0]) return null;
     return token === signToken(rows[0].id, rows[0].pass_hash) ? rows[0] : null;
@@ -328,7 +329,7 @@ function createSession(teacherWs) {
 const TEXT_MODES = new Set([
   "short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point",
   "retrieval_sprint", "spot_mistake", "teach_back", "give_example",
-  "make_connection", "finish_sentence", "quick_challenge", "picture_prompt",
+  "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response",
 ]);
 const CHOICE_MODES = new Set(["poll", "agree_disagree", "confidence", "this_or_that", "true_false", "multi_choice", "smiley", "picture_vote"]);
 const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
@@ -776,6 +777,7 @@ function teacherState(session) {
     lanHost: `${lanAddress()}:${PORT}`, // so the dashboard can QR the phone remote locally
     storage: !!db, // lessons persist to Postgres
     teacherName: session.teacherName || null,
+    favs: session.favs || [],
     phase: session.phase,
     timer: session.timer,
     focus: session.focus,
@@ -1148,6 +1150,7 @@ async function handle(ws, msg) {
     if (auth.teacher) {
       session.teacherId = auth.teacher.id;
       session.teacherName = auth.teacher.display_name;
+      try { session.favs = JSON.parse(auth.teacher.favs || "[]"); } catch { session.favs = []; }
     }
     ws.meta = { role: "teacher", code: session.code };
     broadcast(session);
@@ -1162,6 +1165,9 @@ async function handle(ws, msg) {
     // A session belongs to its teacher — others can't take it over.
     if (session.teacherId != null && auth.teacher?.id !== session.teacherId)
       return safeSend(ws, { type: "error", error: "no_session" });
+    if (auth.teacher && !session.favs?.length) {
+      try { session.favs = JSON.parse(auth.teacher.favs || "[]"); } catch { /* keep */ }
+    }
     session.teachers.add(ws);
     ws.meta = { role: "teacher", code: session.code };
     broadcast(session);
@@ -1433,6 +1439,15 @@ async function handle(ws, msg) {
       session.title = String(msg.title || "").trim().slice(0, 80);
       break;
     }
+    case "set_favs": {
+      session.favs = (Array.isArray(msg.favs) ? msg.favs : [])
+        .map((f) => String(f).slice(0, 30))
+        .slice(0, 20);
+      if (db && session.teacherId != null)
+        db.query(`UPDATE teachers SET favs = $1 WHERE id = $2`, [JSON.stringify(session.favs), session.teacherId])
+          .catch((e) => console.error("favs save failed:", e.message));
+      break;
+    }
     case "get_summary": {
       safeSend(ws, buildSummary(session));
       return; // no broadcast needed
@@ -1454,6 +1469,7 @@ async function handle(ws, msg) {
       const fresh = createSession(ws);
       fresh.teacherId = session.teacherId;
       fresh.teacherName = session.teacherName;
+      fresh.favs = session.favs;
       fresh.teachers = new Set(session.teachers);
       fresh.projectors = session.projectors;
       session.teachers = new Set();
@@ -1674,7 +1690,8 @@ function sanitizePayload(itx, payload) {
     return { image };
   }
 
-  const text = String(payload.text || "").trim().slice(0, itx.mode === "retrieval_sprint" ? 1500 : 500);
+  const textCap = itx.mode === "long_response" ? 3000 : itx.mode === "retrieval_sprint" ? 1500 : 500;
+  const text = String(payload.text || "").trim().slice(0, textCap);
   return text ? { text } : null;
 }
 

@@ -25,6 +25,8 @@ const MODES = {
                    ph: "Optional: show the word/question on screens — or just say it aloud" },
   /* written recall */
   short_answer:  { icon: "✏️", name: "Short Answer",  hint: "Written replies, reveal in turn", opts: null },
+  long_response: { icon: "📜", name: "Long Response", hint: "Extended writing — paragraphs, not phrases", opts: null,
+                   ph: "The question that deserves a full answer" },
   picture_prompt:{ icon: "🖼️", name: "Picture Prompt", hint: "Put an image up — students write about it", opts: null, imageUpload: true,
                    ph: "The question about the image — or ask it aloud" },
   retrieval_sprint:{ icon: "🧠", name: "Retrieval Sprint", hint: "1–3 timed minutes — write everything you recall", opts: null, sprintUI: true },
@@ -75,14 +77,14 @@ const MODES = {
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics"] },
-  { label: "✏️ Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
+  { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones"] },
   { label: "🎨 Draw", modes: ["sketch", "annotate"] },
 ];
 
-const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt"]);
+const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
 const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
@@ -260,21 +262,37 @@ function toast(text) {
 
 function buildModeGrid() {
   const grid = $("modeGrid");
+  const favs = (state?.favs || []).filter((f) => MODES[f]);
   grid.innerHTML = "";
+  const addTile = (key) => {
+    const m = MODES[key];
+    const isFav = favs.includes(key);
+    const b = document.createElement("button");
+    b.className = "mode-tile";
+    b.innerHTML = `<span class="fav-star ${isFav ? "on" : ""}" title="${isFav ? "Remove from favourites" : "Favourite — pins it up top here and on your phone remote"}">${isFav ? "★" : "☆"}</span>
+      <span class="icon">${m.icon}</span><span class="name">${m.name}</span><span class="hint">${m.hint}</span>`;
+    // Switching between image modes keeps the image you already loaded.
+    b.onclick = () => openComposer(key, !!(MODES[key].imageUpload && composerImage));
+    b.querySelector(".fav-star").onclick = (e) => {
+      e.stopPropagation();
+      const next = isFav ? favs.filter((f) => f !== key) : [...favs, key];
+      send({ type: "set_favs", favs: next });
+    };
+    grid.appendChild(b);
+  };
+  if (favs.length) {
+    const h = document.createElement("div");
+    h.className = "mode-cat";
+    h.textContent = "⭐ Favourites";
+    grid.appendChild(h);
+    favs.forEach(addTile);
+  }
   for (const cat of CATEGORIES) {
     const h = document.createElement("div");
     h.className = "mode-cat";
     h.textContent = cat.label;
     grid.appendChild(h);
-    for (const key of cat.modes) {
-      const m = MODES[key];
-      const b = document.createElement("button");
-      b.className = "mode-tile";
-      b.innerHTML = `<span class="icon">${m.icon}</span><span class="name">${m.name}</span><span class="hint">${m.hint}</span>`;
-      // Switching between image modes keeps the image you already loaded.
-      b.onclick = () => openComposer(key, !!(MODES[key].imageUpload && composerImage));
-      grid.appendChild(b);
-    }
+    cat.modes.forEach(addTile);
   }
 }
 
@@ -515,6 +533,11 @@ function render() {
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
   $("qrToggle").textContent = state.showJoin ? "🔳 QR is up" : "🔳 QR";
   $("studentCount").textContent = state.students.length;
+  const favsKey = JSON.stringify(state.favs || []);
+  if (favsKey !== render._favsKey) {
+    render._favsKey = favsKey;
+    buildModeGrid();
+  }
   renderLive();
   renderSequence();
   renderTools();

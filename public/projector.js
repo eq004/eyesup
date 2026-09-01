@@ -26,6 +26,7 @@ const MODE_TAGS = {
   picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
   spelling: "Spelling Test", cloze: "Fill the Gaps", working: "Show Your Working",
   counters: "Build It With Counters", table: "Fill the Table", plus_minus: "Plus & Minus",
+  long_response: "Long Response",
 };
 
 const COUNTER_COLORS = ["#e05252", "#4a7de0", "#e8c33c", "#3f9e5f"];

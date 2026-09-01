@@ -36,6 +36,7 @@ const MODE_NAMES = {
   phonics: "🔤 Phonics Keyboard",
   spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", working: "🧮 Working Out",
   counters: "🟠 Counters", table: "📋 Table", plus_minus: "➕➖ Plus & Minus",
+  long_response: "📜 Long Response",
 };
 
 /* Phonics keyboard layout & colours */
@@ -290,12 +291,14 @@ function renderInteraction(itx) {
     finish_sentence: "Finish the sentence…",
     quick_challenge: "Your answer…",
     picture_prompt: "Look closely. What do you see / think / wonder?",
+    long_response: "Take your time — full sentences, full thoughts…",
   };
   if (WRITTEN_PH[itx.mode]) {
     const anon = ["ask_question", "muddiest_point"].includes(itx.mode);
+    const long = itx.mode === "long_response";
     show(`${h}
       ${itx.imageUrl ? `<img class="prompt-img" src="${itx.imageUrl}" alt="look at this image" />` : ""}
-      <textarea id="textInput" rows="4" maxlength="500" placeholder="${WRITTEN_PH[itx.mode]}"></textarea>
+      <textarea id="textInput" rows="${long ? 10 : 4}" maxlength="${long ? 3000 : 500}" placeholder="${WRITTEN_PH[itx.mode]}"></textarea>
       <button class="btn send" id="sendBtn">Send</button>
       ${anon ? `<p class="hint">🕶 Your name is never shown with this.</p>` : ""}`, () => {
       const input = $("textInput");

@@ -33,6 +33,7 @@ const MODES = {
   post_its:      { icon: "🗒️", name: "Post-its", postits: true, multiOpt: true },
   phonics:       { icon: "🔤", name: "Phonics" },
   short_answer:  { icon: "✏️", name: "Short Answer" },
+  long_response: { icon: "📜", name: "Long Response", ph: "The question that deserves a full answer" },
   picture_prompt:{ icon: "🖼️", name: "Picture Prompt", imageUpload: true },
   retrieval_sprint:{ icon: "🧠", name: "Sprint", sprintUI: true },
   table:         { icon: "📋", name: "Table", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true },
@@ -66,14 +67,14 @@ const MODES = {
 const CATEGORIES = [
   { label: "Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics"] },
-  { label: "Written recall", modes: ["short_answer", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
+  { label: "Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones"] },
   { label: "Draw", modes: ["sketch", "annotate"] },
 ];
 
-const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt"]);
+const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
@@ -343,11 +344,12 @@ function renderLiveResponses(itx) {
 /* ---------------- LAUNCH tab + composer ---------------- */
 
 function renderLaunch() {
-  main.innerHTML = `<div class="launch-grid">${CATEGORIES.map(
-    (cat) => `<div class="cat-label">${esc(cat.label)}</div>` + cat.modes
-      .map((m) => `<button class="rbtn" data-open="${m}"><span class="ic">${MODES[m].icon}</span>${esc(MODES[m].name)}</button>`)
-      .join("")
-  ).join("")}</div>`;
+  const favs = (state?.favs || []).filter((f) => MODES[f]);
+  const tile = (m) => `<button class="rbtn" data-open="${m}"><span class="ic">${MODES[m].icon}</span>${esc(MODES[m].name)}</button>`;
+  main.innerHTML = `<div class="launch-grid">
+    ${favs.length ? `<div class="cat-label">⭐ Favourites</div>` + favs.map(tile).join("") : ""}
+    ${CATEGORIES.map((cat) => `<div class="cat-label">${esc(cat.label)}</div>` + cat.modes.map(tile).join("")).join("")}
+  </div>`;
 }
 
 function loadComposerImage(file, cb) {
