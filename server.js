@@ -260,6 +260,53 @@ app.get("/api/lessons/:id", async (req, res) => {
   }
 });
 
+// Retroactive edits: teachers often ask questions aloud, then want the
+// wording (and a title) on the record afterwards.
+app.post("/api/lessons/:id/edit", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await teacherFromToken(req.body?.t);
+  if (!t) return res.status(403).json({ error: "auth_required" });
+  try {
+    const { rows } = await db.query(
+      `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
+      [req.params.id, t.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const row = rows[0];
+    const newTitle = typeof req.body.title === "string" ? req.body.title.trim().slice(0, 80) : null;
+    const promptEdits = (Array.isArray(req.body.prompts) ? req.body.prompts : []).filter(
+      (e) => Number.isInteger(e?.i) && typeof e?.prompt === "string"
+    );
+
+    // If this session is still live in memory, edit it at the source so the
+    // next autosave carries the changes rather than overwriting them.
+    const live = sessions.get(row.code);
+    if (live && Math.abs(new Date(live.createdAt) - new Date(row.created_at)) < 2000) {
+      if (newTitle !== null) live.title = newTitle;
+      const all = [...live.history, ...(live.interaction ? [live.interaction] : [])];
+      for (const e of promptEdits) {
+        if (all[e.i]) all[e.i].prompt = e.prompt.trim().slice(0, 300);
+      }
+      if (live.persistTimer) { clearTimeout(live.persistTimer); live.persistTimer = null; }
+      await persistNow(live);
+      broadcast(live);
+      return res.json({ ok: true });
+    }
+
+    const summary = row.summary;
+    if (newTitle !== null) summary.title = newTitle;
+    for (const e of promptEdits) {
+      if (summary.items?.[e.i]) summary.items[e.i].prompt = e.prompt.trim().slice(0, 300);
+    }
+    await db.query(`UPDATE lessons SET title = $1, summary = $2, saved_at = now() WHERE id = $3`, [
+      newTitle !== null ? newTitle : row.title, summary, row.id,
+    ]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
 // Summary as JSON for the printable report. The session code is the key,
 // same trust model as joining the room.
 app.get("/api/summary/:code", async (req, res) => {
