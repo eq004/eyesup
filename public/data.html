@@ -112,6 +112,41 @@
   }
   .gate { text-align: center; padding: 5rem 1rem; }
   .gate a { color: var(--accent); font-weight: 700; }
+
+  /* detail tabs */
+  .dtabs { display: flex; gap: 0.5rem; margin: 0.9rem 0 1.1rem; flex-wrap: wrap; }
+  .dtab {
+    border: 1.5px solid var(--line);
+    background: var(--surface);
+    border-radius: 999px;
+    padding: 0.45rem 1rem;
+    font-weight: 800;
+    font-size: 0.88rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .dtab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .share-row { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .share-btn {
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 10px;
+    padding: 0.5rem 1rem;
+    font-weight: 800;
+    font-size: 0.88rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .share-btn:hover { background: var(--accent-ink); }
+  .share-link {
+    font-size: 0.8rem;
+    color: var(--accent-ink);
+    background: #eceffe;
+    border-radius: 8px;
+    padding: 0.35rem 0.6rem;
+    word-break: break-all;
+  }
 </style>
 </head>
 <body>
@@ -121,6 +156,7 @@
     <a href="/teacher">← Back to dashboard</a>
   </header>
   <div class="wrap" id="wrap"><div class="gate muted">Loading your data…</div></div>
+  <script src="/insights-render.js"></script>
   <script src="/data.js"></script>
 </body>
 </html>

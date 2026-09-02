@@ -65,6 +65,7 @@ if (process.env.DATABASE_URL) {
     .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_id int`))
     .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_name text`))
     .then(() => db.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS favs text`))
+    .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS share_key text`))
     .then(() => console.log("Storage connected — lessons persist to Postgres"))
     .catch((e) => {
       console.error("Storage init failed (continuing without):", e.message);
@@ -137,6 +138,7 @@ app.get("/projector", (_req, res) => res.sendFile(path.join(__dirname, "public/p
 app.get("/report", (_req, res) => res.sendFile(path.join(__dirname, "public/report.html")));
 app.get("/remote", (_req, res) => res.sendFile(path.join(__dirname, "public/remote.html")));
 app.get("/data", (_req, res) => res.sendFile(path.join(__dirname, "public/data.html")));
+app.get("/insights", (_req, res) => res.sendFile(path.join(__dirname, "public/insights.html")));
 
 // Teacher-uploaded images (annotate mode), served over HTTP so websocket
 // broadcasts stay light — clients just get a URL.
@@ -256,6 +258,52 @@ app.get("/api/lessons/:id", async (req, res) => {
     const r = rows[0];
     res.json({ ...r.summary, code: r.code, title: r.title, createdAt: new Date(r.created_at).getTime() });
   } catch (e) {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+/* ---- shareable lesson insights: a public read-only link, with all
+   student names stripped out. ---- */
+
+app.post("/api/lessons/:id/share", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await teacherFromToken(req.body?.t);
+  if (!t) return res.status(403).json({ error: "auth_required" });
+  try {
+    const { rows } = await db.query(
+      `SELECT id, share_key FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
+      [req.params.id, t.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    let key = rows[0].share_key;
+    if (!key) {
+      key = crypto.randomBytes(9).toString("base64url");
+      await db.query(`UPDATE lessons SET share_key = $1 WHERE id = $2`, [key, rows[0].id]);
+    }
+    res.json({ key });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+app.get("/api/shared/:key", async (req, res) => {
+  if (!db) return res.status(404).json({ error: "storage_off" });
+  try {
+    const { rows } = await db.query(`SELECT * FROM lessons WHERE share_key = $1`, [
+      String(req.params.key).slice(0, 40),
+    ]);
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const row = rows[0];
+    // Public view: aggregates and anonymised answers only — never names.
+    const s = JSON.parse(JSON.stringify(row.summary));
+    (s.items || []).forEach((it) => {
+      if (!it.answers?.length && it.students?.length)
+        it.answers = it.students.map((x) => x.response).filter(Boolean).slice(0, 60);
+      delete it.students;
+      delete it.noResponse;
+    });
+    res.json({ ...s, title: row.title || s.title, createdAt: new Date(row.created_at).getTime(), shared: true });
+  } catch {
     res.status(500).json({ error: "db_error" });
   }
 });

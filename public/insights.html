@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eyes Up — Lesson dashboard</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  body { background: var(--paper); }
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.9rem 1.5rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header .wordmark { font-size: 1.2rem; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 1.4rem 1.5rem 4rem; }
+  .muted { color: var(--muted); }
+  .gate { text-align: center; padding: 5rem 1rem; }
+  h1.title { font-family: var(--font-display, "Fraunces", Georgia, serif); font-size: 1.7rem; margin-bottom: 0.15rem; }
+  .lmeta { color: var(--muted); font-size: 0.88rem; margin-bottom: 1.3rem; }
+  .stats { display: flex; gap: 1.6rem; flex-wrap: wrap; margin-bottom: 1.3rem; }
+  .stats .st b { font-size: 1.5rem; display: block; line-height: 1.1; }
+  .stats .st span { color: var(--muted); font-size: 0.78rem; }
+</style>
+</head>
+<body>
+  <header>
+    <span class="wordmark">Eyes Up <span class="eye">👀</span> <span style="font-family:var(--font-ui);font-weight:600;font-size:0.9rem;color:var(--muted)">· Shared lesson dashboard</span></span>
+  </header>
+  <div class="wrap" id="wrap"><div class="gate muted">Loading…</div></div>
+  <script src="/insights-render.js"></script>
+  <script>
+    const wrap = document.getElementById("wrap");
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const key = new URLSearchParams(location.search).get("share");
+
+    async function boot() {
+      if (!key) {
+        wrap.innerHTML = `<div class="gate muted">This page needs a share link from a teacher.</div>`;
+        return;
+      }
+      let s;
+      try {
+        const res = await fetch(`/api/shared/${encodeURIComponent(key)}`);
+        if (!res.ok) throw new Error();
+        s = await res.json();
+      } catch {
+        wrap.innerHTML = `<div class="gate">🔗<br/><b>This link isn't valid.</b><br/><span class="muted">Ask the teacher who shared it for a fresh one.</span></div>`;
+        return;
+      }
+      const when = s.createdAt
+        ? new Date(s.createdAt).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })
+        : "";
+      const nResp = (s.items || []).reduce((a, it) => a + (it.responses || 0), 0);
+      wrap.innerHTML = `
+        <h1 class="title">${s.title ? esc(s.title) : "Lesson dashboard"}</h1>
+        <div class="lmeta">${[when, s.teacherName ? `Shared by ${esc(s.teacherName)}` : ""].filter(Boolean).join(" · ")}</div>
+        <div class="stats">
+          <div class="st"><b>${(s.items || []).length}</b><span>activities</span></div>
+          <div class="st"><b>${nResp}</b><span>responses</span></div>
+          <div class="st"><b>${s.participatedCount ?? "—"}/${s.joinedCount ?? "—"}</b><span>students participated</span></div>
+        </div>
+        <div id="insBox"></div>`;
+      renderInsights(document.getElementById("insBox"), s, {
+        showNames: false,
+        note: "👁 View-only shared dashboard — student names are hidden.",
+      });
+    }
+    boot();
+  </script>
+</body>
+</html>

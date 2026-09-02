@@ -33,6 +33,8 @@ let lessons = []; // [{meta, summary}]
 let selectedId = null;
 let sortBy = { key: "pct", dir: 1 };
 let search = "";
+let detailTab = "part"; // "part" | "ins"
+let shareLink = ""; // per-lesson, cleared on lesson change
 
 async function load() {
   if (!token) {
@@ -155,9 +157,15 @@ function render() {
     selectedId = +el.dataset.lesson;
     sortBy = { key: "pct", dir: 1 };
     search = "";
+    shareLink = "";
     render();
     document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "start" });
   }));
+  bindDetail();
+}
+
+function refreshDetail() {
+  document.getElementById("detail").innerHTML = renderDetail();
   bindDetail();
 }
 
@@ -183,6 +191,21 @@ function renderDetail() {
   const x = lessons.find((l) => l.meta.id === selectedId);
   if (!x) return "";
   const s = x.summary;
+  const when = new Date(x.meta.created_at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+
+  return `
+    <div class="card">
+      <h2>${x.meta.title ? esc(x.meta.title) : `Lesson ${esc(x.meta.code)}`} <span class="muted" style="font-weight:500;font-size:0.85rem">· ${esc(when)} · ${s.participatedCount}/${s.joinedCount} participated${s.teacherName ? ` · ${esc(s.teacherName)}` : ""}</span></h2>
+      <div class="dtabs">
+        <button class="dtab ${detailTab === "part" ? "on" : ""}" data-dtab="part">👥 Student participation</button>
+        <button class="dtab ${detailTab === "ins" ? "on" : ""}" data-dtab="ins">📊 Lesson dashboard</button>
+      </div>
+      ${detailTab === "part" ? renderParticipation(x) : renderInsightsTab(x)}
+    </div>`;
+}
+
+function renderParticipation(x) {
+  const s = x.summary;
   const items = (s.items || []);
   const maxResp = Math.max(1, ...items.map((it) => it.responses || 0));
   const { total, rows } = studentStats(s);
@@ -194,11 +217,7 @@ function renderDetail() {
     return sortBy.dir * ((b.n / total) - (a.n / total)) || a.name.localeCompare(b.name);
   });
 
-  const when = new Date(x.meta.created_at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
-
   return `
-    <div class="card">
-      <h2>${x.meta.title ? esc(x.meta.title) : `Lesson ${esc(x.meta.code)}`} <span class="muted" style="font-weight:500;font-size:0.85rem">· ${esc(when)} · ${s.participatedCount}/${s.joinedCount} participated${s.teacherName ? ` · ${esc(s.teacherName)}` : ""}</span></h2>
       <div class="sub">Response energy, activity by activity — dips are where the room lost people.</div>
       <div class="ichart">${items
         .map((it, i) => {
@@ -230,11 +249,46 @@ function renderDetail() {
           })
           .join("")}</tbody>
       </table>
-      <p class="muted" style="font-size:0.78rem;margin-top:0.7rem">Students are matched by the name they typed, so a re-typed name counts separately. Open the full <a href="/report?lesson=${x.meta.id}&${authQ}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700">report / PDF</a> for every answer.</p>
-    </div>`;
+      <p class="muted" style="font-size:0.78rem;margin-top:0.7rem">Students are matched by the name they typed, so a re-typed name counts separately. Open the full <a href="/report?lesson=${x.meta.id}&${authQ}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700">report / PDF</a> for every answer.</p>`;
+}
+
+function renderInsightsTab(x) {
+  return `
+      <div class="sub">Everything this lesson captured, as a visual dashboard — the same story as the export, live on screen.</div>
+      <div class="share-row">
+        <button class="share-btn" id="shareBtn">🔗 ${shareLink ? "Copy share link again" : "Share this dashboard with a link"}</button>
+        ${shareLink ? `<span class="share-link">${esc(shareLink)}</span><span class="muted" style="font-size:0.78rem">Copied! Anyone with the link can view it — student names are hidden.</span>` : `<span class="muted" style="font-size:0.78rem">Creates a view-only link you can send to anyone — no sign-in needed, student names hidden.</span>`}
+      </div>
+      <div id="insBox"></div>`;
+}
+
+async function shareLesson(x) {
+  try {
+    const res = await fetch(`/api/lessons/${x.meta.id}/share`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ t: token }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    shareLink = `${location.origin}/insights?share=${data.key}`;
+    try { await navigator.clipboard.writeText(shareLink); } catch {}
+    refreshDetail();
+  } catch {
+    alert("Couldn't create a share link — check you're signed in and try again.");
+  }
 }
 
 function bindDetail() {
+  const x = lessons.find((l) => l.meta.id === selectedId);
+  document.querySelectorAll("[data-dtab]").forEach((b) => (b.onclick = () => {
+    detailTab = b.dataset.dtab;
+    refreshDetail();
+  }));
+  const insBox = document.getElementById("insBox");
+  if (insBox && x) renderInsights(insBox, x.summary, { showNames: true });
+  const sb = document.getElementById("shareBtn");
+  if (sb && x) sb.onclick = () => shareLesson(x);
   const si = document.getElementById("stuSearch");
   if (si) {
     si.oninput = () => {
