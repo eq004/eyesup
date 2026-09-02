@@ -54,6 +54,12 @@
   .ins-col { background:#f6f5f1; border:1px solid #e6e4dd; border-radius:10px; padding:0.6rem 0.8rem; font-size:0.85rem; }
   .ins-col b { display:block; color:#2941c8; margin-bottom:0.3rem; font-size:0.78rem; }
   .ins-chip { display:inline-block; background:#eceffe; color:#2941c8; border-radius:999px; padding:0.15rem 0.6rem; font-weight:700; font-size:0.8rem; margin:0 0.25rem 0.3rem 0; }
+  @media print {
+    * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .ins-card { break-inside: avoid; box-shadow: none; }
+    .ins-rest { display: inline !important; }
+    .ins-more { display: none !important; }
+  }
   `;
 
   const CLOUD_INK = ["#3d5af1", "#191c26", "#2f9e44", "#c07d10", "#7048ba", "#0e7490"];
@@ -112,7 +118,7 @@
     const li = (r) => `<li>${r.who ? `<b class="who">${esc(r.who)}</b>` : ""}${esc(r.text || "—")}</li>`;
     const head = rows.slice(0, 6).map(li).join("");
     const rest = rows.slice(6).map(li).join("");
-    return `<ul class="ins-list">${head}${rest ? `<span id="${id}" style="display:none">${rest}</span>` : ""}</ul>
+    return `<ul class="ins-list">${head}${rest ? `<span class="ins-rest" id="${id}" style="display:none">${rest}</span>` : ""}</ul>
       ${rest ? `<button class="ins-more" data-more="${id}">Show all ${rows.length} →</button>` : ""}`;
   }
 

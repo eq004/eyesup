@@ -28,49 +28,85 @@
   .stats { display: flex; gap: 1.6rem; flex-wrap: wrap; margin-bottom: 1.3rem; }
   .stats .st b { font-size: 1.5rem; display: block; line-height: 1.1; }
   .stats .st span { color: var(--muted); font-size: 0.78rem; }
+  .pdf-btn {
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 10px;
+    padding: 0.5rem 1rem;
+    font-weight: 800;
+    font-size: 0.88rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .pdf-btn:hover { background: var(--accent-ink); }
+  @media print {
+    header, .no-print { display: none !important; }
+    body { background: #fff; }
+    .wrap { padding: 0; max-width: none; }
+  }
+  @page { margin: 14mm 12mm; }
 </style>
 </head>
 <body>
   <header>
-    <span class="wordmark">Eyes Up <span class="eye">👀</span> <span style="font-family:var(--font-ui);font-weight:600;font-size:0.9rem;color:var(--muted)">· Shared lesson dashboard</span></span>
+    <span class="wordmark">Eyes Up <span class="eye">👀</span> <span id="pageKind" style="font-family:var(--font-ui);font-weight:600;font-size:0.9rem;color:var(--muted)">· Lesson dashboard</span></span>
   </header>
   <div class="wrap" id="wrap"><div class="gate muted">Loading…</div></div>
   <script src="/insights-render.js"></script>
   <script>
     const wrap = document.getElementById("wrap");
     const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const key = new URLSearchParams(location.search).get("share");
+    const params = new URLSearchParams(location.search);
+    const key = params.get("share");
+    const lessonId = params.get("lesson");
+    const token = params.get("t") || localStorage.getItem("eyesup_token") || "";
 
     async function boot() {
-      if (!key) {
-        wrap.innerHTML = `<div class="gate muted">This page needs a share link from a teacher.</div>`;
-        return;
-      }
       let s;
-      try {
-        const res = await fetch(`/api/shared/${encodeURIComponent(key)}`);
-        if (!res.ok) throw new Error();
-        s = await res.json();
-      } catch {
-        wrap.innerHTML = `<div class="gate">🔗<br/><b>This link isn't valid.</b><br/><span class="muted">Ask the teacher who shared it for a fresh one.</span></div>`;
-        return;
+      const teacherView = !!lessonId;
+      if (teacherView) {
+        // Teacher's own copy — full detail, student names included.
+        try {
+          const res = await fetch(`/api/lessons/${encodeURIComponent(lessonId)}?t=${encodeURIComponent(token)}`);
+          if (!res.ok) throw new Error();
+          s = await res.json();
+        } catch {
+          wrap.innerHTML = `<div class="gate">🔒<br/><b>Sign in first.</b><br/><span class="muted">Open the <a href="/teacher" style="color:var(--accent);font-weight:700">teacher dashboard</a>, sign in, then come back here.</span></div>`;
+          return;
+        }
+      } else {
+        if (!key) {
+          wrap.innerHTML = `<div class="gate muted">This page needs a share link from a teacher.</div>`;
+          return;
+        }
+        try {
+          const res = await fetch(`/api/shared/${encodeURIComponent(key)}`);
+          if (!res.ok) throw new Error();
+          s = await res.json();
+        } catch {
+          wrap.innerHTML = `<div class="gate">🔗<br/><b>This link isn't valid.</b><br/><span class="muted">Ask the teacher who shared it for a fresh one.</span></div>`;
+          return;
+        }
       }
+      if (!teacherView) document.getElementById("pageKind").textContent = "· Shared lesson dashboard";
       const when = s.createdAt
         ? new Date(s.createdAt).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })
         : "";
       const nResp = (s.items || []).reduce((a, it) => a + (it.responses || 0), 0);
       wrap.innerHTML = `
         <h1 class="title">${s.title ? esc(s.title) : "Lesson dashboard"}</h1>
-        <div class="lmeta">${[when, s.teacherName ? `Shared by ${esc(s.teacherName)}` : ""].filter(Boolean).join(" · ")}</div>
+        <div class="lmeta">${[when, s.teacherName ? (teacherView ? esc(s.teacherName) : `Shared by ${esc(s.teacherName)}`) : ""].filter(Boolean).join(" · ")}</div>
         <div class="stats">
           <div class="st"><b>${(s.items || []).length}</b><span>activities</span></div>
           <div class="st"><b>${nResp}</b><span>responses</span></div>
           <div class="st"><b>${s.participatedCount ?? "—"}/${s.joinedCount ?? "—"}</b><span>students participated</span></div>
         </div>
+        ${teacherView ? `<div class="no-print" style="margin-bottom:1.2rem"><button class="pdf-btn" onclick="window.print()">🖨 Export as PDF / print</button> <span class="muted" style="font-size:0.78rem;margin-left:0.5rem">Includes every student's name and answer.</span></div>` : ""}
         <div id="insBox"></div>`;
       renderInsights(document.getElementById("insBox"), s, {
-        showNames: false,
-        note: "👁 View-only shared dashboard — student names are hidden.",
+        showNames: teacherView,
+        note: teacherView ? "" : "👁 View-only shared dashboard — student names are hidden.",
       });
     }
     boot();

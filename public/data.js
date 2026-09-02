@@ -254,10 +254,11 @@ function renderParticipation(x) {
 
 function renderInsightsTab(x) {
   return `
-      <div class="sub">Everything this lesson captured, as a visual dashboard — the same story as the export, live on screen.</div>
+      <div class="sub">Everything this lesson captured, as a visual dashboard with every student's name and answer.</div>
       <div class="share-row">
-        <button class="share-btn" id="shareBtn">🔗 ${shareLink ? "Copy share link again" : "Share this dashboard with a link"}</button>
-        ${shareLink ? `<span class="share-link">${esc(shareLink)}</span><span class="muted" style="font-size:0.78rem">Copied! Anyone with the link can view it — student names are hidden.</span>` : `<span class="muted" style="font-size:0.78rem">Creates a view-only link you can send to anyone — no sign-in needed, student names hidden.</span>`}
+        <a class="share-btn" style="text-decoration:none" href="/insights?lesson=${x.meta.id}&${authQ}" target="_blank" rel="noopener">📄 Export lesson (PDF / print)</a>
+        <button class="share-btn" id="shareBtn" style="background:var(--surface);color:var(--ink);border:1.5px solid var(--line)">🔗 ${shareLink ? "Copy share link again" : "Share with a link"}</button>
+        ${shareLink ? `<span class="share-link">${esc(shareLink)}</span><span class="muted" style="font-size:0.78rem">Copied! Anyone with the link can view it — the shared version hides student names.</span>` : `<span class="muted" style="font-size:0.78rem">The export keeps names; the share link is view-only for anyone and hides them.</span>`}
       </div>
       <div id="insBox"></div>`;
 }
