@@ -20,7 +20,7 @@ const MODE_META = {
   confidence: ["🎯", "Confidence"], smiley: ["😊", "Smiley Review"], scale: ["🎚️", "Scale"],
   example_nonexample: ["↔️", "Example/Non-ex"], ranking: ["🔢", "Ranking"], put_in_order: ["🪜", "Put in Order"],
   match_up: ["🧩", "Match Up"], venn: ["◉", "Venn"], spelling: ["🔡", "Spelling"], cloze: ["▭", "Cloze"],
-  working: ["🧮", "Working Out"], counters: ["🟠", "Counters"], sketch: ["🎨", "Sketch"], annotate: ["🖍️", "Annotate"],
+  working: ["🧮", "Working Out"], counters: ["🟠", "Counters"], sketch: ["🎨", "Sketch"], annotate: ["🖍️", "Annotate"], image_drop: ["📥", "Drop an Image"],
 };
 const modeIcon = (m) => (MODE_META[m] || ["▫️", m])[0];
 const modeName = (m, ck) => (m === "counters" && ck === "base10" ? "Tens & Ones" : (MODE_META[m] || ["", m])[1]);

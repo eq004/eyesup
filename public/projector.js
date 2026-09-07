@@ -15,7 +15,7 @@ const MODE_TAGS = {
   one_word: "One Word", ask_question: "Your Questions",
   true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
   muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint — 60 seconds",
-  sketch: "Sketch It", spot_mistake: "Spot the Mistake",
+  sketch: "Sketch It", image_drop: "Drop an Image", spot_mistake: "Spot the Mistake",
   example_nonexample: "Example or Non-example?", teach_back: "Teach It Back",
   match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
@@ -298,7 +298,7 @@ function renderInteraction(itx) {
           .join("")}</div>`
       : `<p class="waiting-note">Tables appear here as they're filled…</p>`;
   } else if (agg.sketches) {
-    body = renderSketches(agg);
+    body = renderSketches(agg, itx.mode === "image_drop");
   } else if (agg.fields) {
     body = renderStructured(agg);
   } else if (agg.revealed) {
@@ -307,7 +307,7 @@ function renderInteraction(itx) {
 
   // A spotlighted response (any type, except sketch which has its own stage)
   // replaces the body until tapped away.
-  if (agg?.spotlight && !["sketch", "annotate"].includes(itx.mode)) {
+  if (agg?.spotlight && !["sketch", "annotate", "image_drop"].includes(itx.mode)) {
     body = renderGenericSpotlight(agg.spotlight);
   }
 
@@ -636,9 +636,10 @@ function renderStructured(agg) {
 }
 
 /* Sketch gallery — with a teacher-driven spotlight for discussing one big. */
-function renderSketches(agg) {
+function renderSketches(agg, isImage) {
   if (!agg.sketches.length) {
-    return `<p class="waiting-note">${agg.total ? `${agg.total} sketch${agg.total === 1 ? "" : "es"} in…` : "Sketches will appear here…"}</p>`;
+    const noun = isImage ? ["image", "images"] : ["sketch", "sketches"];
+    return `<p class="waiting-note">${agg.total ? `${agg.total} ${agg.total === 1 ? noun[0] : noun[1]} in…` : `${isImage ? "Images" : "Sketches"} will appear here…`}</p>`;
   }
   if (agg.spotlight) {
     const rest = agg.sketches.filter((s) => s.sid !== agg.spotlight.sid);
@@ -654,7 +655,7 @@ function renderSketches(agg) {
   return `<div class="answers">${agg.sketches
     .map((s, i) => `<div class="sketch-card tappable" data-spot="${s.sid}" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/>${s.name ? `<div class="sketch-name">${esc(s.name)}</div>` : ""}</div>`)
     .join("")}</div>
-    <p class="tap-hint">👆 tap a drawing to make it big</p>`;
+    <p class="tap-hint">👆 tap ${isImage ? "an image" : "a drawing"} to make it big</p>`;
 }
 
 /* A real packed word cloud: biggest word at the centre, the rest spiral

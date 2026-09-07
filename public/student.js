@@ -24,7 +24,7 @@ const MODE_NAMES = {
   one_word: "🗣️ One Word", ask_question: "❓ Ask a Question",
   true_false: "✅ True or False", mindmap: "🕸️ Mindmap", exit_ticket: "🎟️ Exit Ticket",
   muddiest_point: "🌫️ Muddiest Point", retrieval_sprint: "🧠 Retrieval Sprint",
-  sketch: "🎨 Sketch It", spot_mistake: "🔎 Spot the Mistake",
+  sketch: "🎨 Sketch It", image_drop: "📥 Drop an Image", spot_mistake: "🔎 Spot the Mistake",
   example_nonexample: "↔️ Example / Non-example", teach_back: "🧑‍🏫 Teach It Back",
   match_up: "🧩 Match Up", put_in_order: "🪜 Put in Order", give_example: "💡 Give an Example",
   make_connection: "🔗 Make a Connection", finish_sentence: "📝 Finish the Sentence",
@@ -816,6 +816,57 @@ function renderInteraction(itx) {
       $("phonBack").onclick = () => { phonParts.pop(); paint(); };
       $("phonClear").onclick = () => { phonParts = []; paint(); };
       $("sendBtn").onclick = () => { if (phonParts.length) submit({ parts: phonParts }); };
+    });
+    return;
+  }
+
+  /* --- drop an image: a photo or picture IS the answer --- */
+  if (itx.mode === "image_drop") {
+    show(`${h}
+      <div id="dropZone" style="border:2px dashed var(--line);border-radius:14px;padding:1.6rem 1rem;text-align:center;background:var(--surface);cursor:pointer">
+        <div id="dropPreview" style="display:none;margin-bottom:0.8rem"><img id="dropImg" alt="your image" style="max-width:100%;max-height:45vh;border-radius:10px" /></div>
+        <div id="dropText"><div style="font-size:2rem">📥</div><b>Drop an image here</b><br/><span class="hint" style="margin:0">or tap to choose a photo — or take one</span></div>
+        <input type="file" id="dropFile" accept="image/*" style="display:none" />
+      </div>
+      <div style="display:flex;gap:0.6rem;margin-top:0.8rem">
+        <button class="btn" id="dropClear" style="flex:0 0 auto;width:auto;margin-top:0;background:var(--surface);border:1.5px solid var(--line)">↺ Change</button>
+        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0" disabled>Send my image</button>
+      </div>`, () => {
+      let dataUrl = null;
+      const zone = $("dropZone"), file = $("dropFile");
+      const setImage = (blob) => {
+        if (!blob || !blob.type.startsWith("image/")) return;
+        const img = new Image();
+        img.onload = () => {
+          // Keep it print-size: a 2000px long edge still prints crisply on A4.
+          const s = Math.min(1, 2000 / Math.max(img.width, img.height));
+          const c = document.createElement("canvas");
+          c.width = Math.round(img.width * s);
+          c.height = Math.round(img.height * s);
+          const cx = c.getContext("2d");
+          cx.fillStyle = "#fff";
+          cx.fillRect(0, 0, c.width, c.height);
+          cx.drawImage(img, 0, 0, c.width, c.height);
+          dataUrl = c.toDataURL("image/jpeg", 0.85);
+          URL.revokeObjectURL(img.src);
+          $("dropImg").src = dataUrl;
+          $("dropPreview").style.display = "block";
+          $("dropText").style.display = "none";
+          $("sendBtn").disabled = false;
+        };
+        img.src = URL.createObjectURL(blob);
+      };
+      zone.onclick = () => file.click();
+      file.onchange = () => setImage(file.files[0]);
+      ["dragenter", "dragover"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.style.borderColor = "var(--accent)"; }));
+      ["dragleave", "drop"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.style.borderColor = "var(--line)"; }));
+      zone.addEventListener("drop", (e) => setImage(e.dataTransfer.files[0]));
+      document.onpaste = (e) => { const f = e.clipboardData?.files?.[0]; if (f) setImage(f); };
+      $("dropClear").onclick = () => {
+        dataUrl = null; file.value = "";
+        $("dropPreview").style.display = "none"; $("dropText").style.display = "block"; $("sendBtn").disabled = true;
+      };
+      $("sendBtn").onclick = () => { if (dataUrl) submit({ image: dataUrl }); };
     });
     return;
   }

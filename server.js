@@ -214,6 +214,15 @@ app.get("/api/image/:code/:id", (req, res) => {
   res.type(m[1]).send(Buffer.from(m[2], "base64"));
 });
 
+app.get("/api/resp-image/:code/:itx/:sid", (req, res) => {
+  const session = sessions.get(String(req.params.code || "").toUpperCase());
+  const dataUrl = session?.respImages.get(`${req.params.itx}/${req.params.sid}`);
+  const m = dataUrl?.match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!m) return res.status(404).end();
+  res.set("Cache-Control", "public, max-age=86400");
+  res.type(m[1]).send(Buffer.from(m[2], "base64"));
+});
+
 /* ---- teacher accounts (database mode) ---- */
 
 app.post("/api/signup", async (req, res) => {
@@ -429,13 +438,13 @@ app.get("/api/summary/:code", async (req, res) => {
     if (!session) return res.status(404).json({ error: "no_session" });
     if (session.teacherId != null && session.teacherId !== t.id)
       return res.status(403).json({ error: "auth_required" });
-    return res.json({ ...buildSummary(session), code: session.code, createdAt: session.createdAt });
+    return res.json({ ...buildSummary(session, { withImages: true }), code: session.code, createdAt: session.createdAt });
   }
   if (TEACHER_PASSWORD && req.query.pw !== TEACHER_PASSWORD)
     return res.status(403).json({ error: "bad_password" });
   const session = sessions.get(String(req.params.code || "").toUpperCase());
   if (!session) return res.status(404).json({ error: "no_session" });
-  res.json({ ...buildSummary(session), code: session.code, createdAt: session.createdAt });
+  res.json({ ...buildSummary(session, { withImages: true }), code: session.code, createdAt: session.createdAt });
 });
 
 const server = http.createServer(app);
@@ -464,6 +473,7 @@ function createSession(teacherWs) {
     code,
     title: "",
     images: new Map(), // interaction id -> uploaded image dataURL (annotate mode)
+    respImages: new Map(), // "itxId/studentId" -> student-uploaded image dataURL (image_drop)
     createdAt: Date.now(),
     teachers: new Set([teacherWs]), // dashboard + any phone remotes, all in control
     projectors: new Set(),
@@ -495,6 +505,8 @@ const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
 const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
+// Modes whose answer is a picture (drawn, marked up, or uploaded).
+const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop"]);
 // Custom options entered by the teacher at launch.
 const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale", "picture_vote", "table"]);
 
@@ -525,7 +537,7 @@ const PHONICS_TOKENS = new Set([
 function isRevealMode(mode) {
   return (
     TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] ||
-    mode === "sketch" || mode === "annotate" || mode === "example_nonexample" ||
+    IMAGE_MODES.has(mode) || mode === "example_nonexample" ||
     mode === "post_its" || mode === "phonics" || mode === "working" || mode === "counters" ||
     mode === "table" || mode === "plus_minus"
   );
@@ -649,7 +661,7 @@ function buildSpotlight(itx) {
   const name = itx.showNames && !ANON_MODES.has(itx.mode) ? r.name : undefined;
   const key = itx.spotlightId;
   const m = itx.mode;
-  if (m === "sketch" || m === "annotate") return { kind: "image", image: r.payload.image, name, sid: key };
+  if (IMAGE_MODES.has(m)) return { kind: "image", image: r.payload.image, name, sid: key };
   if (m === "post_its") {
     const i = parseInt(noteIdx, 10);
     const note = (r.payload.notes || [])[i];
@@ -806,7 +818,7 @@ function aggregate(session, itx) {
     return { ...base, fields: itx.fields, revealed, revealedCount: revealed.length };
   }
 
-  if (itx.mode === "sketch" || itx.mode === "annotate") {
+  if (IMAGE_MODES.has(itx.mode)) {
     const revealed = [...itx.responses.entries()]
       .filter(([, r]) => r.revealed)
       .map(([sid, r]) => ({ sid, image: r.payload.image, name: nm(r) }));
@@ -1093,7 +1105,8 @@ function describePayload(itx, p) {
   }
   if (STRUCTURED_FIELDS[itx.mode])
     return (p.parts || []).filter(Boolean).join("  ·  ");
-  if (itx.mode === "sketch" || itx.mode === "annotate") return "(drawing submitted)";
+  if (itx.mode === "image_drop") return "(image submitted)";
+  if (IMAGE_MODES.has(itx.mode)) return "(drawing submitted)";
   if (itx.mode === "spelling")
     return itx.words
       .map((w, i) => `${p.answers[i] || "—"}${markMatch(p.answers[i], w) ? " ✓" : ` ✗(${w})`}`)
@@ -1131,7 +1144,7 @@ function describePayload(itx, p) {
   return p.text || "";
 }
 
-function buildSummary(session) {
+function buildSummary(session, { withImages = false } = {}) {
   const all = [...session.history];
   if (session.interaction) all.push(session.interaction);
 
@@ -1177,7 +1190,15 @@ function buildSummary(session) {
       item.answers = [...itx.responses.values()]
         .map((r) => r.payload.parts.filter(Boolean).join(" · "))
         .slice(0, 40);
-    if (itx.mode === "sketch" || itx.mode === "annotate") item.sketchCount = itx.responses.size;
+    if (IMAGE_MODES.has(itx.mode)) {
+      item.sketchCount = itx.responses.size;
+      // Only for the live report (never stored): the pictures themselves,
+      // at full size so a teacher can print them.
+      if (withImages)
+        item.images = [...itx.responses.values()]
+          .filter((r) => r.name !== "👁 Preview")
+          .map((r) => ({ name: r.name, image: r.payload.image }));
+    }
     if (itx.mode === "counters") item.counterKind = itx.counterKind;
     if (itx.mode === "venn")
       item.venn = { labels: itx.options, regions: agg.regions.map((r) => r.slice(0, 8)) };
@@ -1381,6 +1402,13 @@ async function handle(ws, msg) {
     if (msg.interactionId !== itx.id) return;
     const payload = sanitizePayload(itx, msg.payload);
     if (!payload) return;
+    if (itx.mode === "image_drop") {
+      // Full-size photos would multiply across every broadcast to every
+      // screen; park the bytes here and send everyone a link instead.
+      const key = `${itx.id}/${student.id}`;
+      session.respImages.set(key, payload.image);
+      payload.image = `/api/resp-image/${session.code}/${key}?v=${Date.now()}`;
+    }
     const record = {
       name: student.name,
       payload,
@@ -1847,9 +1875,11 @@ function sanitizePayload(itx, payload) {
     return answer || lines.length ? { lines, answer } : null;
   }
 
-  if (itx.mode === "sketch" || itx.mode === "annotate") {
+  if (IMAGE_MODES.has(itx.mode)) {
     const image = String(payload.image || "");
-    if (!/^data:image\/(png|jpeg);base64,/.test(image) || image.length > 600000) return null;
+    // Uploaded photos stay print-size (≈2000px), so they get more room.
+    const cap = itx.mode === "image_drop" ? 2600000 : 600000;
+    if (!/^data:image\/(png|jpeg);base64,/.test(image) || image.length > cap) return null;
     return { image };
   }
 
