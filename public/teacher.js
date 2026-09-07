@@ -797,7 +797,8 @@ function renderLive() {
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.78rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
     const hint = itx.responses.length
-      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${itx.mode === "image_drop" || itx.mode === "image_caption" ? "an image" : "a drawing"} to blow it up on the projector; click again to shrink it back.</p>`
+      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${itx.mode === "image_drop" || itx.mode === "image_caption" ? "an image" : "a drawing"} to blow it up on the projector; click again to shrink it back.
+         <a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all (${itx.responses.length}) as ZIP</a></p>`
       : "";
     body = source + hint + revealCards((r) =>
       `<img src="${r.payload.image}" alt="student drawing" data-spot="${r.studentId}"

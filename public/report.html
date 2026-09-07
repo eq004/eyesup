@@ -110,6 +110,8 @@
   .img-gallery img { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
   .img-gallery figcaption { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.3rem; font-weight: 700; }
   .img-gallery .img-text { font-size: 0.9rem; text-align: left; margin: 0.5rem 0 0; line-height: 1.45; }
+  .dl-btn { display: inline-block; margin-top: 0.5rem; text-decoration: none; font-weight: 800; font-size: 0.85rem; color: var(--accent); border: 1.5px solid var(--line); border-radius: 8px; padding: 0.3rem 0.7rem; }
+  @media print { .dl-btn { display: none !important; } }
   @media print {
     .itx.has-gallery { page-break-inside: auto; }
     .img-gallery { display: block; }
@@ -160,6 +162,7 @@
 <body>
   <div class="print-bar">
     <span class="hint">A print dialog opens — set the destination/printer to “Save as PDF”.</span>
+    <a id="allImagesBtn" class="dl-btn" style="display:none;font-size:0.95rem;padding:0.55rem 1rem;margin:0 0.6rem 0 0;background:#fff">⬇ Download all student images (ZIP)</a>
     <button onclick="window.print()" style="font-size:1rem;padding:0.6rem 1.5rem">🖨 Print / Save as PDF</button>
   </div>
   <div class="page" id="page"><div class="err">Loading report…</div></div>
@@ -267,6 +270,13 @@ async function load() {
     }
     if (!res.ok) throw new Error();
     s = await res.json();
+    // Live session: student pictures are still on the server, so offer them.
+    window._live = { code, authQ };
+    if ((s.items || []).some((it) => it.images && it.images.length)) {
+      const b = document.getElementById("allImagesBtn");
+      b.href = `/api/images/${encodeURIComponent(code)}${authQ ? `?${authQ}` : ""}`;
+      b.style.display = "inline-block";
+    }
   } catch {
     // The session is gone from the server — fall back to the dashboard's
     // continuous autosave in this browser.
@@ -337,7 +347,7 @@ function renderReport(s, recovered) {
     } else if (it.sketchCount != null) {
       const noun = it.mode === "image_drop" || it.mode === "image_caption" ? ["image", "images"] : ["sketch", "sketches"];
       body = it.images && it.images.length
-        ? `<div class="img-gallery">${it.images
+        ? `${window._live ? `<a class="dl-btn" href="/api/images/${encodeURIComponent(window._live.code)}/${it.id}?${window._live.authQ}">⬇ Download these ${it.images.length} image${it.images.length === 1 ? "" : "s"} (ZIP)</a>` : ""}<div class="img-gallery">${it.images
             .map((im) => `<figure><img src="${im.image}" alt="student ${noun[0]}" />${im.text ? `<p class="img-text">${esc(im.text)}</p>` : ""}${im.name && !it.anonymous ? `<figcaption>${esc(im.name)}</figcaption>` : ""}</figure>`)
             .join("")}</div>`
         : `<p style="color:var(--ink-soft);margin-top:0.4rem">${it.sketchCount} ${it.sketchCount === 1 ? noun[0] : noun[1]} submitted — pictures can be viewed and printed from this report while the lesson is live.</p>`;

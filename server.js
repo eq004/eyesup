@@ -453,22 +453,110 @@ app.post("/api/lessons/:id/edit", async (req, res) => {
 
 // Summary as JSON for the printable report. The session code is the key,
 // same trust model as joining the room.
-app.get("/api/summary/:code", async (req, res) => {
-  if (db) {
-    // Account mode: only the session's owner may pull its report.
-    const t = await authHttp(res, req.query.t);
-    if (!t) return;
-    const session = sessions.get(String(req.params.code || "").toUpperCase());
-    if (!session) return res.status(404).json({ error: "no_session" });
-    if (session.teacherId != null && session.teacherId !== t.id)
-      return res.status(403).json({ error: "auth_required" });
-    return res.json({ ...buildSummary(session, { withImages: true }), code: session.code, createdAt: session.createdAt });
-  }
-  if (TEACHER_PASSWORD && req.query.pw !== TEACHER_PASSWORD)
-    return res.status(403).json({ error: "bad_password" });
+// The live session behind a code, if this request is allowed to see it:
+// the owning teacher's token in account mode, the shared password otherwise.
+// Answers the request itself on failure.
+async function ownedSession(req, res) {
   const session = sessions.get(String(req.params.code || "").toUpperCase());
-  if (!session) return res.status(404).json({ error: "no_session" });
+  if (db) {
+    const t = await authHttp(res, req.query.t);
+    if (!t) return null;
+    if (!session) { res.status(404).json({ error: "no_session" }); return null; }
+    if (session.teacherId != null && session.teacherId !== t.id) { res.status(403).json({ error: "auth_required" }); return null; }
+    return session;
+  }
+  if (TEACHER_PASSWORD && req.query.pw !== TEACHER_PASSWORD) { res.status(403).json({ error: "bad_password" }); return null; }
+  if (!session) { res.status(404).json({ error: "no_session" }); return null; }
+  return session;
+}
+
+app.get("/api/summary/:code", async (req, res) => {
+  const session = await ownedSession(req, res);
+  if (!session) return;
   res.json({ ...buildSummary(session, { withImages: true }), code: session.code, createdAt: session.createdAt });
+});
+
+/* ---- student images as a ZIP (work samples, displays, social media) ----
+   Pictures are already JPEG/PNG, so the archive just stores them. */
+
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function buildZip(files) {
+  // files: [{ name, data: Buffer }] → Buffer of a store-only zip
+  const local = [], central = [];
+  let offset = 0;
+  const now = new Date();
+  const dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xffff;
+  const dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xffff;
+  for (const f of files) {
+    const name = Buffer.from(f.name, "utf8");
+    const crc = crc32(f.data);
+    const head = Buffer.alloc(30);
+    head.writeUInt32LE(0x04034b50, 0); head.writeUInt16LE(20, 4); head.writeUInt16LE(0x0800, 6); head.writeUInt16LE(0, 8);
+    head.writeUInt16LE(dosTime, 10); head.writeUInt16LE(dosDate, 12); head.writeUInt32LE(crc, 14);
+    head.writeUInt32LE(f.data.length, 18); head.writeUInt32LE(f.data.length, 22); head.writeUInt16LE(name.length, 26); head.writeUInt16LE(0, 28);
+    local.push(head, name, f.data);
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(0x0800, 8); cd.writeUInt16LE(0, 10);
+    cd.writeUInt16LE(dosTime, 12); cd.writeUInt16LE(dosDate, 14); cd.writeUInt32LE(crc, 16);
+    cd.writeUInt32LE(f.data.length, 20); cd.writeUInt32LE(f.data.length, 24); cd.writeUInt16LE(name.length, 28);
+    cd.writeUInt16LE(0, 30); cd.writeUInt16LE(0, 32); cd.writeUInt16LE(0, 34); cd.writeUInt32LE(0, 36); cd.writeUInt32LE(offset, 42);
+    central.push(cd, name);
+    offset += head.length + name.length + f.data.length;
+  }
+  const cdBuf = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(0, 4); end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10); end.writeUInt32LE(cdBuf.length, 12); end.writeUInt32LE(offset, 16); end.writeUInt16LE(0, 20);
+  return Buffer.concat([...local, cdBuf, end]);
+}
+const safeName = (s) => String(s || "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 60) || "student";
+
+function imageFilesFor(session, itx, folder) {
+  const files = [];
+  const captions = [];
+  const seen = new Map();
+  for (const [sid, r] of itx.responses) {
+    if (r.name === "👁 Preview") continue;
+    const dataUrl = UPLOAD_MODES.has(itx.mode) ? session.respImages.get(`${itx.id}/${sid}`) : r.payload.image;
+    const m = String(dataUrl || "").match(/^data:image\/(\w+);base64,(.+)$/);
+    if (!m) continue;
+    let base = safeName(r.name);
+    const n = (seen.get(base) || 0) + 1;
+    seen.set(base, n);
+    if (n > 1) base += ` (${n})`;
+    files.push({ name: `${folder}${base}.${m[1] === "jpeg" ? "jpg" : m[1]}`, data: Buffer.from(m[2], "base64") });
+    if (r.payload.text) captions.push(`${r.name}: ${r.payload.text}`);
+  }
+  if (captions.length) files.push({ name: `${folder}captions.txt`, data: Buffer.from(captions.join("\n\n") + "\n", "utf8") });
+  return files;
+}
+
+app.get("/api/images/:code/:itx?", async (req, res) => {
+  const session = await ownedSession(req, res);
+  if (!session) return;
+  const all = [...session.history, ...(session.interaction ? [session.interaction] : [])];
+  const wanted = req.params.itx ? all.filter((i) => String(i.id) === String(req.params.itx)) : all.filter((i) => IMAGE_MODES.has(i.mode));
+  const lessonName = safeName(session.title || `Lesson ${session.code}`);
+  let files = [];
+  wanted.forEach((itx) => {
+    const idx = all.indexOf(itx) + 1;
+    const folder = req.params.itx ? "" : `${String(idx).padStart(2, "0")} ${safeName(itx.prompt || itx.mode)}/`;
+    files = files.concat(imageFilesFor(session, itx, folder));
+  });
+  if (!files.length) return res.status(404).send("No images in this lesson yet.");
+  const zipName = req.params.itx ? `${lessonName} - ${safeName(wanted[0].prompt || wanted[0].mode)}.zip` : `${lessonName} - images.zip`;
+  res.set("Content-Type", "application/zip");
+  res.set("Content-Disposition", `attachment; filename="${zipName.replace(/"/g, "")}"`);
+  res.send(buildZip(files));
 });
 
 const server = http.createServer(app);
@@ -1183,7 +1271,7 @@ function buildSummary(session, { withImages = false } = {}) {
 
   const items = all.map((itx) => {
     const agg = aggregate(session, itx);
-    const item = { mode: itx.mode, prompt: itx.prompt, responses: itx.responses.size };
+    const item = { id: itx.id, mode: itx.mode, prompt: itx.prompt, responses: itx.responses.size };
 
     // Per-student attribution for the export — except the modes that
     // promise students anonymity, which stay anonymous everywhere.

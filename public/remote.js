@@ -296,7 +296,8 @@ function renderLiveResponses(itx) {
     out += `<h3 class="sec">Tap ${itx.mode === "sketch" || itx.mode === "annotate" ? "a drawing" : "an image"} → big on the projector</h3>
       <div class="thumb-grid">${itx.responses
         .map((r) => `<img class="thumb ${itx.spotlightId === r.studentId ? "spot" : ""}" data-spot="${r.studentId}" src="${r.payload.image}" alt="drawing" />`)
-        .join("")}</div>`;
+        .join("")}</div>
+      <a class="rbtn" style="text-decoration:none;display:block;text-align:center;margin-top:0.6rem" href="/api/images/${esc(state.code)}/${itx.id}?${authQuery()}">⬇ Download all ${itx.responses.length} as ZIP</a>`;
     return out;
   }
 
