@@ -95,3 +95,9 @@ The architecture leaves a clean seam for a future **✨ Create Recall** feature:
 ### Inviting another teacher
 
 Signed-in teachers click **➕ Invite a colleague** (dashboard header, or the remote's More tab) — it copies a link like `https://eyesup.onrender.com/teacher?invite=…`. The colleague opens it, types **their name and a password**, and they're in. Their sign-in name is made from their name automatically (`Sarah Jones` → `sarah.jones`), and either form works at sign-in. Without the link, the invite code (`TEACHER_PASSWORD`) can be typed by hand.
+
+## Student images after the lesson
+
+Pictures students submit (Drop an Image, Image + Writing, Sketch, Annotate) are saved to the database **the moment they arrive**, so nothing depends on downloading during class. Afterwards they appear in the archived lesson report, the Data dashboard's Lesson dashboard tab, and as ZIP downloads (whole lesson, or one activity) — files named per student, with a `captions.txt` for Image + Writing. Only the lesson's owner can view or download them; shared links never include pictures.
+
+Images are kept for **60 days** by default (`IMAGE_KEEP_DAYS` on Render changes this) and then pruned, to keep the free database within its limits. Everything else about the lesson stays forever.

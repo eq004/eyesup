@@ -232,6 +232,14 @@ const MODE_NAMES = {
   counters: "Counters", table: "Table", plus_minus: "Plus & Minus", long_response: "Long Response",
 };
 
+// Whole-lesson ZIP button, whenever there is at least one stored picture.
+function offerImageZips(s) {
+  if (!window._imgLinks || !(s.items || []).some((it) => it.images && it.images.length)) return;
+  const b = document.getElementById("allImagesBtn");
+  b.href = window._imgLinks.all;
+  b.style.display = "inline-block";
+}
+
 async function load() {
   const params = new URLSearchParams(location.search);
   const code = (params.get("code") || "").toUpperCase();
@@ -258,6 +266,11 @@ async function load() {
       return;
     }
     window._edit = { lessonId, authQ }; // owner opened it — allow retro edits
+    window._imgLinks = {
+      per: (it) => `/api/lessons/${encodeURIComponent(lessonId)}/images/${it.id}${authQ ? `?${authQ}` : ""}`,
+      all: `/api/lessons/${encodeURIComponent(lessonId)}/images${authQ ? `?${authQ}` : ""}`,
+    };
+    offerImageZips(s);
     renderReport(s, false);
     return;
   }
@@ -270,13 +283,11 @@ async function load() {
     }
     if (!res.ok) throw new Error();
     s = await res.json();
-    // Live session: student pictures are still on the server, so offer them.
-    window._live = { code, authQ };
-    if ((s.items || []).some((it) => it.images && it.images.length)) {
-      const b = document.getElementById("allImagesBtn");
-      b.href = `/api/images/${encodeURIComponent(code)}${authQ ? `?${authQ}` : ""}`;
-      b.style.display = "inline-block";
-    }
+    window._imgLinks = {
+      per: (it) => `/api/images/${encodeURIComponent(code)}/${it.id}${authQ ? `?${authQ}` : ""}`,
+      all: `/api/images/${encodeURIComponent(code)}${authQ ? `?${authQ}` : ""}`,
+    };
+    offerImageZips(s);
   } catch {
     // The session is gone from the server — fall back to the dashboard's
     // continuous autosave in this browser.
@@ -347,10 +358,10 @@ function renderReport(s, recovered) {
     } else if (it.sketchCount != null) {
       const noun = it.mode === "image_drop" || it.mode === "image_caption" ? ["image", "images"] : ["sketch", "sketches"];
       body = it.images && it.images.length
-        ? `${window._live ? `<a class="dl-btn" href="/api/images/${encodeURIComponent(window._live.code)}/${it.id}?${window._live.authQ}">⬇ Download these ${it.images.length} image${it.images.length === 1 ? "" : "s"} (ZIP)</a>` : ""}<div class="img-gallery">${it.images
+        ? `${window._imgLinks ? `<a class="dl-btn" href="${window._imgLinks.per(it)}">⬇ Download these ${it.images.length} image${it.images.length === 1 ? "" : "s"} (ZIP)</a>` : ""}<div class="img-gallery">${it.images
             .map((im) => `<figure><img src="${im.image}" alt="student ${noun[0]}" />${im.text ? `<p class="img-text">${esc(im.text)}</p>` : ""}${im.name && !it.anonymous ? `<figcaption>${esc(im.name)}</figcaption>` : ""}</figure>`)
             .join("")}</div>`
-        : `<p style="color:var(--ink-soft);margin-top:0.4rem">${it.sketchCount} ${it.sketchCount === 1 ? noun[0] : noun[1]} submitted — pictures can be viewed and printed from this report while the lesson is live.</p>`;
+        : `<p style="color:var(--ink-soft);margin-top:0.4rem">${it.sketchCount} ${it.sketchCount === 1 ? noun[0] : noun[1]} submitted — no stored pictures for this activity.</p>`;
     } else if (it.topWords && it.topWords.length) {
       body = `<div class="word-chips" style="margin-top:0.5rem">${it.topWords.map((w) => `<span class="word-chip">${esc(w.word)}<small>×${w.count}</small></span>`).join("")}</div>`;
     } else if (it.answers && it.answers.length) {

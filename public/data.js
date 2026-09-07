@@ -267,6 +267,7 @@ function renderInsightsTab(x) {
       <div class="share-row">
         <a class="share-btn" style="text-decoration:none" href="/insights?lesson=${x.meta.id}&${authQ}" target="_blank" rel="noopener">📄 Export lesson (PDF / print)</a>
         <button class="share-btn" id="shareBtn" style="background:var(--surface);color:var(--ink);border:1.5px solid var(--line)">🔗 ${shareLink ? "Copy share link again" : "Share with a link"}</button>
+        ${(x.summary.items || []).some((it) => it.images?.length) ? `<a class="share-btn" style="text-decoration:none;background:var(--surface);color:var(--ink);border:1.5px solid var(--line)" href="/api/lessons/${x.meta.id}/images?${authQ}">⬇ Student images (ZIP)</a>` : ""}
         ${shareLink ? `<span class="share-link">${esc(shareLink)}</span><span class="muted" style="font-size:0.78rem">Copied! Anyone with the link can view it — the shared version hides student names.</span>` : `<span class="muted" style="font-size:0.78rem">The export keeps names; the share link is view-only for anyone and hides them.</span>`}
       </div>
       <div id="insBox"></div>`;

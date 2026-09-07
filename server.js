@@ -91,7 +91,30 @@ if (process.env.DATABASE_URL) {
     `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_name text`,
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS favs text`,
     `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS share_key text`,
+    // Student pictures, saved the moment they arrive so nothing depends on
+    // the teacher remembering to download during the lesson.
+    `CREATE TABLE IF NOT EXISTS lesson_images (
+      id serial PRIMARY KEY,
+      lesson_code text NOT NULL,
+      lesson_created_at timestamptz NOT NULL,
+      itx_id int NOT NULL,
+      student_id text NOT NULL,
+      student_name text,
+      mode text,
+      mime text NOT NULL,
+      data bytea NOT NULL,
+      text text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (lesson_code, lesson_created_at, itx_id, student_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS lesson_images_lesson ON lesson_images (lesson_code, lesson_created_at)`,
   ];
+  // Pictures are big; keep them for a season, not forever.
+  const IMAGE_KEEP_DAYS = Math.max(7, parseInt(process.env.IMAGE_KEEP_DAYS || "60", 10) || 60);
+  const pruneImages = () =>
+    db.query(`DELETE FROM lesson_images WHERE created_at < now() - ($1 || ' days')::interval`, [String(IMAGE_KEEP_DAYS)])
+      .then((r) => r.rowCount && console.log(`Pruned ${r.rowCount} student image(s) older than ${IMAGE_KEEP_DAYS} days`))
+      .catch((e) => console.error("image prune failed:", e.message));
   // A database that is unreachable at boot (cold start, pooler restart)
   // must not demote the whole process to "no storage" for its lifetime —
   // keep trying; the app stays in account mode and requests simply error
@@ -101,6 +124,8 @@ if (process.env.DATABASE_URL) {
       for (const sql of SCHEMA) await db.query(sql);
       storageReady = true;
       console.log("Storage connected — lessons persist to Postgres");
+      pruneImages();
+      setInterval(pruneImages, 12 * 3600 * 1000);
     } catch (e) {
       const wait = Math.min(60000, 5000 * 2 ** attempt);
       console.error(`Storage init failed (${e.code || e.message}) — retrying in ${wait / 1000}s`);
@@ -168,6 +193,28 @@ async function persistNow(session) {
     console.error("persist failed:", e.message);
   }
 }
+
+// A student's picture goes straight to the archive (upsert: a changed
+// answer replaces the earlier one).
+async function persistImage(session, itx, student, record) {
+  if (!db || student.name === "👁 Preview") return;
+  const dataUrl = UPLOAD_MODES.has(itx.mode) ? session.respImages.get(`${itx.id}/${student.id}`) : record.payload.image;
+  const m = String(dataUrl || "").match(/^data:(image\/\w+);base64,(.+)$/);
+  if (!m) return;
+  try {
+    await db.query(
+      `INSERT INTO lesson_images (lesson_code, lesson_created_at, itx_id, student_id, student_name, mode, mime, data, text)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (lesson_code, lesson_created_at, itx_id, student_id)
+       DO UPDATE SET student_name = $5, mime = $7, data = $8, text = $9, created_at = now()`,
+      [session.code, new Date(session.createdAt), itx.id, student.id, student.name, itx.mode, m[1],
+       Buffer.from(m[2], "base64"), record.payload.text || null]
+    );
+  } catch (e) {
+    console.error("image persist failed:", e.message);
+  }
+}
+const IMAGE_KEEP_DAYS_PUBLIC = Math.max(7, parseInt(process.env.IMAGE_KEEP_DAYS || "60", 10) || 60);
 
 // Debounced variant — every response nudges it, at most one write per few
 // seconds per session.
@@ -352,7 +399,90 @@ app.get("/api/lessons/:id", async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: "not_found" });
     const r = rows[0];
-    res.json({ ...r.summary, code: r.code, title: r.title, createdAt: new Date(r.created_at).getTime() });
+    const summary = JSON.parse(JSON.stringify(r.summary));
+    // Stored pictures ride along as links, keyed to their activity.
+    const imgs = await db.query(
+      `SELECT id, itx_id, student_name, text FROM lesson_images WHERE lesson_code = $1 AND lesson_created_at = $2 ORDER BY student_name, id`,
+      [r.code, r.created_at]
+    );
+    if (imgs.rows.length) {
+      const tq = `?t=${encodeURIComponent(req.query.t)}`;
+      for (const it of summary.items || []) {
+        const mine = imgs.rows.filter((x) => x.itx_id === it.id);
+        if (mine.length) it.images = mine.map((x) => ({ name: x.student_name, text: x.text || undefined, image: `/api/lesson-image/${x.id}${tq}` }));
+      }
+    }
+    res.json({ ...summary, code: r.code, title: r.title, createdAt: new Date(r.created_at).getTime(), imageKeepDays: IMAGE_KEEP_DAYS_PUBLIC, lessonId: r.id });
+  } catch (e) {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+// One stored picture — only the lesson's owner.
+app.get("/api/lesson-image/:img", async (req, res) => {
+  if (!db) return res.status(404).end();
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(
+      `SELECT i.mime, i.data FROM lesson_images i
+       JOIN lessons l ON l.code = i.lesson_code AND l.created_at = i.lesson_created_at
+       WHERE i.id = $1 AND (l.teacher_id = $2 OR l.teacher_id IS NULL)`,
+      [req.params.img, t.id]
+    );
+    if (!rows[0]) return res.status(404).end();
+    res.set("Cache-Control", "private, max-age=86400");
+    res.type(rows[0].mime).send(rows[0].data);
+  } catch {
+    res.status(500).end();
+  }
+});
+
+// ZIP of an archived lesson's pictures (whole lesson, or one activity).
+app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
+  if (!db) return res.status(404).end();
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(
+      `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
+      [req.params.id, t.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const lesson = rows[0];
+    const params = [lesson.code, lesson.created_at];
+    if (req.params.itx) params.push(req.params.itx);
+    const imgs = await db.query(
+      `SELECT itx_id, student_name, mime, data, text FROM lesson_images
+       WHERE lesson_code = $1 AND lesson_created_at = $2 ${req.params.itx ? "AND itx_id = $3" : ""} ORDER BY itx_id, student_name, id`,
+      params
+    );
+    if (!imgs.rows.length) return res.status(404).send("No stored images for this lesson.");
+    const items = lesson.summary?.items || [];
+    const folderFor = (itxId) => {
+      if (req.params.itx) return "";
+      const idx = items.findIndex((it) => it.id === itxId);
+      const it = items[idx];
+      return `${String(idx + 1).padStart(2, "0")} ${safeName(it?.prompt || it?.mode || `activity ${itxId}`)}/`;
+    };
+    const files = [], seen = new Map(), captions = new Map();
+    for (const x of imgs.rows) {
+      const folder = folderFor(x.itx_id);
+      let base = safeName(x.student_name);
+      const k = folder + base, n = (seen.get(k) || 0) + 1;
+      seen.set(k, n);
+      if (n > 1) base += ` (${n})`;
+      const ext = x.mime === "image/jpeg" ? "jpg" : x.mime.replace("image/", "");
+      files.push({ name: `${folder}${base}.${ext}`, data: x.data });
+      if (x.text) captions.set(folder, (captions.get(folder) || []).concat(`${x.student_name}: ${x.text}`));
+    }
+    for (const [folder, lines] of captions) files.push({ name: `${folder}captions.txt`, data: Buffer.from(lines.join("\n\n") + "\n", "utf8") });
+    const lessonName = safeName(lesson.title || `Lesson ${lesson.code}`);
+    const act = req.params.itx ? items.find((it) => String(it.id) === String(req.params.itx)) : null;
+    const zipName = act ? `${lessonName} - ${safeName(act.prompt || act.mode)}.zip` : `${lessonName} - images.zip`;
+    res.set("Content-Type", "application/zip");
+    res.set("Content-Disposition", `attachment; filename="${zipName.replace(/"/g, "")}"`);
+    res.send(buildZip(files));
   } catch (e) {
     res.status(500).json({ error: "db_error" });
   }
@@ -1547,6 +1677,7 @@ async function handle(ws, msg) {
       record.revealed = record.noteRevealed.some(Boolean);
     }
     itx.responses.set(student.id, record);
+    if (IMAGE_MODES.has(itx.mode)) persistImage(session, itx, student, record);
     broadcast(session);
     return;
   }

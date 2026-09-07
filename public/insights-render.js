@@ -54,6 +54,11 @@
   .ins-col { background:#f6f5f1; border:1px solid #e6e4dd; border-radius:10px; padding:0.6rem 0.8rem; font-size:0.85rem; }
   .ins-col b { display:block; color:#2941c8; margin-bottom:0.3rem; font-size:0.78rem; }
   .ins-chip { display:inline-block; background:#eceffe; color:#2941c8; border-radius:999px; padding:0.15rem 0.6rem; font-weight:700; font-size:0.8rem; margin:0 0.25rem 0.3rem 0; }
+  .ins-gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:0.7rem; }
+  .ins-gallery figure { margin:0; text-align:center; break-inside:avoid; }
+  .ins-gallery img { width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:10px; border:1px solid #e6e4dd; background:#fff; }
+  .ins-gallery p { font-size:0.78rem; text-align:left; margin:0.3rem 0 0; line-height:1.35; color:#191c26; }
+  .ins-gallery figcaption { font-size:0.75rem; font-weight:800; color:#4b5163; margin-top:0.2rem; }
   @media print {
     * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     .ins-card { break-inside: avoid; box-shadow: none; }
@@ -150,8 +155,13 @@
       body = `<ol style="padding-left:1.3rem;font-weight:700">${it.ranked.map((r) => `<li>${esc(r.label)}${r.correctPct != null ? ` <small style="color:#878da0;font-weight:500">${r.correctPct}% placed it here</small>` : ""}</li>`).join("")}</ol>`;
     } else if (it.distribution) {
       body = bars(it.distribution);
+    } else if (it.images?.length && showNames) {
+      body = `<div class="ins-gallery">${it.images
+        .map((im) => `<figure><a href="${im.image}" target="_blank" rel="noopener"><img src="${im.image}" alt="student picture" loading="lazy" /></a>
+          ${im.text ? `<p>${esc(im.text)}</p>` : ""}${im.name ? `<figcaption>${esc(im.name)}</figcaption>` : ""}</figure>`)
+        .join("")}</div>`;
     } else if (it.sketchCount != null) {
-      body = `<p style="color:#4b5163">${it.sketchCount} ${it.mode === "image_drop" || it.mode === "image_caption" ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted — pictures are viewable and printable from the lesson report while the lesson is live.</p>`;
+      body = `<p style="color:#4b5163">${it.sketchCount} ${it.mode === "image_drop" || it.mode === "image_caption" ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted${showNames ? " — no stored pictures for this activity." : "."}</p>`;
     }
     const answers = ["smiley"].includes(it.mode) || it.words ? "" : answerList(it, showNames);
     const extraAnswers = (it.words || it.mode === "smiley") && showNames && it.students?.length ? answerList(it, showNames) : "";
