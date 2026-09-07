@@ -522,6 +522,11 @@ function renderPlan() {
 
 function renderTools() {
   const t = state.timer;
+  // Keep half-typed dice questions across re-renders (a student joining redraws this tab).
+  const prevDice = $("diceFaces");
+  const diceWasFocused = prevDice && document.activeElement === prevDice;
+  const diceText = diceWasFocused ? prevDice.value : (state.dice?.faces || []).join("\n").replace(/\n+$/, "");
+  const dres = state.focus?.type === "dice" && state.dice?.result ? state.dice.result : null;
   main.innerHTML = `
     <h3 class="sec">⏱ Timer</h3>
     <div class="timer-row">
@@ -550,6 +555,11 @@ function renderTools() {
     </div>
     ${state.focus?.type === "groups" ? `<div class="status">${state.focus.groups.map((g, i) => `<div><b>Group ${i + 1}:</b> ${g.map(esc).join(", ")}</div>`).join("")}</div>` : ""}
 
+    <h3 class="sec">🎲 Question dice</h3>
+    <textarea class="rin" id="diceFaces" rows="5" placeholder="One question per line — up to 6 (face 1 → 6)" style="margin:0;width:100%;resize:vertical;font:inherit;font-size:0.9rem">${esc(diceText)}</textarea>
+    <div class="timer-row" style="margin-top:0.5rem"><button class="rbtn accent" id="diceRoll">🎲 Roll the dice</button></div>
+    ${dres ? `<div class="status"><div class="q">🎲 Landed on ${dres} — ${esc(state.dice.faces[dres - 1] || "blank face")}</div></div>` : ""}
+
     <h3 class="sec">📽 Big screen</h3>
     <div class="btn-row">
       <button class="rbtn" data-act="toggle_join">🔳 ${state.showJoin ? "QR is up — hide" : "Show join QR"}</button>
@@ -558,6 +568,10 @@ function renderTools() {
   const tg = $("timerGo");
   if (tg) tg.onclick = () => { const s = parseInt($("timerCustom").value, 10); if (s >= 5) send({ type: "timer_start", seconds: s }); };
   $("groupsGo").onclick = () => send({ type: "make_groups", n: parseInt($("groupN").value, 10) || 2, by: $("groupBy").value });
+  const diceFacesOf = () => $("diceFaces").value.split("\n").map((s) => s.trim()).slice(0, 6);
+  $("diceFaces").onblur = () => send({ type: "dice_set", faces: diceFacesOf() });
+  $("diceRoll").onclick = () => { send({ type: "dice_set", faces: diceFacesOf() }); send({ type: "dice_roll" }); };
+  if (diceWasFocused) { const ta = $("diceFaces"); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
 }
 
 setInterval(() => {

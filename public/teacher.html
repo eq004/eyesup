@@ -613,6 +613,15 @@
             </div>
             <div id="groupsList"></div>
           </div>
+          <div class="tool-block">
+            <div class="tool-title">🎲 Question dice</div>
+            <textarea id="diceFaces" rows="6" placeholder="One question per line — up to 6 (face 1 → 6). Paste them in from anywhere." style="width:100%;font:inherit;font-size:0.8rem;line-height:1.35;padding:0.45rem 0.55rem;border:1.5px solid var(--line);border-radius:8px;resize:vertical;background:var(--paper)"></textarea>
+            <div class="tool-row">
+              <button class="btn mini primary-mini" id="diceRoll">🎲 Roll the dice</button>
+              <span class="picked-name" id="diceResult"></span>
+            </div>
+            <p class="tool-hint">The dice rolls on the projector and reveals the question it lands on. Questions are remembered for next lesson.</p>
+          </div>
           <div class="tool-row" id="focusClearRow"></div>
         </div>
       </section>

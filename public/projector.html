@@ -266,6 +266,42 @@
     white-space: nowrap;
   }
 
+  /* question dice */
+  .dice-scene {
+    --d: clamp(150px, 24vmin, 270px);
+    position: relative;
+    display: flex; flex-direction: column; align-items: center;
+    padding-top: 4vh; min-height: 72vh;
+    perspective: 1400px;
+  }
+  .dice-spot { position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, rgba(120, 140, 255, 0.18), transparent 60%); }
+  .dice-drop { position: relative; width: var(--d); height: var(--d); --h: calc(var(--d) / 2); transform-style: preserve-3d; z-index: 2; }
+  .die { position: absolute; inset: 0; transform-style: preserve-3d; }
+  .die-face {
+    position: absolute; inset: 0; box-sizing: border-box; padding: 15%;
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+    border-radius: 17%;
+    background: linear-gradient(145deg, #fffdf6 0%, #f4f0e4 55%, #e1dbca 100%);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75), inset 0 -16px 28px rgba(120, 105, 80, 0.22), inset 0 12px 22px rgba(255, 255, 255, 0.6);
+    backface-visibility: hidden;
+  }
+  .pip {
+    width: 74%; height: 74%; place-self: center; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #50505a, #14141a 72%);
+    box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.55);
+  }
+  .die-face.f1 .pip { width: 56%; height: 56%; background: radial-gradient(circle at 35% 30%, #ff8474, #b3261e 72%); }
+  .dice-shadow {
+    width: calc(var(--d) * 1.2); height: calc(var(--d) * 0.3); margin-top: calc(var(--d) * 0.12);
+    border-radius: 50%; filter: blur(7px);
+    background: radial-gradient(ellipse, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0) 70%);
+  }
+  .dice-q { margin-top: 4vh; max-width: 1100px; opacity: 0; transform: translateY(26px);
+    transition: opacity 0.65s ease, transform 0.65s cubic-bezier(0.22, 1, 0.36, 1); }
+  .dice-q.show { opacity: 1; transform: none; }
+  .dice-q .prompt { font-size: clamp(1.6rem, 4vw, 3.4rem); }
+
   /* timer overlay */
   .timer-overlay {
     position: fixed;

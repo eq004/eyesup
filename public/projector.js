@@ -112,6 +112,13 @@ function renderInner() {
   if (state.showJoin) return renderLobby();
 
   // Room-tool focus takes the big screen until the teacher clears it.
+  if (state.focus?.type === "dice") {
+    // Other broadcasts must not restart a roll in progress — only a new
+    // roll rebuilds the scene.
+    const cur = document.getElementById("diceScene");
+    if (cur && cur.dataset.roll === String(state.dice.rollId)) return;
+    return renderDice();
+  }
   if (state.focus?.type === "spotlight") {
     stage.innerHTML = `
       <div class="giant-emoji">🎲</div>
@@ -175,6 +182,93 @@ function updateJoinBadge() {
   el.innerHTML = `
     ${qrSvg ? `<span class="mini-qr">${qrSvg}</span>` : ""}
     <span class="txt">${esc(host)}/join<br/><b>${esc(state.code)}</b></span>`;
+}
+
+/* ---------------- question dice ---------------- */
+
+// Face placement on the cube — opposite faces add to 7, like a real die.
+const DICE_FACE_T = {
+  1: "translateZ(var(--h))", 6: "rotateY(180deg) translateZ(var(--h))",
+  2: "rotateY(90deg) translateZ(var(--h))", 5: "rotateY(-90deg) translateZ(var(--h))",
+  3: "rotateX(90deg) translateZ(var(--h))", 4: "rotateX(-90deg) translateZ(var(--h))",
+};
+// Cube rotation [x, y] that brings a given face to the front.
+const DICE_SHOW = { 1: [0, 0], 6: [0, 180], 2: [0, -90], 5: [0, 90], 3: [-90, 0], 4: [90, 0] };
+// Pip layout on a 3×3 grid: [column, row].
+const PIPS = {
+  1: [[1, 1]], 2: [[0, 0], [2, 2]], 3: [[0, 0], [1, 1], [2, 2]],
+  4: [[0, 0], [2, 0], [0, 2], [2, 2]], 5: [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]],
+  6: [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]],
+};
+
+function diceFaceHtml(n) {
+  return `<div class="die-face f${n}" style="transform:${DICE_FACE_T[n]}">${PIPS[n]
+    .map(([c, r]) => `<span class="pip" style="grid-column:${c + 1};grid-row:${r + 1}"></span>`)
+    .join("")}</div>`;
+}
+
+function renderDice() {
+  const d = state.dice;
+  const n = d.result || 1;
+  const q = (d.faces || [])[n - 1] || "";
+  stage.innerHTML = `
+    <div class="dice-scene" id="diceScene" data-roll="${d.rollId}">
+      <div class="dice-spot"></div>
+      <div class="dice-drop" id="diceDrop"><div class="die" id="die">${[1, 2, 3, 4, 5, 6].map(diceFaceHtml).join("")}</div></div>
+      <div class="dice-shadow" id="diceShadow"></div>
+      <div class="dice-q" id="diceQ">
+        <div class="q-tag">🎲 It landed on ${n}</div>
+        <h1 class="prompt">${q ? esc(q) : `Face ${n}`}</h1>
+      </div>
+    </div>`;
+  animateDice(n, d.rollId);
+}
+
+function animateDice(n, rollId) {
+  const die = document.getElementById("die");
+  const drop = document.getElementById("diceDrop");
+  const shadow = document.getElementById("diceShadow");
+  const [fx, fy] = DICE_SHOW[n];
+  const T = 2700;
+  const fall = "cubic-bezier(0.5, 0, 1, 1)", rise = "cubic-bezier(0, 0, 0.5, 1)";
+
+  // The tumble: several full turns that decelerate into the result, with a
+  // fixed 3/4-view tilt outside so the resting die shows a little depth.
+  die.animate(
+    [
+      { transform: `rotateX(-16deg) rotateY(20deg) rotateX(${fx - 900}deg) rotateY(${fy - 1260}deg) rotateZ(-200deg)` },
+      { transform: `rotateX(-16deg) rotateY(20deg) rotateX(${fx}deg) rotateY(${fy}deg) rotateZ(0deg)` },
+    ],
+    { duration: T, easing: "cubic-bezier(0.16, 0.84, 0.24, 1)", fill: "forwards" }
+  );
+  // The drop: fall in from above and bounce twice, each bounce smaller.
+  drop.animate(
+    [
+      { transform: "translateY(-62vh) scale(0.92)", offset: 0, easing: fall },
+      { transform: "translateY(0) scale(1)", offset: 0.4, easing: rise },
+      { transform: "translateY(-15vh)", offset: 0.6, easing: fall },
+      { transform: "translateY(0)", offset: 0.77, easing: rise },
+      { transform: "translateY(-4.5vh)", offset: 0.89, easing: fall },
+      { transform: "translateY(0)", offset: 1 },
+    ],
+    { duration: T, fill: "forwards" }
+  );
+  // Floor shadow tightens and darkens as the die comes down.
+  shadow.animate(
+    [
+      { transform: "scale(0.35)", opacity: 0.12, offset: 0, easing: fall },
+      { transform: "scale(1.06)", opacity: 0.7, offset: 0.4, easing: rise },
+      { transform: "scale(0.72)", opacity: 0.32, offset: 0.6, easing: fall },
+      { transform: "scale(1)", opacity: 0.62, offset: 0.77, easing: rise },
+      { transform: "scale(0.9)", opacity: 0.5, offset: 0.89, easing: fall },
+      { transform: "scale(1)", opacity: 0.62, offset: 1 },
+    ],
+    { duration: T, fill: "forwards" }
+  );
+  setTimeout(() => {
+    const scene = document.getElementById("diceScene");
+    if (scene && scene.dataset.roll === String(rollId)) document.getElementById("diceQ").classList.add("show");
+  }, T - 250);
 }
 
 /* ---------------- timer overlay ---------------- */

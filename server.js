@@ -490,6 +490,7 @@ function createSession(teacherWs) {
     timer: null, // {seconds, endsAt, paused, remaining}
     focus: null, // {type:'spotlight', name} | {type:'groups', groups:[[names]]}
     picked: new Set(), // student ids already randomly selected (no repeats till all picked)
+    dice: { faces: ["", "", "", "", "", ""], result: null, rollId: 0 }, // question dice
   };
   sessions.set(code, session);
   return session;
@@ -955,6 +956,7 @@ function teacherState(session) {
     timer: session.timer,
     focus: session.focus,
     showJoin: session.showJoin,
+    dice: session.dice,
     students: [...session.students.values()].map((s) => ({ id: s.id, name: s.name })),
     sequence: session.sequence,
     seqIndex: session.seqIndex,
@@ -1007,6 +1009,7 @@ function projectorState(session) {
     timer: session.timer,
     focus: session.focus,
     showJoin: session.showJoin,
+    dice: session.dice,
     studentCount: session.students.size,
     respondedCount: itx ? itx.responses.size : 0,
     interaction: itx
@@ -1625,6 +1628,18 @@ async function handle(ws, msg) {
     }
     case "clear_focus": {
       session.focus = null;
+      break;
+    }
+    case "dice_set": {
+      // Six faces, one question each (blank faces just show their number).
+      const faces = Array.isArray(msg.faces) ? msg.faces : [];
+      session.dice.faces = Array.from({ length: 6 }, (_, i) => String(faces[i] ?? "").trim().slice(0, 200));
+      break;
+    }
+    case "dice_roll": {
+      session.dice.result = 1 + Math.floor(Math.random() * 6);
+      session.dice.rollId += 1;
+      session.focus = { type: "dice" }; // the roll takes the big screen
       break;
     }
     case "toggle_join": {

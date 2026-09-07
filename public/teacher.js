@@ -589,8 +589,26 @@ function renderTools() {
       ? focus.groups.map((g, i) => `<div class="grp"><b>Group ${i + 1}</b> — ${g.map(esc).join(", ")}</div>`).join("")
       : "";
   $("focusClearRow").innerHTML = focus
-    ? `<button class="btn mini" id="clearFocusBtn">✕ Clear the big screen (${focus.type === "spotlight" ? "spotlight" : "groups"})</button>`
+    ? `<button class="btn mini" id="clearFocusBtn">✕ Clear the big screen (${{ spotlight: "spotlight", groups: "groups", dice: "dice" }[focus.type] || focus.type})</button>`
     : "";
+
+  // Question dice — the textarea mirrors the session unless the teacher is typing in it.
+  const d = state.dice;
+  const ta = $("diceFaces");
+  if (d && ta) {
+    if (d.faces.every((f) => !f) && renderTools._diceRestoredFor !== state.code) {
+      // Fresh session: bring back last lesson's questions.
+      renderTools._diceRestoredFor = state.code;
+      try {
+        const saved = JSON.parse(localStorage.getItem("eyesup_dice") || "null");
+        if (Array.isArray(saved) && saved.some(Boolean)) send({ type: "dice_set", faces: saved });
+      } catch { /* nothing saved */ }
+    }
+    const txt = d.faces.join("\n").replace(/\n+$/, "");
+    if (document.activeElement !== ta && ta.value !== txt) ta.value = txt;
+    $("diceResult").textContent =
+      focus?.type === "dice" && d.result ? `→ ${d.result}: ${d.faces[d.result - 1] || "(blank face)"}` : "";
+  }
   const cf = $("clearFocusBtn");
   if (cf) cf.onclick = () => send({ type: "clear_focus" });
 }
@@ -1103,6 +1121,14 @@ $("timerGo").onclick = () => {
   if (s >= 5) send({ type: "timer_start", seconds: s });
 };
 $("pickBtn").onclick = () => send({ type: "pick_student" });
+const sendDiceFaces = () => {
+  const faces = $("diceFaces").value.split("\n").map((s) => s.trim()).slice(0, 6);
+  localStorage.setItem("eyesup_dice", JSON.stringify(faces));
+  send({ type: "dice_set", faces });
+};
+let diceSaveTimer;
+$("diceFaces").oninput = () => { clearTimeout(diceSaveTimer); diceSaveTimer = setTimeout(sendDiceFaces, 500); };
+$("diceRoll").onclick = () => { clearTimeout(diceSaveTimer); sendDiceFaces(); send({ type: "dice_roll" }); };
 $("groupsBtn").onclick = () =>
   send({ type: "make_groups", n: parseInt($("groupN").value, 10) || 2, by: $("groupBy").value });
 
