@@ -36,7 +36,7 @@ let search = "";
 let detailTab = "part"; // "part" | "ins"
 let shareLink = ""; // per-lesson, cleared on lesson change
 
-async function load() {
+async function load(attempt = 0) {
   if (!token) {
     wrap.innerHTML = `<div class="gate">📈<br/><b>Sign in first.</b><br/><span class="muted">Open the <a href="/teacher">teacher dashboard</a>, sign in, then come back here.</span></div>`;
     return;
@@ -45,6 +45,10 @@ async function load() {
   try {
     const res = await fetch(`/api/lessons?${authQ}`);
     const data = await res.json();
+    if (res.status === 403) {
+      wrap.innerHTML = `<div class="gate">🔒<br/><b>Your sign-in has expired on this device.</b><br/><span class="muted">Sign out and back in on the <a href="/teacher">teacher dashboard</a>, then come back here.</span></div>`;
+      return;
+    }
     if (!res.ok) throw new Error(data.error);
     if (!data.storage) {
       wrap.innerHTML = `<div class="gate muted">No database connected — the data dashboard needs lesson storage.</div>`;
@@ -52,7 +56,12 @@ async function load() {
     }
     list = data.lessons;
   } catch {
-    wrap.innerHTML = `<div class="gate">Couldn't load your data — <a href="/teacher">sign in on the dashboard</a> and try again.</div>`;
+    if (attempt < 2) {
+      wrap.innerHTML = `<div class="gate muted">The archive is waking up — retrying in a moment…</div>`;
+      setTimeout(() => load(attempt + 1), 3000);
+      return;
+    }
+    wrap.innerHTML = `<div class="gate">☁️<br/><b>Couldn't reach the lesson archive right now.</b><br/><span class="muted">Your lessons are safe — this is a connection hiccup, not lost data.</span><br/><br/><a href="javascript:location.reload()">Try again</a></div>`;
     return;
   }
   if (!list.length) {

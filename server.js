@@ -37,14 +37,41 @@ const TEACHER_PASSWORD = process.env.TEACHER_PASSWORD || "";
 /* ------------------------------------------------------------------ */
 
 let db = null;
+let storageReady = false;
 if (process.env.DATABASE_URL) {
   const { Pool } = require("pg");
   db = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
     max: 3,
+    // Supabase's pooler drops idle connections; recycle ours first and
+    // never wait forever on a dead one.
+    idleTimeoutMillis: 20000,
+    connectionTimeoutMillis: 10000,
+    keepAlive: true,
   });
-  db.query(`CREATE TABLE IF NOT EXISTS lessons (
+  // An idle client dying must not crash the whole classroom server.
+  db.on("error", (e) => console.error("DB pool warning:", e.code || e.message));
+
+  // One automatic retry on transient connection errors (dropped socket,
+  // pooler restart) so a blip doesn't surface as an error to a teacher.
+  const rawQuery = db.query.bind(db);
+  const transient = (e) =>
+    ["ECONNRESET", "ETIMEDOUT", "EPIPE", "ECONNREFUSED", "57P01", "57P02", "57P03"].includes(e?.code) ||
+    String(e?.code || "").startsWith("08") ||
+    /terminat|timeout|Connection ended/i.test(e?.message || "");
+  db.query = async (text, params) => {
+    try {
+      return await rawQuery(text, params);
+    } catch (e) {
+      if (!transient(e)) throw e;
+      console.warn("DB retry after", e.code || e.message);
+      await new Promise((r) => setTimeout(r, 600));
+      return rawQuery(text, params);
+    }
+  };
+  const SCHEMA = [
+    `CREATE TABLE IF NOT EXISTS lessons (
       id serial PRIMARY KEY,
       code text NOT NULL,
       title text,
@@ -52,25 +79,35 @@ if (process.env.DATABASE_URL) {
       saved_at timestamptz NOT NULL DEFAULT now(),
       summary jsonb NOT NULL,
       UNIQUE (code, created_at)
-    )`)
-    .then(() =>
-      db.query(`CREATE TABLE IF NOT EXISTS teachers (
-        id serial PRIMARY KEY,
-        username text UNIQUE NOT NULL,
-        display_name text,
-        pass_hash text NOT NULL,
-        created_at timestamptz NOT NULL DEFAULT now()
-      )`)
-    )
-    .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_id int`))
-    .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_name text`))
-    .then(() => db.query(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS favs text`))
-    .then(() => db.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS share_key text`))
-    .then(() => console.log("Storage connected — lessons persist to Postgres"))
-    .catch((e) => {
-      console.error("Storage init failed (continuing without):", e.message);
-      db = null;
-    });
+    )`,
+    `CREATE TABLE IF NOT EXISTS teachers (
+      id serial PRIMARY KEY,
+      username text UNIQUE NOT NULL,
+      display_name text,
+      pass_hash text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_id int`,
+    `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_name text`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS favs text`,
+    `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS share_key text`,
+  ];
+  // A database that is unreachable at boot (cold start, pooler restart)
+  // must not demote the whole process to "no storage" for its lifetime —
+  // keep trying; the app stays in account mode and requests simply error
+  // until the connection is back.
+  const initStorage = async (attempt = 0) => {
+    try {
+      for (const sql of SCHEMA) await db.query(sql);
+      storageReady = true;
+      console.log("Storage connected — lessons persist to Postgres");
+    } catch (e) {
+      const wait = Math.min(60000, 5000 * 2 ** attempt);
+      console.error(`Storage init failed (${e.code || e.message}) — retrying in ${wait / 1000}s`);
+      setTimeout(() => initStorage(attempt + 1), wait);
+    }
+  };
+  initStorage();
 }
 
 /* ---- teacher accounts (active only in database mode) ----
@@ -94,7 +131,21 @@ async function teacherFromToken(token) {
     );
     if (!rows[0]) return null;
     return token === signToken(rows[0].id, rows[0].pass_hash) ? rows[0] : null;
+  } catch (e) {
+    // Distinct from a bad token: callers must not treat an outage as
+    // "signed out" (the dashboard would throw the token away).
+    throw Object.assign(new Error("db_unavailable"), { dbDown: true, cause: e });
+  }
+}
+
+// HTTP flavour: resolves the teacher or answers the request itself.
+async function authHttp(res, token) {
+  try {
+    const t = await teacherFromToken(token);
+    if (!t) res.status(403).json({ error: "auth_required" });
+    return t;
   } catch {
+    res.status(503).json({ error: "db_unavailable" });
     return null;
   }
 }
@@ -138,6 +189,18 @@ app.get("/projector", (_req, res) => res.sendFile(path.join(__dirname, "public/p
 app.get("/report", (_req, res) => res.sendFile(path.join(__dirname, "public/report.html")));
 app.get("/remote", (_req, res) => res.sendFile(path.join(__dirname, "public/remote.html")));
 app.get("/data", (_req, res) => res.sendFile(path.join(__dirname, "public/data.html")));
+
+// Health check — also what an uptime pinger should hit: touching the
+// database keeps both the free web service and Supabase from going idle.
+app.get("/api/health", async (_req, res) => {
+  if (!db) return res.json({ ok: true, storage: false });
+  try {
+    await db.query("SELECT 1");
+    res.json({ ok: true, storage: true, db: "ok", schemaReady: storageReady });
+  } catch (e) {
+    res.status(503).json({ ok: false, storage: true, db: "error", schemaReady: storageReady, detail: e.code || e.message });
+  }
+});
 app.get("/insights", (_req, res) => res.sendFile(path.join(__dirname, "public/insights.html")));
 
 // Teacher-uploaded images (annotate mode), served over HTTP so websocket
@@ -196,8 +259,8 @@ const pairCodes = new Map(); // pair -> {teacherId, expires}
 
 app.post("/api/pair", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await teacherFromToken(req.body?.t);
-  if (!t) return res.status(403).json({ error: "auth_required" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
   const pair = crypto.randomBytes(8).toString("base64url");
   pairCodes.set(pair, { teacherId: t.id, expires: Date.now() + 10 * 60 * 1000 });
   res.json({ pair });
@@ -226,8 +289,8 @@ setInterval(() => {
 // Past lessons archive — each teacher sees their own (plus pre-account legacy rows).
 app.get("/api/lessons", async (req, res) => {
   if (!db) return res.json({ storage: false, lessons: [] });
-  const t = await teacherFromToken(req.query.t);
-  if (!t) return res.status(403).json({ error: "auth_required" });
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
   try {
     const { rows } = await db.query(
       `SELECT id, code, title, created_at, teacher_name,
@@ -247,8 +310,8 @@ app.get("/api/lessons", async (req, res) => {
 
 app.get("/api/lessons/:id", async (req, res) => {
   if (!db) return res.status(404).json({ error: "storage_off" });
-  const t = await teacherFromToken(req.query.t);
-  if (!t) return res.status(403).json({ error: "auth_required" });
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
   try {
     const { rows } = await db.query(
       `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
@@ -267,8 +330,8 @@ app.get("/api/lessons/:id", async (req, res) => {
 
 app.post("/api/lessons/:id/share", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await teacherFromToken(req.body?.t);
-  if (!t) return res.status(403).json({ error: "auth_required" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
   try {
     const { rows } = await db.query(
       `SELECT id, share_key FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
@@ -312,8 +375,8 @@ app.get("/api/shared/:key", async (req, res) => {
 // wording (and a title) on the record afterwards.
 app.post("/api/lessons/:id/edit", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await teacherFromToken(req.body?.t);
-  if (!t) return res.status(403).json({ error: "auth_required" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
   try {
     const { rows } = await db.query(
       `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
@@ -360,8 +423,8 @@ app.post("/api/lessons/:id/edit", async (req, res) => {
 app.get("/api/summary/:code", async (req, res) => {
   if (db) {
     // Account mode: only the session's owner may pull its report.
-    const t = await teacherFromToken(req.query.t);
-    if (!t) return res.status(403).json({ error: "auth_required" });
+    const t = await authHttp(res, req.query.t);
+    if (!t) return;
     const session = sessions.get(String(req.params.code || "").toUpperCase());
     if (!session) return res.status(404).json({ error: "no_session" });
     if (session.teacherId != null && session.teacherId !== t.id)
@@ -1226,8 +1289,12 @@ wss.on("connection", (ws) => {
 // database the shared TEACHER_PASSWORD gate applies (local dev).
 async function authTeacher(msg) {
   if (db) {
-    const t = await teacherFromToken(msg.token);
-    return t ? { ok: true, teacher: t } : { ok: false, error: "auth_required" };
+    try {
+      const t = await teacherFromToken(msg.token);
+      return t ? { ok: true, teacher: t } : { ok: false, error: "auth_required" };
+    } catch {
+      return { ok: false, error: "db_unavailable" };
+    }
   }
   if (TEACHER_PASSWORD && msg.password !== TEACHER_PASSWORD)
     return { ok: false, error: "bad_password" };

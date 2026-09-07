@@ -129,6 +129,11 @@ function connect() {
   };
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
+    if (msg.type === "error" && msg.error === "db_unavailable") {
+      toast("Connecting to the lesson archive… retrying");
+      setTimeout(() => ws.readyState === 1 && ws.onopen(), 5000);
+      return;
+    }
     if (msg.type === "error") {
       needPw = msg.error === "bad_password" || msg.error === "auth_required";
       if (msg.error === "auth_required") localStorage.removeItem("eyesup_token");
@@ -592,11 +597,15 @@ function renderMore() {
   $("finishBtn").onclick = () => { userSummaryWanted = true; send({ type: "get_summary" }); };
   $("copyJoin").onclick = () => { navigator.clipboard?.writeText(`${location.origin}/join?code=${state.code}`); toast("Join link copied"); };
   const lb = $("lessonsBtn");
-  if (lb) lb.onclick = async () => {
-    $("lessonsList").innerHTML = `<p style="color:var(--rdim)">Loading…</p>`;
+  const loadLessons = async (attempt = 0) => {
+    $("lessonsList").innerHTML = `<p style="color:var(--rdim)">${attempt ? "Still connecting…" : "Loading…"}</p>`;
     try {
       const res = await fetch(`/api/lessons${authQuery() ? `?${authQuery()}` : ""}`);
       const data = await res.json();
+      if (res.status === 403) {
+        $("lessonsList").innerHTML = `<p style="color:#e79191">Your sign-in has expired — sign out and back in.</p>`;
+        return;
+      }
       if (!res.ok) throw new Error();
       $("lessonsList").innerHTML = data.lessons.length
         ? data.lessons.map((l) => `<a class="lesson-row" href="/report?lesson=${l.id}${authQuery() ? `&${authQuery()}` : ""}" target="_blank" rel="noopener">
@@ -604,8 +613,17 @@ function renderMore() {
             <span>${esc(new Date(l.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }))} · ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions</span>
           </a>`).join("")
         : `<p style="color:var(--rdim)">No stored lessons yet.</p>`;
-    } catch { $("lessonsList").innerHTML = `<p style="color:#e79191">Couldn't load the archive.</p>`; }
+    } catch {
+      if (attempt < 2) {
+        $("lessonsList").innerHTML = `<p style="color:var(--rdim)">Archive is waking up — retrying…</p>`;
+        setTimeout(() => loadLessons(attempt + 1), 3000);
+        return;
+      }
+      $("lessonsList").innerHTML = `<p style="color:#e79191">Couldn't reach the archive right now — your lessons are safe.</p><button class="btn" id="retryLessons">Try again</button>`;
+      $("retryLessons").onclick = () => loadLessons(0);
+    }
   };
+  if (lb) lb.onclick = () => loadLessons(0);
   const so = $("signOut");
   if (so) so.onclick = () => { localStorage.removeItem("eyesup_token"); sessionStorage.clear(); location.reload(); };
 }

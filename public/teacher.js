@@ -180,6 +180,13 @@ function connect() {
       showAuthOverlay();
       return;
     }
+    if (msg.type === "error" && msg.error === "db_unavailable") {
+      // Storage blip (server waking, pooler restart) — keep the sign-in,
+      // keep trying; nothing is lost.
+      toast("Connecting to the lesson archive… retrying");
+      setTimeout(() => ws.readyState === 1 && attach(), 5000);
+      return;
+    }
     if (msg.type === "error" && msg.error === "bad_password") {
       $("pwError").style.display = teacherPw() ? "block" : "none";
       sessionStorage.removeItem("eyesup_pw");
@@ -997,12 +1004,20 @@ $("remoteBtn").onclick = async () => {
 };
 $("closeRemote").onclick = () => $("remoteOverlay").classList.remove("show");
 
-$("lessonsBtn").onclick = async () => {
-  $("lessonsList").innerHTML = `<p style="color:var(--muted)">Loading…</p>`;
+$("lessonsBtn").onclick = () => {
   $("lessonsOverlay").classList.add("show");
+  loadLessonsList(0);
+};
+
+async function loadLessonsList(attempt) {
+  $("lessonsList").innerHTML = `<p style="color:var(--muted)">${attempt ? "Still connecting to the lesson archive…" : "Loading…"}</p>`;
   try {
     const res = await fetch(`/api/lessons${authQuery() ? `?${authQuery()}` : ""}`);
     const data = await res.json();
+    if (res.status === 403) {
+      $("lessonsList").innerHTML = `<p style="color:var(--red)">Your sign-in has expired on this device — sign out and back in to see your lessons.</p>`;
+      return;
+    }
     if (!res.ok) throw new Error(data.error);
     $("lessonsList").innerHTML = data.lessons.length
       ? data.lessons
@@ -1017,9 +1032,17 @@ $("lessonsBtn").onclick = async () => {
           .join("")
       : `<p style="color:var(--muted)">No stored lessons yet — run one and it saves itself.</p>`;
   } catch {
-    $("lessonsList").innerHTML = `<p style="color:var(--red)">Couldn't load the archive — check the database connection.</p>`;
+    // Usually the server waking up or a dropped database connection —
+    // retry twice on its own before asking the teacher to.
+    if (attempt < 2) {
+      setTimeout(() => loadLessonsList(attempt + 1), 3000);
+      $("lessonsList").innerHTML = `<p style="color:var(--muted)">The archive is waking up — retrying in a moment…</p>`;
+      return;
+    }
+    $("lessonsList").innerHTML = `<p style="color:var(--red)">Couldn't reach the lesson archive right now. Your lessons are safe — this is a connection hiccup, not lost data.</p>
+      <button class="btn" onclick="loadLessonsList(0)">Try again</button>`;
   }
-};
+}
 $("closeLessons").onclick = () => $("lessonsOverlay").classList.remove("show");
 
 $("titleInput").addEventListener("change", () => send({ type: "set_title", title: $("titleInput").value }));
