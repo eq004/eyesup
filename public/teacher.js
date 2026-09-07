@@ -604,8 +604,10 @@ function renderTools() {
         if (Array.isArray(saved) && saved.some(Boolean)) send({ type: "dice_set", faces: saved });
       } catch { /* nothing saved */ }
     }
-    const txt = d.faces.join("\n").replace(/\n+$/, "");
-    if (document.activeElement !== ta && ta.value !== txt) ta.value = txt;
+    ta.querySelectorAll(".dice-in").forEach((inp) => {
+      const v = d.faces[+inp.dataset.face] || "";
+      if (document.activeElement !== inp && inp.value !== v) inp.value = v;
+    });
     $("diceResult").textContent =
       focus?.type === "dice" && d.result ? `→ ${d.result}: ${d.faces[d.result - 1] || "(blank face)"}` : "";
   }
@@ -1121,13 +1123,25 @@ $("timerGo").onclick = () => {
   if (s >= 5) send({ type: "timer_start", seconds: s });
 };
 $("pickBtn").onclick = () => send({ type: "pick_student" });
+const diceInputs = () => [...document.querySelectorAll("#diceFaces .dice-in")];
 const sendDiceFaces = () => {
-  const faces = $("diceFaces").value.split("\n").map((s) => s.trim()).slice(0, 6);
+  const faces = diceInputs().map((i) => i.value.trim());
   localStorage.setItem("eyesup_dice", JSON.stringify(faces));
   send({ type: "dice_set", faces });
 };
 let diceSaveTimer;
-$("diceFaces").oninput = () => { clearTimeout(diceSaveTimer); diceSaveTimer = setTimeout(sendDiceFaces, 500); };
+diceInputs().forEach((inp) => {
+  inp.oninput = () => { clearTimeout(diceSaveTimer); diceSaveTimer = setTimeout(sendDiceFaces, 500); };
+  // Pasting several lines fills this face and the ones below it.
+  inp.onpaste = (e) => {
+    const lines = (e.clipboardData?.getData("text") || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (lines.length < 2) return;
+    e.preventDefault();
+    const all = diceInputs();
+    lines.slice(0, 6 - +inp.dataset.face).forEach((l, k) => (all[+inp.dataset.face + k].value = l));
+    sendDiceFaces();
+  };
+});
 $("diceRoll").onclick = () => { clearTimeout(diceSaveTimer); sendDiceFaces(); send({ type: "dice_roll" }); };
 $("groupsBtn").onclick = () =>
   send({ type: "make_groups", n: parseInt($("groupN").value, 10) || 2, by: $("groupBy").value });

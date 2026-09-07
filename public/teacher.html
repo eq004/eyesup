@@ -306,6 +306,12 @@
   .tool-title { font-weight: 800; font-size: 0.88rem; display: flex; align-items: center; gap: 0.5rem; }
   .tool-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
   .tool-hint { color: var(--muted); font-size: 0.75rem; }
+  .dice-faces { display: flex; flex-direction: column; gap: 0.3rem; }
+  .dice-row { display: flex; align-items: center; gap: 0.45rem; }
+  .dice-glyph { font-size: 1.45rem; line-height: 1; color: var(--ink); width: 1.3rem; text-align: center; }
+  .dice-lbl { font-size: 0.72rem; font-weight: 800; color: var(--accent-ink); width: 3.1rem; flex: 0 0 auto; }
+  .dice-in { flex: 1; min-width: 0; font: inherit; font-size: 0.8rem; padding: 0.35rem 0.5rem; border: 1.5px solid var(--line); border-radius: 8px; background: var(--paper); }
+  .dice-in:focus { outline: none; border-color: var(--accent); }
   .btn.mini { padding: 0.32rem 0.6rem; font-size: 0.8rem; border-radius: 8px; }
   .btn.primary-mini { background: var(--accent); border-color: var(--accent); color: #fff; padding: 0.32rem 0.7rem; font-size: 0.8rem; border-radius: 8px; }
   .btn.primary-mini:hover { background: var(--accent-ink); }
@@ -615,12 +621,19 @@
           </div>
           <div class="tool-block">
             <div class="tool-title">🎲 Question dice</div>
-            <textarea id="diceFaces" rows="6" placeholder="One question per line — up to 6 (face 1 → 6). Paste them in from anywhere." style="width:100%;font:inherit;font-size:0.8rem;line-height:1.35;padding:0.45rem 0.55rem;border:1.5px solid var(--line);border-radius:8px;resize:vertical;background:var(--paper)"></textarea>
+            <div class="dice-faces" id="diceFaces">
+              <label class="dice-row"><span class="dice-glyph">⚀</span><span class="dice-lbl">Face 1</span><input class="dice-in" data-face="0" maxlength="200" placeholder="Question when it lands on 1" /></label>
+              <label class="dice-row"><span class="dice-glyph">⚁</span><span class="dice-lbl">Face 2</span><input class="dice-in" data-face="1" maxlength="200" placeholder="Question when it lands on 2" /></label>
+              <label class="dice-row"><span class="dice-glyph">⚂</span><span class="dice-lbl">Face 3</span><input class="dice-in" data-face="2" maxlength="200" placeholder="Question when it lands on 3" /></label>
+              <label class="dice-row"><span class="dice-glyph">⚃</span><span class="dice-lbl">Face 4</span><input class="dice-in" data-face="3" maxlength="200" placeholder="Question when it lands on 4" /></label>
+              <label class="dice-row"><span class="dice-glyph">⚄</span><span class="dice-lbl">Face 5</span><input class="dice-in" data-face="4" maxlength="200" placeholder="Question when it lands on 5" /></label>
+              <label class="dice-row"><span class="dice-glyph">⚅</span><span class="dice-lbl">Face 6</span><input class="dice-in" data-face="5" maxlength="200" placeholder="Question when it lands on 6" /></label>
+            </div>
             <div class="tool-row">
               <button class="btn mini primary-mini" id="diceRoll">🎲 Roll the dice</button>
               <span class="picked-name" id="diceResult"></span>
             </div>
-            <p class="tool-hint">The dice rolls on the projector and reveals the question it lands on. Questions are remembered for next lesson.</p>
+            <p class="tool-hint">One question per face. Tip: paste six lines into Face 1 and they fill all six. The dice rolls on the projector and reveals the question it lands on; questions are remembered for next lesson.</p>
           </div>
           <div class="tool-row" id="focusClearRow"></div>
         </div>

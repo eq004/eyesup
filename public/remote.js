@@ -523,10 +523,11 @@ function renderPlan() {
 function renderTools() {
   const t = state.timer;
   // Keep half-typed dice questions across re-renders (a student joining redraws this tab).
-  const prevDice = $("diceFaces");
-  const diceWasFocused = prevDice && document.activeElement === prevDice;
-  const diceText = diceWasFocused ? prevDice.value : (state.dice?.faces || []).join("\n").replace(/\n+$/, "");
+  const focusedDice = document.activeElement?.classList?.contains("dice-in") ? document.activeElement : null;
+  const keepFace = focusedDice ? { i: +focusedDice.dataset.face, v: focusedDice.value } : null;
+  const faces = Array.from({ length: 6 }, (_, i) => (keepFace && keepFace.i === i ? keepFace.v : (state.dice?.faces || [])[i] || ""));
   const dres = state.focus?.type === "dice" && state.dice?.result ? state.dice.result : null;
+  const DICE_GLYPHS = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
   main.innerHTML = `
     <h3 class="sec">⏱ Timer</h3>
     <div class="timer-row">
@@ -556,8 +557,13 @@ function renderTools() {
     ${state.focus?.type === "groups" ? `<div class="status">${state.focus.groups.map((g, i) => `<div><b>Group ${i + 1}:</b> ${g.map(esc).join(", ")}</div>`).join("")}</div>` : ""}
 
     <h3 class="sec">🎲 Question dice</h3>
-    <textarea class="rin" id="diceFaces" rows="5" placeholder="One question per line — up to 6 (face 1 → 6)" style="margin:0;width:100%;resize:vertical;font:inherit;font-size:0.9rem">${esc(diceText)}</textarea>
-    <div class="timer-row" style="margin-top:0.5rem"><button class="rbtn accent" id="diceRoll">🎲 Roll the dice</button></div>
+    <div id="diceFaces" style="display:flex;flex-direction:column;gap:0.4rem">${faces
+      .map((f, i) => `<label style="display:flex;align-items:center;gap:0.5rem">
+        <span style="font-size:1.6rem;line-height:1;width:1.4rem;text-align:center">${DICE_GLYPHS[i]}</span>
+        <span style="font-size:0.72rem;font-weight:800;color:#9db1ff;width:3rem;flex:0 0 auto">Face ${i + 1}</span>
+        <input class="rin dice-in" data-face="${i}" maxlength="200" value="${esc(f)}" placeholder="Question for face ${i + 1}" style="margin:0;flex:1;min-width:0" /></label>`)
+      .join("")}</div>
+    <div class="timer-row" style="margin-top:0.6rem"><button class="rbtn accent" id="diceRoll">🎲 Roll the dice</button></div>
     ${dres ? `<div class="status"><div class="q">🎲 Landed on ${dres} — ${esc(state.dice.faces[dres - 1] || "blank face")}</div></div>` : ""}
 
     <h3 class="sec">📽 Big screen</h3>
@@ -568,10 +574,20 @@ function renderTools() {
   const tg = $("timerGo");
   if (tg) tg.onclick = () => { const s = parseInt($("timerCustom").value, 10); if (s >= 5) send({ type: "timer_start", seconds: s }); };
   $("groupsGo").onclick = () => send({ type: "make_groups", n: parseInt($("groupN").value, 10) || 2, by: $("groupBy").value });
-  const diceFacesOf = () => $("diceFaces").value.split("\n").map((s) => s.trim()).slice(0, 6);
-  $("diceFaces").onblur = () => send({ type: "dice_set", faces: diceFacesOf() });
+  const diceIn = [...main.querySelectorAll(".dice-in")];
+  const diceFacesOf = () => diceIn.map((i) => i.value.trim());
+  diceIn.forEach((inp) => {
+    inp.onblur = () => send({ type: "dice_set", faces: diceFacesOf() });
+    inp.onpaste = (e) => {
+      const lines = (e.clipboardData?.getData("text") || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+      if (lines.length < 2) return;
+      e.preventDefault();
+      lines.slice(0, 6 - +inp.dataset.face).forEach((l, k) => (diceIn[+inp.dataset.face + k].value = l));
+      send({ type: "dice_set", faces: diceFacesOf() });
+    };
+  });
   $("diceRoll").onclick = () => { send({ type: "dice_set", faces: diceFacesOf() }); send({ type: "dice_roll" }); };
-  if (diceWasFocused) { const ta = $("diceFaces"); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  if (keepFace) { const el = diceIn[keepFace.i]; el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
 }
 
 setInterval(() => {

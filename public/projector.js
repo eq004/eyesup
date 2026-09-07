@@ -217,7 +217,7 @@ function renderDice() {
       <div class="dice-drop" id="diceDrop"><div class="die" id="die">${[1, 2, 3, 4, 5, 6].map(diceFaceHtml).join("")}</div></div>
       <div class="dice-shadow" id="diceShadow"></div>
       <div class="dice-q" id="diceQ">
-        <div class="q-tag">🎲 It landed on ${n}</div>
+        <div class="q-tag">${["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"][n - 1]} It landed on face ${n}</div>
         <h1 class="prompt">${q ? esc(q) : `Face ${n}`}</h1>
       </div>
     </div>`;
