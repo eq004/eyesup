@@ -542,6 +542,7 @@ function render() {
   $("dataBtn").style.display = state.storage ? "" : "none";
   $("whoAmI").textContent = teacherToken() ? localStorage.getItem("eyesup_teacher_name") || "" : "";
   $("signOutBtn").style.display = teacherToken() ? "" : "none";
+  $("inviteBtn").style.display = teacherToken() && state?.storage ? "" : "none";
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
   $("qrToggle").textContent = state.showJoin ? "🔳 QR is up" : "🔳 QR";
   $("studentCount").textContent = state.students.length;
@@ -1292,6 +1293,14 @@ document.addEventListener("drop", (e) => {
 
 let authMode = "login";
 
+// An invite link (/teacher?invite=CODE) carries the code so a new teacher
+// never has to type it.
+function inviteCode() {
+  const fromUrl = new URLSearchParams(location.search).get("invite");
+  if (fromUrl) localStorage.setItem("eyesup_invite", fromUrl.trim());
+  return localStorage.getItem("eyesup_invite") || "";
+}
+
 function showAuthOverlay(mode) {
   authMode = mode || (localStorage.getItem("eyesup_has_account") ? "login" : "signup");
   const fields = $("authFields");
@@ -1299,12 +1308,13 @@ function showAuthOverlay(mode) {
   $("tabSignup").classList.toggle("primary", authMode === "signup");
   fields.innerHTML =
     authMode === "login"
-      ? `<input id="aUser" placeholder="Username" autocomplete="username" />
+      ? `<input id="aUser" placeholder="Your name" autocomplete="username" />
          <input id="aPass" type="password" placeholder="Password" autocomplete="current-password" />`
-      : `<input id="aInvite" placeholder="Invite code (from whoever runs this site)" />
-         <input id="aName" placeholder="Your name, as students/reports see it" maxlength="40" />
-         <input id="aUser" placeholder="Choose a username (letters/numbers)" autocomplete="username" />
-         <input id="aPass" type="password" placeholder="Choose a password (6+ characters)" autocomplete="new-password" />`;
+      : `<input id="aName" placeholder="Your name (e.g. Sarah Jones)" maxlength="40" autocomplete="name" />
+         <input id="aPass" type="password" placeholder="Choose a password (6+ characters)" autocomplete="new-password" />
+         ${inviteCode()
+           ? `<p style="color:var(--muted);font-size:0.78rem;margin:0.2rem 0 0">✓ Invite code applied — that's all you need.</p>`
+           : `<input id="aInvite" placeholder="Invite code (ask a colleague who uses Eyes Up)" />`}`;
   fields.querySelectorAll("input").forEach((i) => {
     i.style.cssText = "border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font-size:0.95rem";
     i.onkeydown = (e) => { if (e.key === "Enter") $("authGo").click(); };
@@ -1316,10 +1326,10 @@ function showAuthOverlay(mode) {
 }
 
 const AUTH_ERRORS = {
-  bad_login: "Username or password didn't match.",
-  bad_invite: "That invite code isn't right.",
-  taken: "That username is taken — pick another.",
-  bad_username: "Usernames are 3–24 characters: letters, numbers, dots, dashes.",
+  bad_login: "Name or password didn't match.",
+  bad_invite: "That invite code isn't right — ask a colleague for their invite link.",
+  taken: "That name is already in use — add a surname or initial.",
+  bad_name: "Please enter your name.",
   bad_pass: "Password needs at least 6 characters.",
 };
 
@@ -1329,7 +1339,7 @@ $("authGo").onclick = async () => {
   const body =
     authMode === "login"
       ? { username: $("aUser").value, password: $("aPass").value }
-      : { invite: $("aInvite").value.trim(), name: $("aName").value, username: $("aUser").value, password: $("aPass").value };
+      : { invite: ($("aInvite")?.value || inviteCode()).trim(), name: $("aName").value, password: $("aPass").value };
   try {
     const res = await fetch(authMode === "login" ? "/api/login" : "/api/signup", {
       method: "POST",
@@ -1346,10 +1356,24 @@ $("authGo").onclick = async () => {
     localStorage.setItem("eyesup_teacher_name", data.name || data.username);
     localStorage.setItem("eyesup_has_account", "1");
     $("authOverlay").classList.remove("show");
+    if (authMode === "signup") toast(`Welcome, ${data.name}! Sign in next time with your name or "${data.username}".`);
     if (ws && ws.readyState === 1) attach();
   } catch {
     $("authError").textContent = "Couldn't reach the server — try again.";
     $("authError").style.display = "block";
+  }
+};
+
+$("inviteBtn").onclick = async () => {
+  try {
+    const res = await fetch(`/api/invite?${authQuery()}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error();
+    const link = `${location.origin}/teacher${data.invite ? `?invite=${encodeURIComponent(data.invite)}` : ""}`;
+    await navigator.clipboard.writeText(link);
+    toast("Invite link copied — send it to your colleague. They just enter a name and a password.");
+  } catch {
+    toast("Couldn't fetch the invite link — are you signed in?");
   }
 };
 

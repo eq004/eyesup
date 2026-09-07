@@ -89,3 +89,9 @@ Caveats for live use: sessions are in-memory, so a server restart/redeploy clear
 ### AI (deliberately not included yet)
 
 The architecture leaves a clean seam for a future **✨ Create Recall** feature: a teacher speaks for 30–60 seconds about last lesson, and an LLM proposes a recall sequence (the same `{mode, prompt, options}` step objects the plan already uses) for the teacher to review, edit and accept. AI as planning assistant — never the teacher. The dashboard shows a stub where this will live.
+
+## Teacher accounts
+
+### Inviting another teacher
+
+Signed-in teachers click **➕ Invite a colleague** (dashboard header, or the remote's More tab) — it copies a link like `https://eyesup.onrender.com/teacher?invite=…`. The colleague opens it, types **their name and a password**, and they're in. Their sign-in name is made from their name automatically (`Sarah Jones` → `sarah.jones`), and either form works at sign-in. Without the link, the invite code (`TEACHER_PASSWORD`) can be typed by hand.

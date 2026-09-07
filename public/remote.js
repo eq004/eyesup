@@ -619,7 +619,17 @@ function renderMore() {
 
     <h3 class="sec">Account</h3>
     <div class="status"><div class="q">${name ? `Signed in as ${esc(name)}` : "Local mode"}</div></div>
-    ${creds().token ? `<button class="rbtn warn" id="signOut">↪ Sign out</button>` : ""}`;
+    ${creds().token ? `<button class="rbtn" id="inviteBtn">➕ Invite a colleague (copy link)</button><button class="rbtn warn" id="signOut">↪ Sign out</button>` : ""}`;
+  const ib = $("inviteBtn");
+  if (ib) ib.onclick = async () => {
+    try {
+      const res = await fetch(`/api/invite?${authQuery()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error();
+      await navigator.clipboard.writeText(`${location.origin}/teacher${data.invite ? `?invite=${encodeURIComponent(data.invite)}` : ""}`);
+      toast("Invite link copied");
+    } catch { toast("Couldn't get the invite link"); }
+  };
 
   $("titleIn").onchange = () => { send({ type: "set_title", title: $("titleIn").value }); toast("Title saved"); };
   $("newLessonBtn").onclick = () => {
@@ -687,7 +697,7 @@ function renderGate(err) {
       <p style="color:var(--rdim);font-size:0.9rem;margin-top:0.3rem">Everything the dashboard does, from your pocket.</p>
       <input id="codeIn" maxlength="4" placeholder="SESSION CODE" value="${esc(preset)}" autocomplete="off" />
       ${hasToken && err !== "auth_required" ? "" : `
-        <input id="userIn" placeholder="Your username" autocomplete="username" />
+        <input id="userIn" placeholder="Your name" autocomplete="username" />
         <input id="pwIn" type="password" placeholder="Your password" autocomplete="current-password" />`}
       ${err === "bad_password" || err === "auth_required" ? `<p class="err">Sign-in didn't match — try again.</p>` : ""}
       ${err === "no_session" ? `<p class="err">No live session with that code (or it isn't yours).</p>` : ""}

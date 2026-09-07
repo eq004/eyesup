@@ -225,33 +225,57 @@ app.get("/api/resp-image/:code/:itx/:sid", (req, res) => {
 
 /* ---- teacher accounts (database mode) ---- */
 
+// "Sarah Jones" → "sarah.jones": the sign-in name is made from the name
+// a teacher types, so nobody has to invent a username.
+function slugName(s) {
+  return String(s || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").slice(0, 24);
+}
+
 app.post("/api/signup", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
   const { invite, username, password, name } = req.body || {};
-  if (TEACHER_PASSWORD && invite !== TEACHER_PASSWORD)
+  if (TEACHER_PASSWORD && String(invite || "").trim() !== TEACHER_PASSWORD)
     return res.status(403).json({ error: "bad_invite" });
-  const u = String(username || "").trim().toLowerCase();
-  if (!/^[a-z0-9_.-]{3,24}$/.test(u)) return res.status(400).json({ error: "bad_username" });
+  const displayName = String(name || "").trim().slice(0, 40);
+  let base = slugName(username || displayName);
+  if (!displayName && !base) return res.status(400).json({ error: "bad_name" });
+  if (base.length < 3) base = (base + ".teacher").slice(0, 24);
   if (String(password || "").length < 6) return res.status(400).json({ error: "bad_pass" });
   const hash = bcrypt.hashSync(String(password), 10);
-  try {
-    const { rows } = await db.query(
-      `INSERT INTO teachers (username, display_name, pass_hash)
-       VALUES ($1, $2, $3) RETURNING id, username, display_name, pass_hash`,
-      [u, String(name || "").trim().slice(0, 40) || u, hash]
-    );
-    res.json({ token: signToken(rows[0].id, rows[0].pass_hash), name: rows[0].display_name, username: u });
-  } catch (e) {
-    if (String(e.message).includes("duplicate")) return res.status(409).json({ error: "taken" });
-    res.status(500).json({ error: "db_error" });
+  // If the sign-in name is taken, quietly number it (sarah.jones2, …).
+  for (let n = 0; n < 30; n++) {
+    const u = n === 0 ? base : `${base.slice(0, 22)}${n + 1}`;
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO teachers (username, display_name, pass_hash)
+         VALUES ($1, $2, $3) RETURNING id, username, display_name, pass_hash`,
+        [u, displayName || u, hash]
+      );
+      return res.json({ token: signToken(rows[0].id, rows[0].pass_hash), name: rows[0].display_name, username: u });
+    } catch (e) {
+      if (!String(e.message).includes("duplicate")) return res.status(500).json({ error: "db_error" });
+    }
   }
+  res.status(409).json({ error: "taken" });
+});
+
+// Signed-in teachers can hand the invite to a colleague as a link.
+app.get("/api/invite", async (req, res) => {
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  res.json({ invite: TEACHER_PASSWORD || "" });
 });
 
 app.post("/api/login", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
   try {
-    const u = String(req.body?.username || "").trim().toLowerCase();
-    const { rows } = await db.query(`SELECT * FROM teachers WHERE username = $1`, [u]);
+    // Accept the plain name too ("Sarah Jones" finds sarah.jones), and a
+    // display name match as a fallback.
+    const raw = String(req.body?.username || "").trim();
+    const { rows } = await db.query(
+      `SELECT * FROM teachers WHERE username = $1 OR username = $2 OR lower(display_name) = $3 ORDER BY id LIMIT 1`,
+      [raw.toLowerCase(), slugName(raw), raw.toLowerCase()]
+    );
     const t = rows[0];
     if (!t || !bcrypt.compareSync(String(req.body?.password || ""), t.pass_hash))
       return res.status(403).json({ error: "bad_login" });
