@@ -63,6 +63,7 @@ const MODES = {
   sketch:        { icon: "🎨", name: "Sketch It" },
   annotate:      { icon: "🖍️", name: "Annotate", imageUpload: true },
   image_drop:    { icon: "📥", name: "Drop an Image", ph: "What should they show? e.g. “A photo of your model”" },
+  image_caption: { icon: "📸", name: "Image + Writing", ph: "e.g. “Photograph your experiment and explain it”" },
 };
 
 const CATEGORIES = [
@@ -72,14 +73,14 @@ const CATEGORIES = [
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones"] },
-  { label: "Draw & images", modes: ["sketch", "annotate", "image_drop"] },
+  { label: "Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption"] },
 ];
 
 const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "image_drop", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "plus_minus"].includes(m);
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "image_drop", "image_caption", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "plus_minus"].includes(m);
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -291,8 +292,8 @@ function renderLiveResponses(itx) {
   const agg = itx.aggregate;
   let out = "";
 
-  if (["sketch", "annotate", "image_drop"].includes(itx.mode) && itx.responses.length) {
-    out += `<h3 class="sec">Tap ${itx.mode === "image_drop" ? "an image" : "a drawing"} → big on the projector</h3>
+  if (["sketch", "annotate", "image_drop", "image_caption"].includes(itx.mode) && itx.responses.length) {
+    out += `<h3 class="sec">Tap ${itx.mode === "sketch" || itx.mode === "annotate" ? "a drawing" : "an image"} → big on the projector</h3>
       <div class="thumb-grid">${itx.responses
         .map((r) => `<img class="thumb ${itx.spotlightId === r.studentId ? "spot" : ""}" data-spot="${r.studentId}" src="${r.payload.image}" alt="drawing" />`)
         .join("")}</div>`;

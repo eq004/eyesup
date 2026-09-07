@@ -24,7 +24,7 @@ const MODE_NAMES = {
   one_word: "🗣️ One Word", ask_question: "❓ Ask a Question",
   true_false: "✅ True or False", mindmap: "🕸️ Mindmap", exit_ticket: "🎟️ Exit Ticket",
   muddiest_point: "🌫️ Muddiest Point", retrieval_sprint: "🧠 Retrieval Sprint",
-  sketch: "🎨 Sketch It", image_drop: "📥 Drop an Image", spot_mistake: "🔎 Spot the Mistake",
+  sketch: "🎨 Sketch It", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", spot_mistake: "🔎 Spot the Mistake",
   example_nonexample: "↔️ Example / Non-example", teach_back: "🧑‍🏫 Teach It Back",
   match_up: "🧩 Match Up", put_in_order: "🪜 Put in Order", give_example: "💡 Give an Example",
   make_connection: "🔗 Make a Connection", finish_sentence: "📝 Finish the Sentence",
@@ -820,20 +820,26 @@ function renderInteraction(itx) {
     return;
   }
 
-  /* --- drop an image: a photo or picture IS the answer --- */
-  if (itx.mode === "image_drop") {
+  /* --- drop an image: a photo or picture IS the answer (optionally with writing) --- */
+  if (itx.mode === "image_drop" || itx.mode === "image_caption") {
+    const withText = itx.mode === "image_caption";
     show(`${h}
       <div id="dropZone" style="border:2px dashed var(--line);border-radius:14px;padding:1.6rem 1rem;text-align:center;background:var(--surface);cursor:pointer">
         <div id="dropPreview" style="display:none;margin-bottom:0.8rem"><img id="dropImg" alt="your image" style="max-width:100%;max-height:45vh;border-radius:10px" /></div>
         <div id="dropText"><div style="font-size:2rem">📥</div><b>Drop an image here</b><br/><span class="hint" style="margin:0">or tap to choose a photo — or take one</span></div>
         <input type="file" id="dropFile" accept="image/*" style="display:none" />
       </div>
+      ${withText ? `<textarea id="capText" rows="4" maxlength="1500" placeholder="Write a few sentences about your image…" style="width:100%;margin-top:0.8rem;font:inherit;padding:0.7rem 0.8rem;border:1.5px solid var(--line);border-radius:12px;resize:vertical"></textarea>` : ""}
       <div style="display:flex;gap:0.6rem;margin-top:0.8rem">
         <button class="btn" id="dropClear" style="flex:0 0 auto;width:auto;margin-top:0;background:var(--surface);border:1.5px solid var(--line)">↺ Change</button>
-        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0" disabled>Send my image</button>
+        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0" disabled>${withText ? "Send image + writing" : "Send my image"}</button>
       </div>`, () => {
       let dataUrl = null;
       const zone = $("dropZone"), file = $("dropFile");
+      const textOf = () => (withText ? $("capText").value.trim() : "");
+      // Both halves before it can go: the picture, and (here) the sentences.
+      const ready = () => { $("sendBtn").disabled = !dataUrl || (withText && !textOf()); };
+      if (withText) $("capText").oninput = ready;
       const setImage = (blob) => {
         if (!blob || !blob.type.startsWith("image/")) return;
         const img = new Image();
@@ -852,7 +858,7 @@ function renderInteraction(itx) {
           $("dropImg").src = dataUrl;
           $("dropPreview").style.display = "block";
           $("dropText").style.display = "none";
-          $("sendBtn").disabled = false;
+          ready();
         };
         img.src = URL.createObjectURL(blob);
       };
@@ -866,7 +872,10 @@ function renderInteraction(itx) {
         dataUrl = null; file.value = "";
         $("dropPreview").style.display = "none"; $("dropText").style.display = "block"; $("sendBtn").disabled = true;
       };
-      $("sendBtn").onclick = () => { if (dataUrl) submit({ image: dataUrl }); };
+      $("sendBtn").onclick = () => {
+        if (!dataUrl || (withText && !textOf())) return;
+        submit(withText ? { image: dataUrl, text: textOf() } : { image: dataUrl });
+      };
     });
     return;
   }

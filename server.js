@@ -506,7 +506,9 @@ const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes whose answer is a picture (drawn, marked up, or uploaded).
-const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop"]);
+const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop", "image_caption"]);
+// Uploaded (not drawn) pictures — stored server-side, sent to screens by URL.
+const UPLOAD_MODES = new Set(["image_drop", "image_caption"]);
 // Custom options entered by the teacher at launch.
 const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale", "picture_vote", "table"]);
 
@@ -661,7 +663,7 @@ function buildSpotlight(itx) {
   const name = itx.showNames && !ANON_MODES.has(itx.mode) ? r.name : undefined;
   const key = itx.spotlightId;
   const m = itx.mode;
-  if (IMAGE_MODES.has(m)) return { kind: "image", image: r.payload.image, name, sid: key };
+  if (IMAGE_MODES.has(m)) return { kind: "image", image: r.payload.image, text: r.payload.text, name, sid: key };
   if (m === "post_its") {
     const i = parseInt(noteIdx, 10);
     const note = (r.payload.notes || [])[i];
@@ -821,7 +823,7 @@ function aggregate(session, itx) {
   if (IMAGE_MODES.has(itx.mode)) {
     const revealed = [...itx.responses.entries()]
       .filter(([, r]) => r.revealed)
-      .map(([sid, r]) => ({ sid, image: r.payload.image, name: nm(r) }));
+      .map(([sid, r]) => ({ sid, image: r.payload.image, text: r.payload.text, name: nm(r) }));
     return { ...base, sketches: revealed, revealedCount: revealed.length };
   }
 
@@ -1105,6 +1107,7 @@ function describePayload(itx, p) {
   }
   if (STRUCTURED_FIELDS[itx.mode])
     return (p.parts || []).filter(Boolean).join("  ·  ");
+  if (itx.mode === "image_caption") return p.text ? `(image) ${p.text}` : "(image submitted)";
   if (itx.mode === "image_drop") return "(image submitted)";
   if (IMAGE_MODES.has(itx.mode)) return "(drawing submitted)";
   if (itx.mode === "spelling")
@@ -1197,7 +1200,9 @@ function buildSummary(session, { withImages = false } = {}) {
       if (withImages)
         item.images = [...itx.responses.values()]
           .filter((r) => r.name !== "👁 Preview")
-          .map((r) => ({ name: r.name, image: r.payload.image }));
+          .map((r) => ({ name: r.name, image: r.payload.image, text: r.payload.text }));
+      if (itx.mode === "image_caption")
+        item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
     }
     if (itx.mode === "counters") item.counterKind = itx.counterKind;
     if (itx.mode === "venn")
@@ -1402,7 +1407,7 @@ async function handle(ws, msg) {
     if (msg.interactionId !== itx.id) return;
     const payload = sanitizePayload(itx, msg.payload);
     if (!payload) return;
-    if (itx.mode === "image_drop") {
+    if (UPLOAD_MODES.has(itx.mode)) {
       // Full-size photos would multiply across every broadcast to every
       // screen; park the bytes here and send everyone a link instead.
       const key = `${itx.id}/${student.id}`;
@@ -1878,8 +1883,13 @@ function sanitizePayload(itx, payload) {
   if (IMAGE_MODES.has(itx.mode)) {
     const image = String(payload.image || "");
     // Uploaded photos stay print-size (≈2000px), so they get more room.
-    const cap = itx.mode === "image_drop" ? 2600000 : 600000;
+    const cap = UPLOAD_MODES.has(itx.mode) ? 2600000 : 600000;
     if (!/^data:image\/(png|jpeg);base64,/.test(image) || image.length > cap) return null;
+    if (itx.mode === "image_caption") {
+      const text = String(payload.text || "").trim().slice(0, 1500);
+      if (!text) return null; // the writing is half the answer
+      return { image, text };
+    }
     return { image };
   }
 

@@ -20,7 +20,7 @@
     confidence: ["🎯", "Confidence Check"], smiley: ["😊", "Smiley Review"], scale: ["🎚️", "Scale"],
     example_nonexample: ["↔️", "Example / Non-example"], ranking: ["🔢", "Ranking"], put_in_order: ["🪜", "Put in Order"],
     match_up: ["🧩", "Match Up"], venn: ["◉", "Venn Diagram"], spelling: ["🔡", "Spelling Test"], cloze: ["▭", "Cloze Passage"],
-    working: ["🧮", "Working Out"], counters: ["🟠", "Counters"], sketch: ["🎨", "Sketch It"], annotate: ["🖍️", "Annotate"], image_drop: ["📥", "Drop an Image"],
+    working: ["🧮", "Working Out"], counters: ["🟠", "Counters"], sketch: ["🎨", "Sketch It"], annotate: ["🖍️", "Annotate"], image_drop: ["📥", "Drop an Image"], image_caption: ["📸", "Image + Writing"],
   };
   const meta = (it) =>
     it.mode === "counters" && it.counterKind === "base10" ? ["🔟", "Tens & Ones"] : META[it.mode] || ["▫️", it.mode];
@@ -151,7 +151,7 @@
     } else if (it.distribution) {
       body = bars(it.distribution);
     } else if (it.sketchCount != null) {
-      body = `<p style="color:#4b5163">${it.sketchCount} ${it.mode === "image_drop" ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted — pictures are viewable and printable from the lesson report while the lesson is live.</p>`;
+      body = `<p style="color:#4b5163">${it.sketchCount} ${it.mode === "image_drop" || it.mode === "image_caption" ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted — pictures are viewable and printable from the lesson report while the lesson is live.</p>`;
     }
     const answers = ["smiley"].includes(it.mode) || it.words ? "" : answerList(it, showNames);
     const extraAnswers = (it.words || it.mode === "smiley") && showNames && it.students?.length ? answerList(it, showNames) : "";

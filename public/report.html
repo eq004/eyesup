@@ -109,6 +109,7 @@
   .img-gallery figure { margin: 0; text-align: center; break-inside: avoid; }
   .img-gallery img { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
   .img-gallery figcaption { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.3rem; font-weight: 700; }
+  .img-gallery .img-text { font-size: 0.9rem; text-align: left; margin: 0.5rem 0 0; line-height: 1.45; }
   @media print {
     .itx.has-gallery { page-break-inside: auto; }
     .img-gallery { display: block; }
@@ -215,7 +216,7 @@ const MODE_NAMES = {
   one_word: "One Word", ask_question: "Anonymous Questions",
   true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
   muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint",
-  sketch: "Sketch It", image_drop: "Drop an Image", spot_mistake: "Spot the Mistake",
+  sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", spot_mistake: "Spot the Mistake",
   example_nonexample: "Example / Non-example", teach_back: "Teach It Back",
   match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
@@ -334,10 +335,10 @@ function renderReport(s, recovered) {
     } else if (it.matchStats) {
       body = `<ol class="ranked-list">${it.matchStats.map((m) => `<li>${esc(m.pair)} — ${m.correctPct}% matched correctly</li>`).join("")}</ol>`;
     } else if (it.sketchCount != null) {
-      const noun = it.mode === "image_drop" ? ["image", "images"] : ["sketch", "sketches"];
+      const noun = it.mode === "image_drop" || it.mode === "image_caption" ? ["image", "images"] : ["sketch", "sketches"];
       body = it.images && it.images.length
         ? `<div class="img-gallery">${it.images
-            .map((im) => `<figure><img src="${im.image}" alt="student ${noun[0]}" />${im.name && !it.anonymous ? `<figcaption>${esc(im.name)}</figcaption>` : ""}</figure>`)
+            .map((im) => `<figure><img src="${im.image}" alt="student ${noun[0]}" />${im.text ? `<p class="img-text">${esc(im.text)}</p>` : ""}${im.name && !it.anonymous ? `<figcaption>${esc(im.name)}</figcaption>` : ""}</figure>`)
             .join("")}</div>`
         : `<p style="color:var(--ink-soft);margin-top:0.4rem">${it.sketchCount} ${it.sketchCount === 1 ? noun[0] : noun[1]} submitted — pictures can be viewed and printed from this report while the lesson is live.</p>`;
     } else if (it.topWords && it.topWords.length) {

@@ -15,7 +15,7 @@ const MODE_TAGS = {
   one_word: "One Word", ask_question: "Your Questions",
   true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
   muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint — 60 seconds",
-  sketch: "Sketch It", image_drop: "Drop an Image", spot_mistake: "Spot the Mistake",
+  sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", spot_mistake: "Spot the Mistake",
   example_nonexample: "Example or Non-example?", teach_back: "Teach It Back",
   match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
@@ -298,7 +298,7 @@ function renderInteraction(itx) {
           .join("")}</div>`
       : `<p class="waiting-note">Tables appear here as they're filled…</p>`;
   } else if (agg.sketches) {
-    body = renderSketches(agg, itx.mode === "image_drop");
+    body = renderSketches(agg, itx.mode === "image_drop" || itx.mode === "image_caption");
   } else if (agg.fields) {
     body = renderStructured(agg);
   } else if (agg.revealed) {
@@ -307,7 +307,7 @@ function renderInteraction(itx) {
 
   // A spotlighted response (any type, except sketch which has its own stage)
   // replaces the body until tapped away.
-  if (agg?.spotlight && !["sketch", "annotate", "image_drop"].includes(itx.mode)) {
+  if (agg?.spotlight && !["sketch", "annotate", "image_drop", "image_caption"].includes(itx.mode)) {
     body = renderGenericSpotlight(agg.spotlight);
   }
 
@@ -646,6 +646,7 @@ function renderSketches(agg, isImage) {
     return `
       <div class="spot-stage">
         <img class="spot-img tappable" data-spot="${agg.spotlight.sid}" src="${agg.spotlight.image}" alt="spotlighted drawing — tap to shrink" />
+        ${agg.spotlight.text ? `<div class="sketch-cap big">${esc(agg.spotlight.text)}</div>` : ""}
         ${agg.spotlight.name ? `<div class="sketch-name" style="font-size:clamp(1.1rem,2.2vw,1.7rem)">${esc(agg.spotlight.name)}</div>` : ""}
       </div>
       ${rest.length ? `<div class="spot-strip">${rest
@@ -653,7 +654,7 @@ function renderSketches(agg, isImage) {
         .join("")}</div>` : ""}`;
   }
   return `<div class="answers">${agg.sketches
-    .map((s, i) => `<div class="sketch-card tappable" data-spot="${s.sid}" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/>${s.name ? `<div class="sketch-name">${esc(s.name)}</div>` : ""}</div>`)
+    .map((s, i) => `<div class="sketch-card tappable" data-spot="${s.sid}" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/>${s.text ? `<div class="sketch-cap">${esc(s.text)}</div>` : ""}${s.name ? `<div class="sketch-name">${esc(s.name)}</div>` : ""}</div>`)
     .join("")}</div>
     <p class="tap-hint">👆 tap ${isImage ? "an image" : "a drawing"} to make it big</p>`;
 }
