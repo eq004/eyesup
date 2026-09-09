@@ -192,6 +192,7 @@ function render(force) {
 }
 
 function show(html, after) {
+  screenEl.classList.remove("wide"); // drawing modes opt back in
   screenEl.innerHTML = html;
   if (after) after();
 }
@@ -892,6 +893,36 @@ function renderInteraction(itx) {
       <p class="hint">${anno ? "Draw on the image with your finger or mouse." : "Draw with your finger or mouse."}</p>`, () => {
       const canvas = $("pad");
       const ctx = canvas.getContext("2d");
+      // Fill the screen: as wide as the device allows, as tall as fits above
+      // the buttons, keeping 4:3. Resolution follows the display size so an
+      // iPad drawing is crisp and prints well.
+      screenEl.classList.add("wide");
+      let padAspect = null; // height / width, fixed once the pad exists
+      const fitPad = (first) => {
+        const controls = 120; // buttons + hint below the pad
+        const top = canvas.getBoundingClientRect().top;
+        const availH = Math.max(260, window.innerHeight - top - controls);
+        const availW = screenEl.clientWidth;
+        let w, hgt;
+        if (first) {
+          // Take the whole space, within sane shapes (not a thin strip).
+          w = availW;
+          hgt = Math.min(Math.max(availH, w * 0.55), w * 1.3);
+          padAspect = hgt / w;
+          const dpr = Math.min(2, window.devicePixelRatio || 1);
+          canvas.width = Math.min(2000, Math.round(w * dpr));
+          canvas.height = Math.round(canvas.width * padAspect);
+        } else {
+          // Rotated or resized: scale, never reshape (that would warp the drawing).
+          w = availW;
+          hgt = w * padAspect;
+          if (hgt > availH) { hgt = availH; w = hgt / padAspect; }
+        }
+        canvas.style.width = `${Math.floor(w)}px`;
+        canvas.style.height = `${Math.floor(hgt)}px`;
+      };
+      fitPad(true);
+      window.addEventListener("resize", () => fitPad(false), { passive: true });
       let bg = null; // the teacher's image, once loaded
       const blank = () => {
         ctx.fillStyle = "#ffffff";
@@ -910,7 +941,7 @@ function renderInteraction(itx) {
         img.src = itx.imageUrl;
       }
       ctx.strokeStyle = anno ? "#e02d2d" : "#191c26";
-      ctx.lineWidth = 4;
+      ctx.lineWidth = Math.max(3, Math.round(canvas.width / 150)); // same feel at any resolution
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       let drawing = false, drew = false;

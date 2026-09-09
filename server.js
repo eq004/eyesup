@@ -2141,7 +2141,7 @@ function sanitizePayload(itx, payload) {
   if (IMAGE_MODES.has(itx.mode)) {
     const image = String(payload.image || "");
     // Uploaded photos stay print-size (≈2000px), so they get more room.
-    const cap = UPLOAD_MODES.has(itx.mode) ? 2600000 : 600000;
+    const cap = UPLOAD_MODES.has(itx.mode) ? 2600000 : 1400000; // drawings are bigger now that the pad fills an iPad
     if (!/^data:image\/(png|jpeg);base64,/.test(image) || image.length > cap) return null;
     if (itx.mode === "image_caption") {
       const text = String(payload.text || "").trim().slice(0, 1500);
