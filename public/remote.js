@@ -248,9 +248,9 @@ function miniBars(labels, counts, marks) {
 
 function renderLive() {
   const itx = state.interaction;
-  let status;
+  let status = `<button class="rbtn ${state.showNames ? "accent" : ""}" data-act="toggle_names" style="margin-bottom:0.6rem">🏷 Names on screen: ${state.showNames ? "ON" : "off"}</button>`;
   if (itx) {
-    status = `
+    status += `
       <div class="status">
         <div class="mode">${modeName(itx.mode, itx.counterKind)}</div>
         <div class="q">${itx.prompt ? esc(itx.prompt) : "🎤 asked aloud"}</div>
@@ -262,7 +262,7 @@ function renderLive() {
         </div>
       </div>`;
   } else {
-    status = `<div class="status"><div class="q">${state.phase === "eyesup" ? "👀 Eyes up — the room is talking" : "🎤 Nothing live — the room is yours"}</div></div>`;
+    status += `<div class="status"><div class="q">${state.phase === "eyesup" ? "👀 Eyes up — the room is talking" : "🎤 Nothing live — the room is yours"}</div></div>`;
   }
 
   const seq = state.sequence || [];
@@ -274,7 +274,7 @@ function renderLive() {
       ${itx.open ? `<button class="rbtn" data-act="close_responses">⏸ Close</button>` : `<button class="rbtn" data-act="open_responses">▶ Open</button>`}
       ${itx.resultsVisible ? `<button class="rbtn" data-act="hide_results">🙈 Hide</button>` : `<button class="rbtn" data-act="show_results">📊 Show</button>`}
       ${revealMode(itx.mode) ? `<button class="rbtn" data-act="reveal_all">✨ All up</button>` : ""}
-      ${revealMode(itx.mode) && !ANON_MODES.has(itx.mode) ? `<button class="rbtn" data-act="toggle_names">🏷 ${itx.showNames ? "Names ON" : "Names"}</button>` : ""}
+
       ${itx.mode === "multi_choice" && itx.correct != null && !itx.answerRevealed ? `<button class="rbtn" data-act="reveal_answer">🎯 Answer</button>` : ""}
       <button class="rbtn warn" data-act="clear">Clear</button>
     </div>`;
@@ -569,6 +569,7 @@ function renderTools() {
     ${dres ? `<div class="status"><div class="q">🎲 Landed on ${dres} — ${esc(state.dice.faces[dres - 1] || "blank face")}</div></div>` : ""}
 
     <h3 class="sec">📽 Big screen</h3>
+    <button class="rbtn ${state.showNames ? "accent" : ""}" data-act="toggle_names">🏷 Names on screen: ${state.showNames ? "ON" : "off"}</button>
     <div class="btn-row">
       <button class="rbtn" data-act="toggle_join">🔳 ${state.showJoin ? "QR is up — hide" : "Show join QR"}</button>
       ${state.focus ? `<button class="rbtn" data-act="clear_focus">✕ Clear screen</button>` : ""}

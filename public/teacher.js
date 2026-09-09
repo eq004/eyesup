@@ -544,6 +544,9 @@ function render() {
   $("dataBtn").style.display = state.storage ? "" : "none";
   $("whoAmI").textContent = teacherToken() ? localStorage.getItem("eyesup_teacher_name") || "" : "";
   $("signOutBtn").style.display = teacherToken() ? "" : "none";
+  const nb = $("namesBtn");
+  nb.textContent = `🏷 Names: ${state.showNames ? "ON" : "off"}`;
+  nb.classList.toggle("primary", !!state.showNames);
   $("inviteBtn").style.display = teacherToken() && state?.storage ? "" : "none";
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
   $("qrToggle").textContent = state.showJoin ? "🔳 QR is up" : "🔳 QR";
@@ -664,7 +667,7 @@ function renderLive() {
       : `<button class="btn" data-act="show_results">📊 Show results</button>`}
     ${canReveal ? `<button class="btn" data-act="reveal_all">✨ Reveal all</button>` : ""}
     ${canReveal && !ANON_MODES.has(itx.mode)
-      ? `<button class="btn" data-act="toggle_names" title="Show student names next to responses on the projector">🏷 Names on screen: ${itx.showNames ? "ON" : "off"}</button>`
+      ? `<button class="btn ${state.showNames ? "primary" : ""}" data-act="toggle_names" title="Show student names next to responses on the projector — applies to the whole lesson">🏷 Names on screen: ${state.showNames ? "ON" : "off"}</button>`
       : ""}
     ${itx.mode === "multi_choice" && itx.correct != null
       ? itx.answerRevealed
@@ -1127,6 +1130,7 @@ $("timerGo").onclick = () => {
   if (s >= 5) send({ type: "timer_start", seconds: s });
 };
 $("pickBtn").onclick = () => send({ type: "pick_student" });
+$("namesBtn").onclick = () => send({ type: "toggle_names" });
 const diceInputs = () => [...document.querySelectorAll("#diceFaces .dice-in")];
 const sendDiceFaces = () => {
   const faces = diceInputs().map((i) => i.value.trim());

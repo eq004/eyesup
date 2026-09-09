@@ -729,6 +729,7 @@ function createSession(teacherWs) {
     counter: 0,
     // Room tools
     showJoin: false, // teacher-toggled: force the big join screen onto the projector
+    showNames: false, // room-wide: student names on screen for every activity (anonymous modes excepted)
     timer: null, // {seconds, endsAt, paused, remaining}
     focus: null, // {type:'spotlight', name} | {type:'groups', groups:[[names]]}
     picked: new Set(), // student ids already randomly selected (no repeats till all picked)
@@ -875,7 +876,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     expected: ["working", "counters", "maths_board"].includes(mode) ? String(expected || "").trim().slice(0, 30) || null : null,
     counterKind: mode === "counters" ? (counterKind === "base10" ? "base10" : "colors") : null,
     answerRevealed: false,
-    showNames: false, // teacher can flip names onto the projector per interaction
+    showNames: !!session.showNames && !ANON_MODES.has(mode), // follows the room-wide switch; anonymous modes never
     spotlightId: null, // sketch/annotate: one response blown up big on the projector
     // Post-its: teacher chooses at launch — screen notes first, or straight up.
     moderated: mode === "post_its" ? moderated !== false : null,
@@ -1198,6 +1199,7 @@ function teacherState(session) {
     timer: session.timer,
     focus: session.focus,
     showJoin: session.showJoin,
+    showNames: session.showNames,
     dice: session.dice,
     students: [...session.students.values()].map((s) => ({ id: s.id, name: s.name })),
     sequence: session.sequence,
@@ -1251,6 +1253,7 @@ function projectorState(session) {
     timer: session.timer,
     focus: session.focus,
     showJoin: session.showJoin,
+    showNames: session.showNames,
     dice: session.dice,
     studentCount: session.students.size,
     respondedCount: itx ? itx.responses.size : 0,
@@ -1688,6 +1691,12 @@ async function handle(ws, msg) {
   if (ws.meta.role !== "teacher") {
     // The projector often runs on an interactive whiteboard: allow
     // tap-to-spotlight straight from the board — and only that.
+    if (ws.meta.role === "projector" && type === "toggle_names") {
+      session.showNames = !session.showNames;
+      const itx = session.interaction;
+      if (itx && !ANON_MODES.has(itx.mode)) itx.showNames = session.showNames;
+      broadcast(session);
+    }
     if (ws.meta.role === "projector" && type === "spotlight_response") {
       const itx = session.interaction;
       if (itx && isRevealMode(itx.mode)) {
@@ -1750,9 +1759,11 @@ async function handle(ws, msg) {
       break;
     }
     case "toggle_names": {
+      // One switch for the whole room: this activity and every one after it.
+      session.showNames = typeof msg.on === "boolean" ? msg.on : !session.showNames;
       const itx = session.interaction;
       // Anonymous modes keep their promise — no override.
-      if (itx && !ANON_MODES.has(itx.mode)) itx.showNames = !itx.showNames;
+      if (itx && !ANON_MODES.has(itx.mode)) itx.showNames = session.showNames;
       break;
     }
     case "reveal_answer": {

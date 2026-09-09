@@ -37,6 +37,12 @@
     padding: 0.3rem 0.9rem;
   }
   .bar .count { display: inline-flex; align-items: center; gap: 0.5rem; }
+  .names-btn {
+    font: inherit; font-weight: 700; font-size: 0.9rem; cursor: pointer;
+    color: var(--chalk-dim); background: rgba(255,255,255,0.05);
+    border: 1px solid var(--night-line); border-radius: 10px; padding: 0.3rem 0.8rem;
+  }
+  .names-btn.on { color: #fff; background: rgba(123, 147, 255, 0.35); border-color: #7b93ff; }
   .bar .dot { width: 9px; height: 9px; border-radius: 50%; background: #5fd38a; animation: pulse-dot 2s infinite; }
 
   main {
@@ -593,6 +599,7 @@
     <span class="wordmark">Eyes Up 👀</span>
     <span class="spacer"></span>
     <span class="count" id="barCount"></span>
+    <button class="names-btn" id="namesBtn" title="Show or hide student names on this screen">🏷 names off</button>
     <span class="code" id="barCode"></span>
   </div>
   <main><div class="stage" id="stage"></div></main>

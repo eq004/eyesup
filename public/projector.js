@@ -98,6 +98,10 @@ function renderInner() {
   if (!state) return renderCodeEntry(false);
   barCode.textContent = state.code;
   barCount.innerHTML = `<span class="dot"></span> ${state.studentCount} in the room`;
+  const nb = document.getElementById("namesBtn");
+  nb.textContent = `🏷 names ${state.showNames ? "ON" : "off"}`;
+  nb.classList.toggle("on", !!state.showNames);
+  nb.onclick = () => send({ type: "toggle_names" });
 
   const itx = state.interaction;
 
