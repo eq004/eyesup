@@ -176,6 +176,16 @@
   }
   .ctr-src { flex-shrink: 0; box-shadow: var(--shadow); border: 2px solid rgba(0,0,0,0.15); touch-action: none; }
   .ctr-src:active { transform: scale(1.15); }
+  /* maths board: counters + drawing on one surface */
+  .mb-tools { display: flex; gap: 0.4rem; justify-content: center; margin-bottom: 0.5rem; }
+  .mb-tools button { font: inherit; font-weight: 800; font-size: 0.85rem; padding: 0.45rem 0.8rem; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); }
+  .mb-tools button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ctr-board.mb-board { aspect-ratio: auto; border-top: 1.5px solid var(--line); border-radius: var(--radius); }
+  .mb-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; z-index: 1; pointer-events: none; }
+  .ctr-board.mb-board.drawing .mb-canvas { z-index: 3; pointer-events: auto; cursor: crosshair; }
+  .ctr-board.mb-board .ctr-piece { z-index: 2; }
+  .mb-keys { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.35rem; margin-top: 0.6rem; }
+  .mb-keys .wk { min-height: 44px; }
   .ctr-tray-lbl { font-size: 0.75rem; color: var(--muted); text-align: left; line-height: 1.25; }
   .ctr-board {
     position: relative;

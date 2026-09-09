@@ -749,7 +749,7 @@ const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes whose answer is a picture (drawn, marked up, or uploaded).
-const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop", "image_caption"]);
+const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop", "image_caption", "maths_board"]);
 // Uploaded (not drawn) pictures — stored server-side, sent to screens by URL.
 const UPLOAD_MODES = new Set(["image_drop", "image_caption"]);
 // Custom options entered by the teacher at launch.
@@ -872,7 +872,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     words, // spelling
     cloze, // cloze passage {parts, answers}
     bank, // cloze word bank (shuffled answers) or null
-    expected: ["working", "counters"].includes(mode) ? String(expected || "").trim().slice(0, 30) || null : null,
+    expected: ["working", "counters", "maths_board"].includes(mode) ? String(expected || "").trim().slice(0, 30) || null : null,
     counterKind: mode === "counters" ? (counterKind === "base10" ? "base10" : "colors") : null,
     answerRevealed: false,
     showNames: false, // teacher can flip names onto the projector per interaction
@@ -1353,6 +1353,7 @@ function describePayload(itx, p) {
   if (STRUCTURED_FIELDS[itx.mode])
     return (p.parts || []).filter(Boolean).join("  ·  ");
   if (itx.mode === "image_caption") return p.text ? `(image) ${p.text}` : "(image submitted)";
+  if (itx.mode === "maths_board") return p.text ? `(board) ${p.text}` : "(board submitted, no answer typed)";
   if (itx.mode === "image_drop") return "(image submitted)";
   if (IMAGE_MODES.has(itx.mode)) return "(drawing submitted)";
   if (itx.mode === "spelling")
@@ -1446,7 +1447,7 @@ function buildSummary(session, { withImages = false } = {}) {
         item.images = [...itx.responses.values()]
           .filter((r) => r.name !== "👁 Preview")
           .map((r) => ({ name: r.name, image: r.payload.image, text: r.payload.text }));
-      if (itx.mode === "image_caption")
+      if (itx.mode === "image_caption" || itx.mode === "maths_board")
         item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
     }
     if (itx.mode === "counters") item.counterKind = itx.counterKind;
@@ -2124,7 +2125,7 @@ function sanitizePayload(itx, payload) {
         y: Math.max(0, Math.min(100, Number(it?.y))),
       }))
       .filter((it) => Number.isInteger(it.k) && it.k >= 0 && it.k <= 3 && Number.isFinite(it.x) && Number.isFinite(it.y))
-      .slice(0, 40);
+      .slice(0, 500);
     const answer = String(payload.answer || "").trim().slice(0, 30);
     return items.length || answer ? { items, answer } : null;
   }
@@ -2147,6 +2148,11 @@ function sanitizePayload(itx, payload) {
       const text = String(payload.text || "").trim().slice(0, 1500);
       if (!text) return null; // the writing is half the answer
       return { image, text };
+    }
+    if (itx.mode === "maths_board") {
+      const answer = String(payload.answer || "").trim().slice(0, 30);
+      const mark = answer && itx.expected ? (markMatch(answer, itx.expected) ? " ✓" : " ✗") : "";
+      return { image, answer, text: answer ? `Answer: ${answer}${mark}` : undefined };
     }
     return { image };
   }

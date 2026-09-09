@@ -60,6 +60,7 @@ const MODES = {
   working:       { icon: "🧮", name: "Working Out", workingUI: true, ph: "The problem — or say it aloud" },
   counters:      { icon: "🟠", name: "Counters", workingUI: true, forceKind: "colors", ph: "The equation, e.g. “3 + 4 = ?”" },
   tens_ones:     { icon: "🔟", name: "Tens & Ones", workingUI: true, forceKind: "base10", launchAs: "counters", ph: "e.g. “Build 47”" },
+  maths_board:   { icon: "🧮", name: "Maths Board", workingUI: true, ph: "The problem, e.g. “23 + 19 = ?”" },
   sketch:        { icon: "🎨", name: "Sketch It" },
   annotate:      { icon: "🖍️", name: "Annotate", imageUpload: true },
   image_drop:    { icon: "📥", name: "Drop an Image", ph: "What should they show? e.g. “A photo of your model”" },
@@ -72,7 +73,7 @@ const CATEGORIES = [
   { label: "Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
-  { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones"] },
+  { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board"] },
   { label: "Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption"] },
 ];
 
@@ -80,7 +81,7 @@ const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_tic
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "image_drop", "image_caption", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "plus_minus"].includes(m);
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "image_drop", "image_caption", "maths_board", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "plus_minus"].includes(m);
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -292,7 +293,7 @@ function renderLiveResponses(itx) {
   const agg = itx.aggregate;
   let out = "";
 
-  if (["sketch", "annotate", "image_drop", "image_caption"].includes(itx.mode) && itx.responses.length) {
+  if (["sketch", "annotate", "image_drop", "image_caption", "maths_board"].includes(itx.mode) && itx.responses.length) {
     out += `<h3 class="sec">Tap ${itx.mode === "sketch" || itx.mode === "annotate" ? "a drawing" : "an image"} → big on the projector</h3>
       <div class="thumb-grid">${itx.responses
         .map((r) => `<img class="thumb ${itx.spotlightId === r.studentId ? "spot" : ""}" data-spot="${r.studentId}" src="${r.payload.image}" alt="drawing" />`)

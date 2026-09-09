@@ -24,7 +24,7 @@ const MODE_NAMES = {
   one_word: "🗣️ One Word", ask_question: "❓ Ask a Question",
   true_false: "✅ True or False", mindmap: "🕸️ Mindmap", exit_ticket: "🎟️ Exit Ticket",
   muddiest_point: "🌫️ Muddiest Point", retrieval_sprint: "🧠 Retrieval Sprint",
-  sketch: "🎨 Sketch It", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", spot_mistake: "🔎 Spot the Mistake",
+  sketch: "🎨 Sketch It", maths_board: "🧮 Maths Board", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", spot_mistake: "🔎 Spot the Mistake",
   example_nonexample: "↔️ Example / Non-example", teach_back: "🧑‍🏫 Teach It Back",
   match_up: "🧩 Match Up", put_in_order: "🪜 Put in Order", give_example: "💡 Give an Example",
   make_connection: "🔗 Make a Connection", finish_sentence: "📝 Finish the Sentence",
@@ -705,7 +705,7 @@ function renderInteraction(itx) {
       screenEl.querySelectorAll(".ctr-src").forEach((src) => {
         src.onpointerdown = (e) => {
           e.preventDefault();
-          if (counterItems.length >= 40) return;
+          if (counterItems.length >= 400) return;
           // Tap drops it in a tidy spot; dragging carries it to wherever you release.
           counterItems.push({
             k: +src.dataset.k,
@@ -721,6 +721,147 @@ function renderInteraction(itx) {
         const answer = $("ctrAns").value.trim();
         if (counterItems.length || answer) submit({ items: counterItems, answer });
       };
+      paint();
+    });
+    return;
+  }
+
+  /* --- maths board: counters + tens & ones + free drawing + number pad --- */
+  if (itx.mode === "maths_board") {
+    const COLORS = ["#e05252", "#4a7de0", "#e8c33c", "#3f9e5f"];
+    show(`${h}
+      <div class="mb-tools">
+        <button id="mbMove" class="on">✋ Move counters</button>
+        <button id="mbDraw">✏️ Draw</button>
+        <button id="mbErase">🧽 Clear drawing</button>
+      </div>
+      <div class="ctr-tray">
+        ${COLORS.map((c, i) => `<button class="ctr-src" data-k="${i}" style="background:${c};width:34px;height:34px;border-radius:50%"></button>`).join("")}
+        <button class="ctr-src mab-ten" data-k="4" title="a ten"></button>
+        <button class="ctr-src mab-one" data-k="5" title="a one"></button>
+        <span class="ctr-tray-lbl">← tap or drag pieces<br/>onto the board</span>
+      </div>
+      <div class="ctr-board mb-board" id="ctrBoard"><canvas class="mb-canvas" id="mbCanvas"></canvas></div>
+      <div class="mb-keys">
+        ${["7","8","9","4","5","6","1","2","3","0",".","−"].map((k) => `<button class="wk" data-k="${k}">${k}</button>`).join("")}
+        <button class="wk op" id="mbBack" style="grid-column:span 3">⌫</button>
+        <button class="wk op" id="mbClearAns" style="grid-column:span 3">Clear answer</button>
+      </div>
+      <div class="work-ans-row">
+        <span>My answer:</span>
+        <input id="mbAns" maxlength="30" autocomplete="off" inputmode="decimal" />
+      </div>
+      <button class="btn send" id="sendBtn">Send my board</button>
+      <p class="hint">Drag a piece off the board to remove it. Switch to ✏️ Draw to write working out.</p>`, () => {
+      screenEl.classList.add("wide"); // whole screen, like the drawing pad
+      const board = $("ctrBoard"), canvas = $("mbCanvas"), ctx = canvas.getContext("2d");
+      const pieces = document.createElement("div");
+      pieces.style.cssText = "position:absolute;inset:0;z-index:2;pointer-events:none";
+      board.appendChild(pieces);
+      // Board fills the screen height, like the drawing pad.
+      const top = board.getBoundingClientRect().top;
+      const availH = Math.max(240, window.innerHeight - top - 230);
+      const bw = board.clientWidth;
+      const bh = Math.min(Math.max(availH, bw * 0.45), bw * 0.9);
+      board.style.height = `${Math.floor(bh)}px`;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.min(1800, Math.round(bw * dpr));
+      canvas.height = Math.round(canvas.width * (bh / bw));
+      ctx.strokeStyle = "#191c26";
+      ctx.lineWidth = Math.max(3, Math.round(canvas.width / 180));
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+
+      /* pieces (k 0-3 colours, 4 ten, 5 one), positions in % of the board */
+      const items = [];
+      const paint = () => {
+        pieces.innerHTML = items
+          .map((it, i) => it.k === 4
+            ? `<div class="ctr-piece mab-ten" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:4%;height:${(bw * 0.04 * 4) / bh * 100}%;pointer-events:auto"></div>`
+            : it.k === 5
+              ? `<div class="ctr-piece mab-one" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:4%;height:${(bw * 0.04) / bh * 100}%;pointer-events:auto"></div>`
+              : `<div class="ctr-piece" data-i="${i}" style="left:${it.x}%;top:${it.y}%;width:6%;height:${(bw * 0.06) / bh * 100}%;background:${COLORS[it.k]};border-radius:50%;pointer-events:auto"></div>`)
+          .join("");
+        pieces.querySelectorAll(".ctr-piece").forEach((el) => (el.onpointerdown = (e) => startDrag(e, +el.dataset.i)));
+      };
+      const pctPos = (e) => {
+        const r = board.getBoundingClientRect();
+        return {
+          x: Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100)),
+          y: Math.max(0, Math.min(100, ((e.clientY - r.top) / r.height) * 100)),
+          inside: e.clientX >= r.left - 10 && e.clientX <= r.right + 10 && e.clientY >= r.top - 30 && e.clientY <= r.bottom + 30,
+        };
+      };
+      const startDrag = (e, idx) => {
+        e.preventDefault();
+        const sx = e.clientX, sy = e.clientY;
+        let moved = false;
+        const move = (ev) => {
+          if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 8) moved = true;
+          const p = pctPos(ev); items[idx].x = p.x; items[idx].y = p.y; paint();
+        };
+        const up = (ev) => {
+          window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+          if (moved && !pctPos(ev).inside) { items.splice(idx, 1); paint(); }
+        };
+        window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+      };
+      screenEl.querySelectorAll(".ctr-src").forEach((src) => {
+        src.onpointerdown = (e) => {
+          e.preventDefault();
+          if (items.length >= 400) return;
+          setTool("move");
+          items.push({ k: +src.dataset.k, x: 10 + (items.length % 10) * 8, y: 12 + (Math.floor(items.length / 10) % 5) * 16 });
+          paint();
+          startDrag(e, items.length - 1);
+        };
+      });
+
+      /* drawing layer */
+      const pos = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) * canvas.width) / r.width, ((e.clientY - r.top) * canvas.height) / r.height]; };
+      let drawing = false;
+      canvas.addEventListener("pointerdown", (e) => { drawing = true; try { canvas.setPointerCapture(e.pointerId); } catch {} const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 0.1, y + 0.1); ctx.stroke(); e.preventDefault(); });
+      canvas.addEventListener("pointermove", (e) => { if (!drawing) return; const [x, y] = pos(e); ctx.lineTo(x, y); ctx.stroke(); e.preventDefault(); });
+      canvas.addEventListener("pointerup", () => (drawing = false));
+      const setTool = (t) => { board.classList.toggle("drawing", t === "draw"); $("mbDraw").classList.toggle("on", t === "draw"); $("mbMove").classList.toggle("on", t !== "draw"); };
+      $("mbMove").onclick = () => setTool("move");
+      $("mbDraw").onclick = () => setTool("draw");
+      $("mbErase").onclick = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      /* number pad */
+      const ans = $("mbAns");
+      screenEl.querySelectorAll(".mb-keys .wk[data-k]").forEach((b) => (b.onclick = () => { if (ans.value.length < 30) ans.value += b.dataset.k; }));
+      $("mbBack").onclick = () => (ans.value = ans.value.slice(0, -1));
+      $("mbClearAns").onclick = () => (ans.value = "");
+
+      /* send: flatten pieces + drawing into one picture */
+      $("sendBtn").onclick = () => {
+        const answer = ans.value.trim();
+        if (!items.length && !answer && !drawing && isBlank()) return;
+        const out = document.createElement("canvas");
+        out.width = canvas.width; out.height = canvas.height;
+        const o = out.getContext("2d");
+        o.fillStyle = "#fbfaf5"; o.fillRect(0, 0, out.width, out.height);
+        const W = out.width, H = out.height, px = (p) => (p / 100) * W, py = (p) => (p / 100) * H;
+        for (const it of items) {
+          if (it.k === 4) { // a ten: striped rod
+            const w = W * 0.04, hh = w * 4, x = px(it.x), y = py(it.y);
+            o.fillStyle = "#7f8ff0"; o.fillRect(x, y, w, hh);
+            o.strokeStyle = "#4a3fb5"; o.lineWidth = Math.max(2, W / 500);
+            for (let s = 1; s < 10; s++) { o.beginPath(); o.moveTo(x, y + (hh * s) / 10); o.lineTo(x + w, y + (hh * s) / 10); o.stroke(); }
+            o.strokeRect(x, y, w, hh);
+          } else if (it.k === 5) {
+            const w = W * 0.04, x = px(it.x), y = py(it.y);
+            o.fillStyle = "#7f8ff0"; o.fillRect(x, y, w, w); o.strokeStyle = "#4a3fb5"; o.lineWidth = Math.max(2, W / 500); o.strokeRect(x, y, w, w);
+          } else {
+            const d = W * 0.06, x = px(it.x), y = py(it.y);
+            o.beginPath(); o.arc(x + d / 2, y + d / 2, d / 2, 0, Math.PI * 2); o.fillStyle = COLORS[it.k]; o.fill();
+            o.strokeStyle = "rgba(0,0,0,0.25)"; o.lineWidth = Math.max(2, W / 500); o.stroke();
+          }
+        }
+        o.drawImage(canvas, 0, 0);
+        submit({ image: out.toDataURL("image/jpeg", 0.85), answer });
+      };
+      const isBlank = () => { const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data; for (let i = 3; i < d.length; i += 4 * 97) if (d[i]) return false; return true; };
       paint();
     });
     return;
