@@ -24,7 +24,7 @@ const MODE_NAMES = {
   one_word: "🗣️ One Word", ask_question: "❓ Ask a Question",
   true_false: "✅ True or False", mindmap: "🕸️ Mindmap", exit_ticket: "🎟️ Exit Ticket",
   muddiest_point: "🌫️ Muddiest Point", retrieval_sprint: "🧠 Retrieval Sprint",
-  sketch: "🎨 Sketch It", maths_board: "🧮 Maths Board", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", spot_mistake: "🔎 Spot the Mistake",
+  sketch: "🎨 Sketch It", maths_board: "🧮 Maths Board", counters_draw: "🟠 Counters + Drawing", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", spot_mistake: "🔎 Spot the Mistake",
   example_nonexample: "↔️ Example / Non-example", teach_back: "🧑‍🏫 Teach It Back",
   match_up: "🧩 Match Up", put_in_order: "🪜 Put in Order", give_example: "💡 Give an Example",
   make_connection: "🔗 Make a Connection", finish_sentence: "📝 Finish the Sentence",
@@ -726,9 +726,10 @@ function renderInteraction(itx) {
     return;
   }
 
-  /* --- maths board: counters + tens & ones + free drawing + number pad --- */
-  if (itx.mode === "maths_board") {
+  /* --- maths board: counters + tens & ones + free drawing (+ number pad) --- */
+  if (itx.mode === "maths_board" || itx.mode === "counters_draw") {
     const COLORS = ["#e05252", "#4a7de0", "#e8c33c", "#3f9e5f"];
+    const withPad = itx.mode === "maths_board";
     show(`${h}
       <div class="mb-tools">
         <button id="mbMove" class="on">✋ Move counters</button>
@@ -742,7 +743,7 @@ function renderInteraction(itx) {
         <span class="ctr-tray-lbl">← tap or drag pieces<br/>onto the board</span>
       </div>
       <div class="ctr-board mb-board" id="ctrBoard"><canvas class="mb-canvas" id="mbCanvas"></canvas></div>
-      <div class="mb-keys">
+      ${withPad ? `<div class="mb-keys">
         ${["7","8","9","4","5","6","1","2","3","0",".","−"].map((k) => `<button class="wk" data-k="${k}">${k}</button>`).join("")}
         <button class="wk op" id="mbBack" style="grid-column:span 3">⌫</button>
         <button class="wk op" id="mbClearAns" style="grid-column:span 3">Clear answer</button>
@@ -750,7 +751,7 @@ function renderInteraction(itx) {
       <div class="work-ans-row">
         <span>My answer:</span>
         <input id="mbAns" maxlength="30" autocomplete="off" inputmode="decimal" />
-      </div>
+      </div>` : ""}
       <button class="btn send" id="sendBtn">Send my board</button>
       <p class="hint">Drag a piece off the board to remove it. Switch to ✏️ Draw to write working out.</p>`, () => {
       screenEl.classList.add("wide"); // whole screen, like the drawing pad
@@ -760,7 +761,7 @@ function renderInteraction(itx) {
       board.appendChild(pieces);
       // Board fills the screen height, like the drawing pad.
       const top = board.getBoundingClientRect().top;
-      const availH = Math.max(240, window.innerHeight - top - 230);
+      const availH = Math.max(240, window.innerHeight - top - (withPad ? 230 : 110));
       const bw = board.clientWidth;
       const bh = Math.min(Math.max(availH, bw * 0.45), bw * 0.9);
       board.style.height = `${Math.floor(bh)}px`;
@@ -827,15 +828,17 @@ function renderInteraction(itx) {
       $("mbDraw").onclick = () => setTool("draw");
       $("mbErase").onclick = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      /* number pad */
+      /* number pad (Maths Board only) */
       const ans = $("mbAns");
-      screenEl.querySelectorAll(".mb-keys .wk[data-k]").forEach((b) => (b.onclick = () => { if (ans.value.length < 30) ans.value += b.dataset.k; }));
-      $("mbBack").onclick = () => (ans.value = ans.value.slice(0, -1));
-      $("mbClearAns").onclick = () => (ans.value = "");
+      if (withPad) {
+        screenEl.querySelectorAll(".mb-keys .wk[data-k]").forEach((b) => (b.onclick = () => { if (ans.value.length < 30) ans.value += b.dataset.k; }));
+        $("mbBack").onclick = () => (ans.value = ans.value.slice(0, -1));
+        $("mbClearAns").onclick = () => (ans.value = "");
+      }
 
       /* send: flatten pieces + drawing into one picture */
       $("sendBtn").onclick = () => {
-        const answer = ans.value.trim();
+        const answer = withPad ? ans.value.trim() : "";
         if (!items.length && !answer && !drawing && isBlank()) return;
         const out = document.createElement("canvas");
         out.width = canvas.width; out.height = canvas.height;

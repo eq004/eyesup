@@ -15,7 +15,7 @@ const MODE_TAGS = {
   one_word: "One Word", ask_question: "Your Questions",
   true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
   muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint — 60 seconds",
-  sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", maths_board: "Maths Board", spot_mistake: "Spot the Mistake",
+  sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", maths_board: "Maths Board", counters_draw: "Counters + Drawing", spot_mistake: "Spot the Mistake",
   example_nonexample: "Example or Non-example?", teach_back: "Teach It Back",
   match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
@@ -396,7 +396,7 @@ function renderInteraction(itx) {
           .join("")}</div>`
       : `<p class="waiting-note">Tables appear here as they're filled…</p>`;
   } else if (agg.sketches) {
-    body = renderSketches(agg, ["image_drop", "image_caption", "maths_board"].includes(itx.mode));
+    body = renderSketches(agg, ["image_drop", "image_caption", "maths_board", "counters_draw"].includes(itx.mode));
   } else if (agg.fields) {
     body = renderStructured(agg);
   } else if (agg.revealed) {
@@ -405,7 +405,7 @@ function renderInteraction(itx) {
 
   // A spotlighted response (any type, except sketch which has its own stage)
   // replaces the body until tapped away.
-  if (agg?.spotlight && !["sketch", "annotate", "image_drop", "image_caption", "maths_board"].includes(itx.mode)) {
+  if (agg?.spotlight && !["sketch", "annotate", "image_drop", "image_caption", "maths_board", "counters_draw"].includes(itx.mode)) {
     body = renderGenericSpotlight(agg.spotlight);
   }
 

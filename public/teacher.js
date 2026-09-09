@@ -71,6 +71,8 @@ const MODES = {
   /* draw */
   maths_board:   { icon: "🧮", name: "Maths Board",   hint: "Counters, tens & ones, free drawing and a number pad — all on one board", workingUI: true,
                    ph: "The problem, e.g. “23 + 19 = ?”" },
+  counters_draw: { icon: "🟠", name: "Counters + Drawing", hint: "Counters, tens & ones and free drawing — no number pad", opts: null,
+                   ph: "e.g. “Show 3 groups of 4”" },
   sketch:        { icon: "🎨", name: "Sketch It",     hint: "Draw understanding instead of writing", opts: null },
   annotate:      { icon: "🖍️", name: "Annotate",     hint: "Upload an image — students draw on it", opts: null, imageUpload: true,
                    ph: "What should they mark up? e.g. “Circle the error / label the diagram”" },
@@ -86,7 +88,7 @@ const CATEGORIES = [
   { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
-  { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board"] },
+  { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
   { label: "🎨 Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption"] },
 ];
 
@@ -96,7 +98,7 @@ const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "maths_board" ||
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "maths_board" || m === "counters_draw" ||
   m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" ||
   m === "counters" || m === "table" || m === "plus_minus";
 
@@ -797,12 +799,12 @@ function renderLive() {
         .filter(Boolean)
         .join("<br/>")
     );
-  } else if (["sketch", "annotate", "image_drop", "image_caption", "maths_board"].includes(itx.mode)) {
+  } else if (["sketch", "annotate", "image_drop", "image_caption", "maths_board", "counters_draw"].includes(itx.mode)) {
     const source = itx.imageUrl
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.78rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
     const hint = itx.responses.length
-      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["image_drop", "image_caption", "maths_board"].includes(itx.mode) ? "a board" : "a drawing"} to blow it up on the projector; click again to shrink it back.
+      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["image_drop", "image_caption", "maths_board", "counters_draw"].includes(itx.mode) ? "a board" : "a drawing"} to blow it up on the projector; click again to shrink it back.
          <a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all (${itx.responses.length}) as ZIP</a></p>`
       : "";
     body = source + hint + revealCards((r) =>

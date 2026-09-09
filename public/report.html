@@ -219,7 +219,7 @@ const MODE_NAMES = {
   one_word: "One Word", ask_question: "Anonymous Questions",
   true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
   muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint",
-  sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", maths_board: "Maths Board", spot_mistake: "Spot the Mistake",
+  sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", maths_board: "Maths Board", counters_draw: "Counters + Drawing", spot_mistake: "Spot the Mistake",
   example_nonexample: "Example / Non-example", teach_back: "Teach It Back",
   match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
@@ -356,7 +356,7 @@ function renderReport(s, recovered) {
     } else if (it.matchStats) {
       body = `<ol class="ranked-list">${it.matchStats.map((m) => `<li>${esc(m.pair)} — ${m.correctPct}% matched correctly</li>`).join("")}</ol>`;
     } else if (it.sketchCount != null) {
-      const noun = it.mode === "maths_board" ? ["board", "boards"] : it.mode === "image_drop" || it.mode === "image_caption" ? ["image", "images"] : ["sketch", "sketches"];
+      const noun = it.mode === "maths_board" || it.mode === "counters_draw" ? ["board", "boards"] : it.mode === "image_drop" || it.mode === "image_caption" ? ["image", "images"] : ["sketch", "sketches"];
       body = it.images && it.images.length
         ? `${window._imgLinks ? `<a class="dl-btn" href="${window._imgLinks.per(it)}">⬇ Download these ${it.images.length} image${it.images.length === 1 ? "" : "s"} (ZIP)</a>` : ""}<div class="img-gallery">${it.images
             .map((im) => `<figure><img src="${im.image}" alt="student ${noun[0]}" />${im.text ? `<p class="img-text">${esc(im.text)}</p>` : ""}${im.name && !it.anonymous ? `<figcaption>${esc(im.name)}</figcaption>` : ""}</figure>`)

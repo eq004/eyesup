@@ -750,7 +750,7 @@ const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes whose answer is a picture (drawn, marked up, or uploaded).
-const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop", "image_caption", "maths_board"]);
+const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop", "image_caption", "maths_board", "counters_draw"]);
 // Uploaded (not drawn) pictures — stored server-side, sent to screens by URL.
 const UPLOAD_MODES = new Set(["image_drop", "image_caption"]);
 // Custom options entered by the teacher at launch.
@@ -1357,6 +1357,7 @@ function describePayload(itx, p) {
     return (p.parts || []).filter(Boolean).join("  ·  ");
   if (itx.mode === "image_caption") return p.text ? `(image) ${p.text}` : "(image submitted)";
   if (itx.mode === "maths_board") return p.text ? `(board) ${p.text}` : "(board submitted, no answer typed)";
+  if (itx.mode === "counters_draw") return "(board submitted)";
   if (itx.mode === "image_drop") return "(image submitted)";
   if (IMAGE_MODES.has(itx.mode)) return "(drawing submitted)";
   if (itx.mode === "spelling")
