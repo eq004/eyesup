@@ -56,9 +56,9 @@ async function load(attempt = 0) {
     }
     list = data.lessons;
   } catch {
-    if (attempt < 2) {
-      wrap.innerHTML = `<div class="gate muted">The archive is waking up — retrying in a moment…</div>`;
-      setTimeout(() => load(attempt + 1), 3000);
+    if (attempt < 18) {
+      wrap.innerHTML = `<div class="gate muted">⏳ Waking the server up — the first visit of the day can take up to a minute.<br/>Retrying automatically (${attempt + 1})…</div>`;
+      setTimeout(() => load(attempt + 1), 5000);
       return;
     }
     wrap.innerHTML = `<div class="gate">☁️<br/><b>Couldn't reach the lesson archive right now.</b><br/><span class="muted">Your lessons are safe — this is a connection hiccup, not lost data.</span><br/><br/><a href="javascript:location.reload()">Try again</a></div>`;

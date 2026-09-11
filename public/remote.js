@@ -660,9 +660,9 @@ function renderMore() {
           </a>`).join("")
         : `<p style="color:var(--rdim)">No stored lessons yet.</p>`;
     } catch {
-      if (attempt < 2) {
-        $("lessonsList").innerHTML = `<p style="color:var(--rdim)">Archive is waking up — retrying…</p>`;
-        setTimeout(() => loadLessons(attempt + 1), 3000);
+      if (attempt < 18) {
+        $("lessonsList").innerHTML = `<p style="color:var(--rdim)">⏳ Waking the server up (can take a minute first thing) — retrying (${attempt + 1})…</p>`;
+        setTimeout(() => loadLessons(attempt + 1), 5000);
         return;
       }
       $("lessonsList").innerHTML = `<p style="color:#e79191">Couldn't reach the archive right now — your lessons are safe.</p><button class="btn" id="retryLessons">Try again</button>`;

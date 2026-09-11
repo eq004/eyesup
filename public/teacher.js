@@ -171,6 +171,19 @@ function authQuery() {
   return teacherPw() ? `pw=${encodeURIComponent(teacherPw())}` : "";
 }
 
+// While the server is asleep (free hosting) or unreachable, say so instead
+// of looking broken.
+function wakeNote(show) {
+  let el = document.getElementById("wakeNote");
+  if (!show) { if (el) el.remove(); return; }
+  if (el) return;
+  el = document.createElement("div");
+  el.id = "wakeNote";
+  el.style.cssText = "position:fixed;left:50%;top:0.8rem;transform:translateX(-50%);z-index:9999;background:#191c26;color:#fff;padding:0.6rem 1rem;border-radius:12px;font-size:0.85rem;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,0.25)";
+  el.textContent = "⏳ Waking the server up… first visit of the day can take up to a minute. Hang tight.";
+  document.body.appendChild(el);
+}
+
 function attach() {
   const code = sessionStorage.getItem("eyesup_teacher_code");
   const creds = { token: teacherToken(), password: teacherPw() };
@@ -180,7 +193,7 @@ function attach() {
 
 function connect() {
   ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
-  ws.onopen = attach;
+  ws.onopen = () => { wakeNote(false); attach(); };
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === "error" && msg.error === "auth_required") {
@@ -224,7 +237,7 @@ function connect() {
       scheduleAutosave();
     }
   };
-  ws.onclose = () => setTimeout(connect, 1200);
+  ws.onclose = () => { wakeNote(true); setTimeout(connect, 1200); };
 }
 const send = (obj) => ws && ws.readyState === 1 && ws.send(JSON.stringify(obj));
 
@@ -1066,11 +1079,11 @@ async function loadLessonsList(attempt) {
           .join("")
       : `<p style="color:var(--muted)">No stored lessons yet — run one and it saves itself.</p>`;
   } catch {
-    // Usually the server waking up or a dropped database connection —
-    // retry twice on its own before asking the teacher to.
-    if (attempt < 2) {
-      setTimeout(() => loadLessonsList(attempt + 1), 3000);
-      $("lessonsList").innerHTML = `<p style="color:var(--muted)">The archive is waking up — retrying in a moment…</p>`;
+    // Usually the free server waking from sleep (up to a minute) or a
+    // dropped database connection — keep trying for ~90s before giving up.
+    if (attempt < 18) {
+      setTimeout(() => loadLessonsList(attempt + 1), 5000);
+      $("lessonsList").innerHTML = `<p style="color:var(--muted)">⏳ Waking the server up — the first visit of the day can take up to a minute. Retrying automatically (${attempt + 1})…</p>`;
       return;
     }
     $("lessonsList").innerHTML = `<p style="color:var(--red)">Couldn't reach the lesson archive right now. Your lessons are safe — this is a connection hiccup, not lost data.</p>
