@@ -481,12 +481,16 @@ function openComposer(key, keepImage) {
     : m.needPrompt
     ? "Students need to read this one on their screen."
     : "Tip: the question can live in your voice. Blank prompt = asked aloud.";
+  configureComposerButtons();
+  if (composerTarget.kind !== "launch") showActivityForm();
+  else if (launcherOpen === false) { launcherOpen = true; renderLauncher(); }
   prompt.focus();
 }
 
 function closeComposer() {
   $("composer").classList.remove("show");
   composerModeKey = null;
+  if (composerTarget.kind !== "launch") closeActivityPicker();
 }
 
 function readComposer() {
@@ -499,7 +503,7 @@ function readComposer() {
   let options = null;
   let correct = null;
   if (m.opts) {
-    options = [...$("composerOpts").querySelectorAll("input")]
+    options = [...$("composerOpts").querySelectorAll("input[data-opt]")]
       .map((i) => i.value.trim())
       .filter(Boolean);
     if (options.length < m.opts.min) {
@@ -572,8 +576,10 @@ function render() {
     buildModeGrid();
   }
   renderLive();
-  renderSequence();
+  renderLessonStrip();
+  renderLauncher();
   renderTools();
+  if (view === "plans" && !plansLoaded && teacherToken()) loadPlans();
 }
 
 /* ---------------- room tools ---------------- */
@@ -660,8 +666,8 @@ function renderLive() {
   if (!itx) {
     const msg =
       state.phase === "eyesup"
-        ? `<p class="big">👀 Eyes up — the class is looking at you.</p><p>Discuss what just came in, then launch the next interaction when ready.</p>`
-        : `<p class="big">Nothing live — the room is yours. 🎤</p><p>Teach, question, discuss. Launch an interaction when you want the whole class to respond.</p>`;
+        ? `<p class="big">👀 Eyes up — the class is looking at you.</p><p>Talk about what just came in, then launch the next step when you're ready.</p>`
+        : `<p class="big">Nothing live — the room is yours. 🎤</p><p>${(state.sequence || []).length ? "Press ▶ above to launch the next step of your lesson." : "Pick an activity below to ask the class something."}</p>`;
     area.innerHTML = `<div class="live-empty">${msg}</div>`;
     return;
   }
@@ -926,37 +932,6 @@ function renderLive() {
   });
 }
 
-function renderSequence() {
-  const area = $("seqArea");
-  const seq = state.sequence || [];
-  if (!seq.length) {
-    area.innerHTML = `<div class="seq-empty">Plan a short sequence before class — or don't. Spontaneity welcome.</div>`;
-  } else {
-    area.innerHTML = `<div class="seq-list">${seq
-      .map(
-        (s, i) => `
-      <div class="seq-item ${i < state.seqIndex ? "done" : ""} ${i === state.seqIndex ? "current" : ""}">
-        <span class="num">${i + 1}</span>
-        <span class="txt"><span class="m">${modeTag(s.mode)}</span><br/><span class="p">${esc(s.prompt) || "<i>asked aloud</i>"}</span></span>
-        <button class="play" title="Launch this step" data-jump="${i}">▶</button>
-        <button class="del" title="Remove" data-del="${i}">✕</button>
-      </div>`
-      )
-      .join("")}</div>`;
-  }
-  area.querySelectorAll("[data-jump]").forEach(
-    (b) => (b.onclick = () => send({ type: "jump_to_step", index: +b.dataset.jump }))
-  );
-  area.querySelectorAll("[data-del]").forEach(
-    (b) =>
-      (b.onclick = () => {
-        const items = state.sequence.filter((_, i) => i !== +b.dataset.del);
-        send({ type: "set_sequence", items });
-      })
-  );
-  $("nextBtn").disabled = state.seqIndex + 1 >= seq.length;
-}
-
 /* ---------------- summary ---------------- */
 
 function renderSummary(s) {
@@ -1116,8 +1091,6 @@ $("endBtn").onclick = () => {
   userSummaryWanted = true;
   send({ type: "get_summary" });
 };
-$("nextBtn").onclick = () => send({ type: "next" });
-
 $("launchBtn").onclick = () => {
   const data = readComposer();
   if (!data) return;
@@ -1129,12 +1102,31 @@ $("addStepBtn").onclick = () => {
   if (!data) return;
   send({ type: "set_sequence", items: [...(state?.sequence || []), data] });
   closeComposer();
-  toast("Added to plan");
+  toast("Added to the end of this lesson");
+};
+$("saveStepBtn").onclick = () => {
+  const data = readComposer();
+  if (!data || !editing) return;
+  let at;
+  if (composerTarget.kind === "plan-edit") {
+    at = composerTarget.index;
+    editing.steps[at] = data;
+  } else {
+    editing.steps.push(data);
+    at = editing.steps.length - 1;
+  }
+  closeComposer();
+  renderEditor(at);
+  scheduleSave();
 };
 $("cancelComposer").onclick = closeComposer;
 $("composer").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") $("launchBtn").click();
-  if (e.key === "Escape") closeComposer();
+  if (e.key === "Escape") return closeComposer();
+  // Enter submits from a one-line box only — never from a passage textarea.
+  if (e.key === "Enter" && e.target.tagName === "INPUT") {
+    e.preventDefault();
+    (composerTarget.kind === "launch" ? $("launchBtn") : $("saveStepBtn")).click();
+  }
 });
 
 document.querySelectorAll("[data-timer]").forEach(
@@ -1168,19 +1160,6 @@ diceInputs().forEach((inp) => {
 $("diceRoll").onclick = () => { clearTimeout(diceSaveTimer); sendDiceFaces(); send({ type: "dice_roll" }); };
 $("groupsBtn").onclick = () =>
   send({ type: "make_groups", n: parseInt($("groupN").value, 10) || 2, by: $("groupBy").value });
-
-$("loadExample").onclick = () => {
-  send({
-    type: "set_sequence",
-    items: [
-      { mode: "one_word", prompt: "One word that comes to mind when you hear “training data”." },
-      { mode: "short_answer", prompt: "Explain an AI hallucination in your own words." },
-      { mode: "agree_disagree", prompt: "AI understands information in the same way humans do." },
-      { mode: "confidence", prompt: "Could you explain generative AI to someone else?" },
-    ],
-  });
-  toast("Example plan loaded");
-};
 
 /* ---------------- paste-a-quiz importer ---------------- */
 
@@ -1275,9 +1254,18 @@ $("quizCancel").onclick = () => $("quizOverlay").classList.remove("show");
 $("quizAdd").onclick = () => {
   if (!parsedQuiz.length) return;
   const items = parsedQuiz.map((q) => ({ mode: "multi_choice", prompt: q.prompt, options: q.options, correct: q.correct }));
-  send({ type: "set_sequence", items: [...(state?.sequence || []), ...items] });
   $("quizOverlay").classList.remove("show");
-  toast(`${items.length} question${items.length === 1 ? "" : "s"} added to plan`);
+  const n = `${items.length} question${items.length === 1 ? "" : "s"}`;
+  if (view === "plans" && editing) {
+    const from = editing.steps.length;
+    editing.steps.push(...items);
+    renderEditor(from);
+    scheduleSave();
+    toast(`${n} added to “${editing.title || "this lesson plan"}”`);
+  } else {
+    send({ type: "set_sequence", items: [...(state?.sequence || []), ...items] });
+    toast(`${n} added to the end of this lesson`);
+  }
 };
 
 /* ---------------- drag & drop an image anywhere on the dashboard ---------------- */
@@ -1300,7 +1288,15 @@ document.addEventListener("drop", (e) => {
   $("dropHint").classList.remove("show");
   const f = [...(e.dataTransfer?.files || [])].find((x) => x.type.startsWith("image/"));
   if (!f) return;
+  if (view === "plans" && !editing) return; // nothing to add it to
   loadComposerImage(f, (dataUrl) => {
+    if (view === "plans" && editing && !$("activityOverlay").classList.contains("show")) {
+      openActivityPicker({ kind: "plan-add" });
+      composerImage = dataUrl;
+      openComposer("picture_prompt", true);
+      setComposerImage(dataUrl);
+      return;
+    }
     composerImage = dataUrl;
     // Already composing an image mode? Keep it. Otherwise open Picture Prompt.
     if (!composerModeKey || !MODES[composerModeKey]?.imageUpload) {
@@ -1414,5 +1410,593 @@ $("pwGo").onclick = () => {
 };
 $("pwInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("pwGo").click(); });
 
+/* ================================================================== */
+/* Views: Lesson plans · Teach                                        */
+/* ================================================================== */
+
+let view = sessionStorage.getItem("eyesup_view") || "plans";
+
+function showView(v) {
+  view = v === "teach" ? "teach" : "plans";
+  sessionStorage.setItem("eyesup_view", view);
+  $("viewPlans").hidden = view !== "plans";
+  $("viewTeach").hidden = view !== "teach";
+  $("classBar").hidden = view !== "teach";
+  document.querySelectorAll(".view-tab[data-view]").forEach((t) => t.classList.toggle("on", t.dataset.view === view));
+  if (view === "plans") {
+    if (!editing) loadPlans();
+  } else if (editing) {
+    leaveEditor(); // flush any pending save
+  }
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll(".view-tab[data-view]").forEach((t) => (t.onclick = () => showView(t.dataset.view)));
+
+$("menuBtn").onclick = (e) => {
+  e.stopPropagation();
+  $("menu").classList.toggle("show");
+};
+document.addEventListener("click", () => $("menu").classList.remove("show"));
+
+/* ---------------- saved lesson plans: server calls ---------------- */
+
+const jsonHeaders = { "Content-Type": "application/json" };
+async function api(method, url, body) {
+  const res = await fetch(url, { method, headers: body ? jsonHeaders : undefined, body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || "request_failed"), { status: res.status });
+  return data;
+}
+const plansApi = {
+  list: () => api("GET", `/api/plans?${authQuery()}`),
+  get: (id) => api("GET", `/api/plans/${id}?${authQuery()}`),
+  create: (title, steps) => api("POST", "/api/plans", { t: teacherToken(), title, steps }),
+  update: (id, title, steps) => api("PUT", `/api/plans/${id}`, { t: teacherToken(), title, steps }),
+  duplicate: (id) => api("POST", `/api/plans/${id}/duplicate`, { t: teacherToken() }),
+  remove: (id) => api("DELETE", `/api/plans/${id}?${authQuery()}`),
+};
+
+// Same steps, regardless of the key order the database hands back.
+const canon = (v) =>
+  JSON.stringify(v, (k, val) =>
+    val && typeof val === "object" && !Array.isArray(val)
+      ? Object.keys(val).sort().reduce((o, key) => ((o[key] = val[key]), o), {})
+      : val
+  );
+
+const keyForStep = (st) => (st.mode === "counters" ? (st.counterKind === "base10" ? "tens_ones" : "counters") : st.mode);
+const stepTag = (st) => {
+  const m = MODES[keyForStep(st)];
+  return m ? `${m.icon} ${m.name}` : st.mode;
+};
+const stepIcon = (st) => MODES[keyForStep(st)]?.icon || "▫️";
+
+function timeAgo(when) {
+  if (!when) return "";
+  const days = Math.floor((Date.now() - new Date(when).getTime()) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  return new Date(when).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+/* ---------------- the library ---------------- */
+
+let plans = [];
+let plansLoaded = false;
+let plansStorage = true;
+
+async function loadPlans() {
+  if (!teacherToken()) return renderLibrary();
+  try {
+    const data = await plansApi.list();
+    plans = data.plans || [];
+    plansStorage = data.storage !== false;
+    plansLoaded = true;
+  } catch (e) {
+    plansLoaded = false;
+    $("planLibrary").innerHTML = `<div class="empty-plans"><h2>Couldn't load your lesson plans</h2>
+      <p style="color:var(--ink-soft);margin-top:0.5rem">${e.status === 403 ? "Your sign-in has expired — sign out and back in." : "The server may be waking up. Trying again…"}</p></div>`;
+    if (e.status !== 403) setTimeout(() => view === "plans" && !editing && loadPlans(), 5000);
+    return;
+  }
+  renderLibrary();
+}
+
+function renderLibrary() {
+  const lib = $("planLibrary");
+  $("planEditor").hidden = true;
+  lib.hidden = false;
+  if (!plansStorage) {
+    lib.innerHTML = `<div class="empty-plans"><h2>Lesson plans need an account</h2>
+      <p style="color:var(--ink-soft);margin-top:0.5rem">This copy of Eyes Up isn't connected to a database, so plans can't be saved. You can still teach on the spot.</p>
+      <p style="margin-top:1.2rem"><button class="btn primary big" data-go="teach">🎤 Start teaching</button></p></div>`;
+    return bindLibrary();
+  }
+  const liveId = state?.planId;
+  const head = `
+    <div class="plans-head">
+      <div>
+        <h1>Lesson plans</h1>
+        <p>Plan your questions ahead of time. Each plan is saved to your account, so you can teach it again and again.</p>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn primary big" data-new-plan>＋ Plan a new lesson</button>
+    </div>
+    <div class="quick-teach">🎤 <span>Teaching right now without a plan?</span>
+      <button class="btn" data-go="teach">Start teaching on the spot →</button></div>`;
+
+  if (!plans.length) {
+    lib.innerHTML = head.replace(/<div class="quick-teach">[\s\S]*?<\/div>/, "") + `
+      <div class="empty-plans">
+        <div style="font-size:2.6rem">📝</div>
+        <h2>Plan your first lesson</h2>
+        <p style="color:var(--ink-soft);margin-top:0.4rem">It takes a few minutes, and you only have to do it once.</p>
+        <div class="how-steps">
+          <div class="how-step"><span class="n">1</span><b>Add your activities</b><span>Pick a word cloud, a quiz question, a drawing… and type each question, in order.</span></div>
+          <div class="how-step"><span class="n">2</span><b>It saves by itself</b><span>Your plan is kept in your account. Come back and change it any time.</span></div>
+          <div class="how-step"><span class="n">3</span><b>Press ▶ Teach</b><span>In class, launch each step with one tap. Reuse it with every class, every year.</span></div>
+        </div>
+        <button class="btn primary big" data-new-plan>＋ Plan my first lesson</button>
+        <p style="margin-top:1rem"><button class="link-btn" data-go="teach">or just start teaching on the spot →</button></p>
+      </div>`;
+    return bindLibrary();
+  }
+
+  lib.innerHTML = head + `<div class="plan-cards">${plans
+    .map((pl) => {
+      const icons = [...new Set(pl.modes.map((m) => stepIcon({ mode: m })))].slice(0, 10).join(" ");
+      const taught = pl.timesTaught
+        ? `Taught ${pl.timesTaught === 1 ? "once" : `${pl.timesTaught} times`} · last ${timeAgo(pl.lastTaughtAt)}`
+        : `Not taught yet · edited ${timeAgo(pl.updatedAt)}`;
+      return `
+      <div class="plan-card ${pl.id === liveId ? "live" : ""}">
+        ${pl.id === liveId ? `<span class="pc-live">Open in Teach</span>` : ""}
+        <div class="pc-title ${pl.title ? "" : "untitled"}">${pl.title ? esc(pl.title) : "Untitled lesson"}</div>
+        <div class="pc-meta">${pl.stepCount} activit${pl.stepCount === 1 ? "y" : "ies"}</div>
+        <div class="pc-icons">${icons || "&nbsp;"}</div>
+        <div class="pc-foot">${taught}</div>
+        <div class="pc-actions">
+          <button class="btn primary grow" data-teach="${pl.id}" ${pl.stepCount ? "" : "disabled"}>▶ Teach</button>
+          <button class="btn" data-edit="${pl.id}">✎ Edit</button>
+          <button class="btn" data-dup="${pl.id}" title="Make a copy">⧉</button>
+          <button class="btn danger-ghost" data-del="${pl.id}" title="Delete">🗑</button>
+        </div>
+      </div>`;
+    })
+    .join("")}</div>`;
+  bindLibrary();
+}
+
+function bindLibrary() {
+  const lib = $("planLibrary");
+  lib.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => showView(b.dataset.go)));
+  lib.querySelectorAll("[data-new-plan]").forEach((b) => (b.onclick = newPlan));
+  lib.querySelectorAll("[data-teach]").forEach((b) => (b.onclick = () => teachPlan(+b.dataset.teach)));
+  lib.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => openEditor(+b.dataset.edit)));
+  lib.querySelectorAll("[data-dup]").forEach((b) => (b.onclick = async () => {
+    try {
+      await plansApi.duplicate(+b.dataset.dup);
+      toast("Copy made — it's at the top");
+      loadPlans();
+    } catch { toast("Couldn't copy that plan — try again"); }
+  }));
+  lib.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+    const pl = plans.find((x) => x.id === +b.dataset.del);
+    if (!confirm(`Delete “${pl?.title || "Untitled lesson"}”?\n\nThe plan is removed for good. Reports from classes you already taught are kept.`)) return;
+    try {
+      await plansApi.remove(pl.id);
+      toast("Lesson plan deleted");
+      loadPlans();
+    } catch { toast("Couldn't delete that plan — try again"); }
+  }));
+}
+
+async function newPlan() {
+  try {
+    const { id } = await plansApi.create("", []);
+    await openEditor(id, true);
+  } catch { toast("Couldn't start a new plan — check you're signed in"); }
+}
+
+/* ---------------- the editor ---------------- */
+
+let editing = null; // { id, title, steps }
+let saveTimer = null;
+let saveSeq = 0;
+
+async function openEditor(id, isNew) {
+  try {
+    const pl = await plansApi.get(id);
+    editing = { id: pl.id, title: pl.title || "", steps: pl.steps || [] };
+  } catch {
+    return toast("Couldn't open that plan — try again");
+  }
+  if (view !== "plans") showView("plans");
+  $("planLibrary").hidden = true;
+  $("planEditor").hidden = false;
+  renderEditor();
+  setSaveState("saved");
+  window.scrollTo(0, 0);
+  if (isNew) $("planTitle").focus();
+}
+
+function stepDetail(st) {
+  const bits = [];
+  if (st.image) bits.push(`<img src="${st.image}" alt="" />`);
+  if (st.mode === "match_up" && st.options) bits.push(st.options.map((o) => esc(o).replace(" = ", " ↔ ")).join(" · "));
+  else if (st.options && st.options.length)
+    bits.push(st.options.map((o, i) => `${esc(o)}${st.correct === i ? " ✓" : ""}`).join(" · "));
+  if (st.passage) bits.push(`“${esc(st.passage.slice(0, 110))}${st.passage.length > 110 ? "…" : ""}”`);
+  if (st.expected) bits.push(`Answer: <b>${esc(st.expected)}</b>`);
+  if (st.sprintSeconds) bits.push(`⏱ ${st.sprintSeconds / 60} min`);
+  return bits.join(" &nbsp; ");
+}
+
+function renderEditor(flashIndex) {
+  const ed = $("planEditor");
+  const steps = editing.steps;
+  ed.innerHTML = `
+    <div class="editor-top">
+      <button class="link-btn" id="backToPlans">← All lesson plans</button>
+      <span class="save-state" id="saveState"></span>
+    </div>
+    <input class="plan-title" id="planTitle" maxlength="80" placeholder="Name this lesson, e.g. Year 4 Fractions recap" value="${esc(editing.title)}" />
+    <p class="editor-help">Add activities in the order you'll teach them. In class you'll launch them one at a time.</p>
+    ${steps.length
+      ? `<ol class="step-list">${steps
+          .map((st, i) => `
+        <li class="step-card ${i === flashIndex ? "flash" : ""}" data-i="${i}">
+          <span class="step-num">${i + 1}</span>
+          <div class="step-body">
+            <div class="step-type">${stepTag(st)}</div>
+            <div class="step-q ${st.prompt ? "" : "aloud"}">${st.prompt ? esc(st.prompt) : "You'll ask this one aloud"}</div>
+            ${stepDetail(st) ? `<div class="step-extra">${stepDetail(st)}</div>` : ""}
+          </div>
+          <div class="step-actions">
+            <button class="btn" data-up="${i}" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
+            <button class="btn" data-down="${i}" title="Move down" ${i === steps.length - 1 ? "disabled" : ""}>↓</button>
+            <button class="btn" data-edit-step="${i}">✎ Edit</button>
+            <button class="btn" data-dup-step="${i}" title="Duplicate this step">⧉</button>
+            <button class="btn danger-ghost" data-del-step="${i}" title="Delete this step">🗑</button>
+          </div>
+        </li>`)
+          .join("")}</ol>`
+      : `<div class="steps-empty"><b>No activities yet.</b><br/>Press <b>＋ Add an activity</b> to choose your first one.</div>`}
+    <div class="add-row">
+      <button class="btn primary big" id="addActivityBtn">＋ Add an activity</button>
+      <button class="btn" id="pasteQuizPlanBtn">📋 Paste a quiz</button>
+    </div>
+    <div class="editor-foot">
+      <button class="btn dark big" id="teachThisBtn" ${steps.length ? "" : "disabled"}>▶ Teach this lesson</button>
+      <span style="color:var(--muted);font-size:0.85rem">${steps.length} activit${steps.length === 1 ? "y" : "ies"} · saves automatically</span>
+      <span class="spacer"></span>
+      <button class="btn danger-ghost" id="deletePlanBtn">🗑 Delete plan</button>
+    </div>`;
+  setSaveState(lastSaveState);
+
+  $("backToPlans").onclick = async () => { await leaveEditor(); loadPlans(); };
+  $("planTitle").oninput = () => { editing.title = $("planTitle").value; scheduleSave(); };
+  $("addActivityBtn").onclick = () => openActivityPicker({ kind: "plan-add" });
+  $("pasteQuizPlanBtn").onclick = () => $("pasteQuizBtn").click();
+  $("teachThisBtn").onclick = async () => { const id = editing.id; await leaveEditor(); teachPlan(id); };
+  $("deletePlanBtn").onclick = async () => {
+    if (!confirm(`Delete “${editing.title || "Untitled lesson"}”?\n\nThe plan is removed for good.`)) return;
+    const id = editing.id;
+    clearTimeout(saveTimer);
+    editing = null;
+    try { await plansApi.remove(id); toast("Lesson plan deleted"); } catch { toast("Couldn't delete — try again"); }
+    loadPlans();
+  };
+  const move = (from, to) => {
+    const [st] = editing.steps.splice(from, 1);
+    editing.steps.splice(to, 0, st);
+    renderEditor(to);
+    scheduleSave();
+  };
+  ed.querySelectorAll("[data-up]").forEach((b) => (b.onclick = () => move(+b.dataset.up, +b.dataset.up - 1)));
+  ed.querySelectorAll("[data-down]").forEach((b) => (b.onclick = () => move(+b.dataset.down, +b.dataset.down + 1)));
+  ed.querySelectorAll("[data-dup-step]").forEach((b) => (b.onclick = () => {
+    const i = +b.dataset.dupStep;
+    editing.steps.splice(i + 1, 0, JSON.parse(JSON.stringify(editing.steps[i])));
+    renderEditor(i + 1);
+    scheduleSave();
+  }));
+  ed.querySelectorAll("[data-del-step]").forEach((b) => (b.onclick = () => {
+    const i = +b.dataset.delStep;
+    if (!confirm(`Delete step ${i + 1}?`)) return;
+    editing.steps.splice(i, 1);
+    renderEditor();
+    scheduleSave();
+  }));
+  ed.querySelectorAll("[data-edit-step]").forEach((b) => (b.onclick = () => editStep(+b.dataset.editStep)));
+  if (flashIndex != null) ed.querySelector(`.step-card[data-i="${flashIndex}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+let lastSaveState = "saved";
+function setSaveState(st) {
+  lastSaveState = st;
+  const el = $("saveState");
+  if (!el) return;
+  el.className = `save-state ${st}`;
+  el.textContent = st === "saving" ? "Saving…" : st === "error" ? "⚠ Not saved yet — retrying" : "✓ Saved";
+}
+
+function scheduleSave() {
+  setSaveState("saving");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(savePlanNow, 700);
+}
+
+async function savePlanNow() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  if (!editing) return;
+  const mine = ++saveSeq;
+  try {
+    await plansApi.update(editing.id, editing.title, editing.steps);
+    if (mine === saveSeq) setSaveState("saved");
+  } catch {
+    if (mine === saveSeq) {
+      setSaveState("error");
+      saveTimer = setTimeout(savePlanNow, 4000);
+    }
+  }
+}
+
+async function leaveEditor() {
+  if (!editing) return;
+  if (saveTimer || lastSaveState !== "saved") await savePlanNow();
+  // A plan that was opened and abandoned with nothing in it isn't worth keeping.
+  if (!editing.title.trim() && !editing.steps.length) plansApi.remove(editing.id).catch(() => {});
+  editing = null;
+}
+
+window.addEventListener("beforeunload", (e) => {
+  if (editing && lastSaveState !== "saved") {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
+/* ---------------- choosing / editing an activity for a plan ---------------- */
+
+let composerTarget = { kind: "launch" }; // | {kind:"plan-add"} | {kind:"plan-edit", index}
+const gridHome = document.createComment("mode-grid-home");
+const composerHome = document.createComment("composer-home");
+$("modeGrid").before(gridHome);
+$("composer").before(composerHome);
+
+function configureComposerButtons() {
+  const k = composerTarget.kind;
+  $("launchBtn").hidden = k !== "launch";
+  $("addStepBtn").hidden = k !== "launch";
+  $("saveStepBtn").hidden = k === "launch";
+  $("saveStepBtn").textContent = k === "plan-edit" ? "💾 Save changes" : "＋ Add to lesson plan";
+}
+
+function openActivityPicker(target) {
+  composerTarget = target;
+  composerImage = null;
+  $("activityPickHost").append($("modeGrid"));
+  $("activityFormHost").append($("composer"));
+  $("activityTitle").textContent = target.kind === "plan-edit" ? `Edit step ${target.index + 1}` : "Add an activity";
+  $("activityOverlay").classList.add("show");
+  $("composer").classList.remove("show");
+  composerModeKey = null;
+  $("activityPick").hidden = false;
+  $("activityForm").hidden = true;
+  configureComposerButtons();
+}
+
+function showActivityForm() {
+  $("activityPick").hidden = true;
+  $("activityForm").hidden = false;
+}
+
+function closeActivityPicker() {
+  $("activityOverlay").classList.remove("show");
+  gridHome.after($("modeGrid"));
+  composerHome.after($("composer"));
+  composerTarget = { kind: "launch" };
+  configureComposerButtons();
+}
+
+$("activityBack").onclick = () => {
+  $("composer").classList.remove("show");
+  composerModeKey = null;
+  $("activityPick").hidden = false;
+  $("activityForm").hidden = true;
+};
+$("activityClose").onclick = () => closeComposer();
+$("activityOverlay").onclick = (e) => { if (e.target === $("activityOverlay")) closeComposer(); };
+if ($("closeComposer")) $("closeComposer").onclick = closeComposer;
+
+function editStep(i) {
+  const st = editing.steps[i];
+  openActivityPicker({ kind: "plan-edit", index: i });
+  composerImage = st.image || null;
+  openComposer(keyForStep(st), true);
+  fillComposer(st);
+}
+
+// Put a saved step back into the activity form so it can be changed.
+function fillComposer(st) {
+  const m = MODES[composerModeKey];
+  $("composerPrompt").value = st.prompt || "";
+  if (m.opts && st.options) {
+    const boxes = [...$("composerOpts").querySelectorAll("input[data-opt]")];
+    st.options.forEach((o, i) => { if (boxes[i]) boxes[i].value = o; });
+  }
+  if (m.hasCorrect && $("correctSel")) $("correctSel").value = Number.isInteger(st.correct) ? String(st.correct) : "";
+  if (m.pairs && st.options) {
+    const rows = [...$("composerOpts").querySelectorAll(".pair-row")];
+    st.options.forEach((o, i) => {
+      if (!rows[i]) return;
+      const [l, ...r] = String(o).split(" = ");
+      rows[i].querySelector("[data-left]").value = l;
+      rows[i].querySelector("[data-right]").value = r.join(" = ");
+    });
+  }
+  if (m.clozeUI) {
+    $("clozeText").value = st.passage || "";
+    $("clozeMode").value = st.wordBank ? "bank" : "type";
+  }
+  if (m.workingUI && $("expectedAns")) $("expectedAns").value = st.expected || "";
+  if (m.tableUI && $("rowsSel") && st.tableRows) $("rowsSel").value = String(st.tableRows);
+  if (m.sprintUI && $("durSel") && st.sprintSeconds) $("durSel").value = String(st.sprintSeconds);
+  if (m.postits && $("modSel")) $("modSel").value = st.moderated ? "1" : "0";
+  if (m.multiOpt && $("multiSel")) $("multiSel").value = st.multi === false ? "0" : "1";
+}
+
+/* ---------------- teaching a plan ---------------- */
+
+let planSnapshot = null; // { id, json } — the saved copy, to spot unsaved changes
+let snapshotLoading = false;
+let launcherOpen = null; // null = decide automatically
+
+async function teachPlan(id) {
+  let pl;
+  try { pl = await plansApi.get(id); } catch { return toast("Couldn't open that plan — try again"); }
+  const midLesson = state && state.sequence?.length && state.seqIndex >= 0;
+  if (midLesson && !confirm(
+    state.planId === pl.id
+      ? `Start “${pl.title || "this lesson"}” again from step 1?`
+      : `Switch to “${pl.title || "Untitled lesson"}”?\n\nThe lesson you're teaching now will close. Responses so far are kept.`
+  )) return;
+  send({ type: "set_sequence", items: pl.steps, plan: { id: pl.id, title: pl.title }, reset: true });
+  planSnapshot = { id: pl.id, json: canon(pl.steps) };
+  launcherOpen = null;
+  showView("teach");
+  toast(`“${pl.title || "Untitled lesson"}” is ready — press ▶ Start the lesson when you are`);
+}
+
+function renderLauncher() {
+  const panel = $("launchPanel");
+  const hasPlan = (state?.sequence || []).length > 0;
+  const composing = composerTarget.kind === "launch" && !!composerModeKey;
+  const open = composing || (launcherOpen === null ? !hasPlan : launcherOpen);
+  panel.classList.toggle("collapsed", !open);
+  $("launchToggle").textContent = open ? "Hide activities" : "＋ Show activities";
+  $("pasteQuizBtn").hidden = !open;
+}
+$("launchToggle").onclick = () => {
+  const hasPlan = (state?.sequence || []).length > 0;
+  const openNow = launcherOpen === null ? !hasPlan : launcherOpen;
+  launcherOpen = !openNow;
+  if (!launcherOpen) closeComposer();
+  renderLauncher();
+};
+
+function renderLessonStrip() {
+  const el = $("lessonStrip");
+  const seq = state.sequence || [];
+
+  // After a reload we no longer hold the saved copy — fetch it once.
+  if (state.planId && state.storage && (!planSnapshot || planSnapshot.id !== state.planId) && !snapshotLoading) {
+    snapshotLoading = true;
+    plansApi.get(state.planId)
+      .then((pl) => { planSnapshot = { id: pl.id, json: canon(pl.steps) }; })
+      .catch(() => {})
+      .finally(() => { snapshotLoading = false; render(); });
+  }
+
+  if (!seq.length) {
+    el.innerHTML = `<div class="no-plan-bar">📝 <span><b>No lesson plan open.</b> Ask questions on the spot below, or</span>
+      <button class="btn" data-strip="plans">Open a lesson plan</button></div>`;
+    el.querySelector("[data-strip]").onclick = () => showView("plans");
+    return;
+  }
+
+  const idx = state.seqIndex;
+  const n = seq.length;
+  const saved = state.planId && planSnapshot && planSnapshot.id === state.planId;
+  const unsaved = state.planId ? saved && canon(seq) !== planSnapshot.json : true;
+  const upcoming = idx + 1 < n ? idx + 1 : null;
+  const nextSt = upcoming != null ? seq[upcoming] : null;
+
+  let nextBlock;
+  if (nextSt) {
+    const label = idx < 0 ? "Ready when you are · step 1" : `Up next · step ${upcoming + 1} of ${n}`;
+    nextBlock = `
+      <div class="ls-next-info">
+        <div class="ls-kicker">${label}</div>
+        <div class="ls-next-type">${stepTag(nextSt)}</div>
+        <div class="ls-next-q ${nextSt.prompt ? "" : "aloud"}">${nextSt.prompt ? esc(nextSt.prompt) : "Ask this one aloud"}</div>
+      </div>
+      <button class="btn primary big" data-strip="next">${idx < 0 ? "▶ Start the lesson" : `▶ Launch step ${upcoming + 1}`}</button>`;
+  } else {
+    nextBlock = `
+      <div class="ls-next-info">
+        <div class="ls-kicker">All ${n} steps launched</div>
+        <div class="ls-next-q">🎉 That was the last step of this lesson.</div>
+      </div>
+      <button class="btn" data-strip="again">↺ Start again from step 1</button>
+      <button class="btn primary big" data-strip="finish">✅ Finish &amp; summarise</button>`;
+  }
+
+  el.innerHTML = `
+    <section class="panel lesson-strip">
+      <div class="ls-head">
+        <div>
+          <div class="ls-kicker">${state.planId ? "Teaching from your lesson plan" : "Lesson (not saved as a plan)"}</div>
+          <div class="ls-title">📘 ${esc(state.planTitle || (state.planId ? "Untitled lesson" : "Today's lesson"))}</div>
+        </div>
+        <span class="ls-progress">${idx < 0 ? `${n} steps · not started` : `Step ${idx + 1} of ${n}`}</span>
+        ${state.planId && unsaved ? `<span class="ls-unsaved">● changed during class</span>` : ""}
+        <span class="spacer"></span>
+        ${state.planId
+          ? unsaved
+            ? `<button class="btn primary" data-strip="save">💾 Save changes to plan</button>`
+            : `<button class="btn" data-strip="edit">✎ Edit plan</button>`
+          : `<button class="btn primary" data-strip="save-as">💾 Save as a lesson plan</button>`}
+        <button class="btn" data-strip="close" title="Close this lesson plan">✕ Close</button>
+      </div>
+      <div class="ls-steps">${seq
+        .map((st, i) => `
+        <button class="ls-chip ${i < idx ? "done" : ""} ${i === idx ? "now" : ""}" data-jump="${i}"
+          title="Launch step ${i + 1}: ${esc(MODES[keyForStep(st)]?.name || st.mode)}${st.prompt ? " — " + esc(st.prompt) : ""}">
+          <span class="n">${i < idx ? "✓" : i + 1}</span><span>${stepIcon(st)}</span>
+          <span class="t">${st.prompt ? esc(st.prompt) : esc(MODES[keyForStep(st)]?.name || st.mode)}</span>
+        </button>`)
+        .join("")}</div>
+      <div class="ls-next">${nextBlock}</div>
+    </section>`;
+
+  el.querySelectorAll("[data-jump]").forEach((b) => (b.onclick = () => send({ type: "jump_to_step", index: +b.dataset.jump })));
+  const act = (name, fn) => { const b = el.querySelector(`[data-strip="${name}"]`); if (b) b.onclick = fn; };
+  act("next", () => send({ type: "next" }));
+  act("finish", () => $("endBtn").click());
+  act("again", () => send({ type: "set_sequence", items: seq, reset: true }));
+  act("edit", () => openEditor(state.planId));
+  act("close", () => {
+    if (state.planId && unsaved && !confirm("This lesson was changed during class and the changes aren't saved to the plan.\n\nClose it anyway?")) return;
+    planSnapshot = null;
+    launcherOpen = null;
+    send({ type: "set_sequence", items: [], plan: null, reset: true });
+  });
+  act("save", async () => {
+    try {
+      await plansApi.update(state.planId, state.planTitle, seq);
+      planSnapshot = { id: state.planId, json: canon(seq) };
+      plansLoaded = false;
+      toast("Saved to your lesson plan ✓");
+      render();
+    } catch { toast("Couldn't save — try again"); }
+  });
+  act("save-as", async () => {
+    const title = (prompt("Name this lesson plan so you can teach it again:", state.title || "") || "").trim();
+    if (!title) return;
+    try {
+      const { id } = await plansApi.create(title, seq);
+      planSnapshot = { id, json: canon(seq) };
+      plansLoaded = false;
+      send({ type: "set_sequence", items: seq, plan: { id, title } });
+      toast(`Saved as “${title}” — find it under 📝 Lesson plans`);
+    } catch { toast("Couldn't save — check you're signed in"); }
+  });
+}
+
+showView(view);
 buildModeGrid();
 connect();

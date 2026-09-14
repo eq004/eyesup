@@ -108,6 +108,19 @@ if (process.env.DATABASE_URL) {
       UNIQUE (lesson_code, lesson_created_at, itx_id, student_id)
     )`,
     `CREATE INDEX IF NOT EXISTS lesson_images_lesson ON lesson_images (lesson_code, lesson_created_at)`,
+    // Lessons planned ahead of time, kept in the teacher's account and
+    // taught as often as they like.
+    `CREATE TABLE IF NOT EXISTS lesson_plans (
+      id serial PRIMARY KEY,
+      teacher_id int NOT NULL,
+      title text NOT NULL DEFAULT '',
+      steps jsonb NOT NULL DEFAULT '[]',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      last_taught_at timestamptz,
+      times_taught int NOT NULL DEFAULT 0
+    )`,
+    `CREATE INDEX IF NOT EXISTS lesson_plans_teacher ON lesson_plans (teacher_id, updated_at DESC)`,
   ];
   // Pictures are big; keep them for a season, not forever.
   const IMAGE_KEEP_DAYS = Math.max(7, parseInt(process.env.IMAGE_KEEP_DAYS || "60", 10) || 60);
@@ -226,7 +239,9 @@ function persistSession(session) {
   }, 4000);
 }
 const app = express();
-app.use(express.json({ limit: "16kb" }));
+const smallJson = express.json({ limit: "16kb" });
+const planJson = express.json({ limit: "12mb" }); // saved lessons can include pictures
+app.use((req, res, next) => (req.path.startsWith("/api/plans") ? planJson : smallJson)(req, res, next));
 app.use(express.static(path.join(__dirname, "public")));
 
 // Friendly routes
@@ -484,6 +499,173 @@ app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
     res.set("Content-Disposition", `attachment; filename="${zipName.replace(/"/g, "")}"`);
     res.send(buildZip(files));
   } catch (e) {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+/* ---- saved lessons (plan ahead, teach again and again) ---- */
+
+const MAX_STEPS = 40;
+const STEP_MODES = new Set([
+  "multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley",
+  "scale", "example_nonexample", "word_cloud", "one_word", "mindmap", "post_its", "phonics", "short_answer",
+  "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example",
+  "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
+  "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
+  "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "annotate", "image_drop",
+  "image_caption",
+]);
+
+function sanitizeStep(it) {
+  if (!it || typeof it !== "object" || !STEP_MODES.has(String(it.mode))) return null;
+  return {
+    mode: String(it.mode),
+    prompt: String(it.prompt || "").slice(0, 300),
+    options: Array.isArray(it.options) ? it.options.slice(0, 10).map((o) => String(o).slice(0, 140)) : null,
+    correct: Number.isInteger(it.correct) ? it.correct : null,
+    moderated: typeof it.moderated === "boolean" ? it.moderated : undefined,
+    multi: typeof it.multi === "boolean" ? it.multi : undefined,
+    passage: typeof it.passage === "string" ? it.passage.slice(0, 1500) : undefined,
+    wordBank: typeof it.wordBank === "boolean" ? it.wordBank : undefined,
+    expected: typeof it.expected === "string" ? it.expected.slice(0, 30) : undefined,
+    counterKind: it.counterKind === "base10" || it.counterKind === "colors" ? it.counterKind : undefined,
+    tableRows: Number.isInteger(it.tableRows) ? it.tableRows : undefined,
+    sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
+    image:
+      typeof it.image === "string" && it.image.startsWith("data:image/") && it.image.length < 900000
+        ? it.image
+        : undefined,
+  };
+}
+
+async function markPlanTaught(session) {
+  if (!db || !session.planId || session.planCounted || session.teacherId == null) return;
+  session.planCounted = true;
+  try {
+    await db.query(
+      `UPDATE lesson_plans SET times_taught = times_taught + 1, last_taught_at = now() WHERE id = $1 AND teacher_id = $2`,
+      [session.planId, session.teacherId]
+    );
+  } catch (e) {
+    console.error("plan taught-count failed:", e.message);
+  }
+}
+
+const planSummary = (r) => ({
+  id: r.id,
+  title: r.title,
+  stepCount: r.step_count,
+  modes: r.modes || [],
+  updatedAt: r.updated_at,
+  lastTaughtAt: r.last_taught_at,
+  timesTaught: r.times_taught,
+});
+
+app.get("/api/plans", async (req, res) => {
+  if (!db) return res.json({ storage: false, plans: [] });
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(
+      `SELECT id, title, updated_at, last_taught_at, times_taught,
+              jsonb_array_length(steps) AS step_count,
+              ARRAY(SELECT CASE WHEN s->>'mode' = 'counters' AND s->>'counterKind' = 'base10' THEN 'tens_ones' ELSE s->>'mode' END
+                    FROM jsonb_array_elements(steps) s) AS modes
+       FROM lesson_plans WHERE teacher_id = $1 ORDER BY updated_at DESC LIMIT 200`,
+      [t.id]
+    );
+    res.json({ storage: true, plans: rows.map(planSummary) });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+app.get("/api/plans/:id", async (req, res) => {
+  if (!db) return res.status(404).json({ error: "storage_off" });
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(`SELECT * FROM lesson_plans WHERE id = $1 AND teacher_id = $2`, [req.params.id, t.id]);
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const r = rows[0];
+    res.json({ id: r.id, title: r.title, steps: r.steps, updatedAt: r.updated_at, lastTaughtAt: r.last_taught_at, timesTaught: r.times_taught });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+const cleanPlanBody = (b) => ({
+  title: String(b?.title || "").trim().slice(0, 80),
+  steps: (Array.isArray(b?.steps) ? b.steps : []).slice(0, MAX_STEPS).map(sanitizeStep).filter(Boolean),
+});
+
+app.post("/api/plans", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  const { title, steps } = cleanPlanBody(req.body);
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO lesson_plans (teacher_id, title, steps) VALUES ($1, $2, $3) RETURNING id, updated_at`,
+      [t.id, title, JSON.stringify(steps)]
+    );
+    res.json({ id: rows[0].id, updatedAt: rows[0].updated_at });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+app.put("/api/plans/:id", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  const { title, steps } = cleanPlanBody(req.body);
+  try {
+    const { rows } = await db.query(
+      `UPDATE lesson_plans SET title = $1, steps = $2, updated_at = now() WHERE id = $3 AND teacher_id = $4 RETURNING updated_at`,
+      [title, JSON.stringify(steps), req.params.id, t.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    // Keep any live class teaching this lesson in step with the edit.
+    for (const s of sessions.values()) {
+      if (s.planId === +req.params.id && s.teacherId === t.id) {
+        s.planTitle = title;
+        broadcast(s);
+      }
+    }
+    res.json({ ok: true, updatedAt: rows[0].updated_at });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+app.post("/api/plans/:id/duplicate", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO lesson_plans (teacher_id, title, steps)
+       SELECT teacher_id, left(title || ' (copy)', 80), steps FROM lesson_plans WHERE id = $1 AND teacher_id = $2
+       RETURNING id`,
+      [req.params.id, t.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    res.json({ id: rows[0].id });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+app.delete("/api/plans/:id", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  try {
+    const r = await db.query(`DELETE FROM lesson_plans WHERE id = $1 AND teacher_id = $2`, [req.params.id, t.id]);
+    if (!r.rowCount) return res.status(404).json({ error: "not_found" });
+    res.json({ ok: true });
+  } catch {
     res.status(500).json({ error: "db_error" });
   }
 });
@@ -1204,6 +1386,8 @@ function teacherState(session) {
     students: [...session.students.values()].map((s) => ({ id: s.id, name: s.name })),
     sequence: session.sequence,
     seqIndex: session.seqIndex,
+    planId: session.planId || null,
+    planTitle: session.planTitle || "",
     historyCount: session.history.length,
     interaction: itx
       ? {
@@ -1789,24 +1973,21 @@ async function handle(ws, msg) {
       break;
     }
     case "set_sequence": {
-      session.sequence = (msg.items || []).slice(0, 30).map((it) => ({
-        mode: String(it.mode || ""),
-        prompt: String(it.prompt || "").slice(0, 300),
-        options: Array.isArray(it.options) ? it.options.map((o) => String(o).slice(0, 80)) : null,
-        correct: Number.isInteger(it.correct) ? it.correct : null,
-        moderated: typeof it.moderated === "boolean" ? it.moderated : undefined,
-        multi: typeof it.multi === "boolean" ? it.multi : undefined,
-        passage: typeof it.passage === "string" ? it.passage.slice(0, 1500) : undefined,
-        wordBank: typeof it.wordBank === "boolean" ? it.wordBank : undefined,
-        expected: typeof it.expected === "string" ? it.expected.slice(0, 30) : undefined,
-        counterKind: typeof it.counterKind === "string" ? it.counterKind : undefined,
-        tableRows: Number.isInteger(it.tableRows) ? it.tableRows : undefined,
-        sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
-        image:
-          typeof it.image === "string" && it.image.startsWith("data:image/") && it.image.length < 900000
-            ? it.image
-            : undefined,
-      }));
+      session.sequence = (msg.items || []).slice(0, MAX_STEPS).map(sanitizeStep).filter(Boolean);
+      // Loading a saved lesson starts it from the top.
+      if (msg.reset) {
+        session.seqIndex = -1;
+        session.planCounted = false;
+      }
+      // plan: {id, title} links a saved lesson; null unlinks; absent keeps it.
+      if (msg.plan === null) {
+        session.planId = null;
+        session.planTitle = "";
+      } else if (msg.plan && typeof msg.plan === "object") {
+        session.planId = Number.isInteger(msg.plan.id) ? msg.plan.id : null;
+        session.planTitle = String(msg.plan.title || "").slice(0, 80);
+        if (!session.title && session.planTitle) session.title = session.planTitle;
+      }
       if (session.seqIndex >= session.sequence.length) session.seqIndex = session.sequence.length - 1;
       break;
     }
@@ -1814,6 +1995,7 @@ async function handle(ws, msg) {
       if (session.seqIndex + 1 < session.sequence.length) {
         session.seqIndex += 1;
         startInteraction(session, session.sequence[session.seqIndex]);
+        markPlanTaught(session);
       }
       break;
     }
@@ -1822,6 +2004,7 @@ async function handle(ws, msg) {
       if (Number.isInteger(i) && i >= 0 && i < session.sequence.length) {
         session.seqIndex = i;
         startInteraction(session, session.sequence[i]);
+        markPlanTaught(session);
       }
       break;
     }
@@ -1937,6 +2120,12 @@ async function handle(ws, msg) {
       fresh.teacherId = session.teacherId;
       fresh.teacherName = session.teacherName;
       fresh.favs = session.favs;
+      // Teaching the same lesson to the next class: keep it loaded, from the top.
+      fresh.sequence = session.sequence;
+      fresh.planId = session.planId;
+      fresh.planTitle = session.planTitle;
+      fresh.title = session.planTitle || ""; // the report is named after the lesson; rename it for the class if you like
+      fresh.showNames = session.showNames;
       fresh.teachers = new Set(session.teachers);
       fresh.projectors = session.projectors;
       session.teachers = new Set();

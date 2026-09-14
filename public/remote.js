@@ -197,9 +197,6 @@ function bindActions() {
   }));
   main.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openComposer(b.dataset.open)));
   main.querySelectorAll("[data-jump]").forEach((b) => (b.onclick = () => send({ type: "jump_to_step", index: +b.dataset.jump })));
-  main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => {
-    send({ type: "set_sequence", items: state.sequence.filter((_, i) => i !== +b.dataset.del) });
-  }));
 }
 
 /* ---------------- LIVE tab ---------------- */
@@ -285,7 +282,9 @@ function renderLive() {
     ${status}
     <button class="rbtn eyes" data-act="eyes_up">👀 EYES UP</button>
     ${controls}
-    ${nextStep ? `<button class="rbtn accent" data-act="next">▶ Next: ${esc(modeName(nextStep.mode))}${nextStep.prompt ? " — " + esc(nextStep.prompt.slice(0, 28)) + "…" : ""}</button>` : ""}
+    ${nextStep ? `<button class="rbtn accent" data-act="next" style="flex-direction:column;gap:0.2rem">
+        <span>▶ ${state.seqIndex < 0 ? "Start the lesson" : `Launch step ${state.seqIndex + 2} of ${seq.length}`}</span>
+        <small style="font-weight:600;opacity:0.85">${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(nextStep.prompt.slice(0, 40)) : ""}</small></button>` : ""}
     ${itx ? renderLiveResponses(itx) : ""}
   `;
 }
@@ -404,7 +403,7 @@ function openComposer(key) {
     <h2>${MODES[key].icon} ${esc(MODES[key].name)}</h2>
     ${fields}
     <button class="rbtn accent" id="cLaunch">Launch now</button>
-    <button class="rbtn" id="cAddPlan">＋ Add to plan instead</button>`;
+    <button class="rbtn" id="cAddPlan">＋ Add to lesson instead</button>`;
   $("composerWrap").classList.add("show");
   $("cClose").onclick = () => $("composerWrap").classList.remove("show");
   if (m.imageUpload) $("cImg").onchange = (e) => {
@@ -412,7 +411,7 @@ function openComposer(key) {
     if (f) loadComposerImage(f, (u) => { composerImage = u; $("cImgPrev").src = u; $("cImgPrev").style.display = "block"; });
   };
   $("cLaunch").onclick = () => { const d = readComposer(); if (d) { send({ type: "launch", ...d }); $("composerWrap").classList.remove("show"); tab = "live"; render(); } };
-  $("cAddPlan").onclick = () => { const d = readComposer(); if (d) { send({ type: "set_sequence", items: [...(state?.sequence || []), d] }); $("composerWrap").classList.remove("show"); toast("Added to plan"); } };
+  $("cAddPlan").onclick = () => { const d = readComposer(); if (d) { send({ type: "set_sequence", items: [...(state?.sequence || []), d] }); $("composerWrap").classList.remove("show"); toast("Added to the end of this lesson"); } };
 }
 
 function readComposer() {
@@ -485,28 +484,46 @@ function parseQuiz(text) {
 
 function renderPlan() {
   const seq = state.sequence || [];
+  const idx = state.seqIndex;
+  const nextI = idx + 1 < seq.length ? idx + 1 : null;
+  const nextSt = nextI != null ? seq[nextI] : null;
   main.innerHTML = `
-    ${seq.length ? seq.map((s, i) => `
-      <div class="seq-item ${i < state.seqIndex ? "done" : ""} ${i === state.seqIndex ? "current" : ""}">
-        <span class="sq-n">${i + 1}</span>
-        <span class="sq-t">${modeName(s.mode)}${s.prompt ? " — " + esc(s.prompt) : ""}</span>
-        <button data-jump="${i}">▶</button><button data-del="${i}">✕</button>
-      </div>`).join("") : `<div class="status"><div class="q">No plan yet — spontaneity welcome. Add steps from Launch → “Add to plan”.</div></div>`}
-    <button class="rbtn accent" data-act="next" ${state.seqIndex + 1 >= seq.length ? "disabled" : ""}>▶ Next in plan</button>
-    <button class="rbtn" id="loadExample">Load example: Gen-AI recall</button>
+    ${seq.length ? `
+      <div class="status">
+        <div class="mode">${state.planId ? "Teaching your lesson plan" : "Lesson (not saved as a plan)"}</div>
+        <div class="q">📘 ${esc(state.planTitle || "Today's lesson")}</div>
+        <div class="meta"><span>${idx < 0 ? `${seq.length} steps · not started` : `Step ${idx + 1} of ${seq.length}`}</span></div>
+      </div>
+      ${nextSt
+        ? `<button class="rbtn accent" data-act="next" style="flex-direction:column;gap:0.2rem">
+            <span>▶ ${idx < 0 ? "Start the lesson" : `Launch step ${nextI + 1}`}</span>
+            <small style="font-weight:600;opacity:0.85">${esc(modeName(nextSt.mode, nextSt.counterKind))}${nextSt.prompt ? " — " + esc(nextSt.prompt.slice(0, 40)) : ""}</small></button>`
+        : `<div class="status"><div class="q">🎉 All ${seq.length} steps launched</div></div>`}
+      ${seq.map((st, i) => `
+        <div class="seq-item ${i < idx ? "done" : ""} ${i === idx ? "current" : ""}">
+          <span class="sq-n">${i < idx ? "✓" : i + 1}</span>
+          <span class="sq-t">${modeName(st.mode, st.counterKind)}${st.prompt ? " — " + esc(st.prompt) : ""}</span>
+          <button data-jump="${i}" title="Launch this step">▶</button>
+        </div>`).join("")}
+      <button class="rbtn warn" id="closePlan">✕ Close this lesson</button>
+    ` : `<div class="status"><div class="q">No lesson open. Pick one of your lesson plans below, or ask on the spot from 🚀 Launch.</div></div>`}
+
+    <h3 class="sec">📝 Your lesson plans</h3>
+    <div id="planList"><p style="color:var(--rdim)">Loading…</p></div>
+    <p style="color:var(--rdim);font-size:0.8rem;margin-top:0.4rem">Create and edit lesson plans on a computer, under 📝 Lesson plans. They show up here ready to teach.</p>
+
     <h3 class="sec">📋 Paste a quiz (from ChatGPT etc.)</h3>
     <textarea class="rin" id="quizPaste" rows="6" placeholder="1. Question…&#10;A) … B) … C) …&#10;Answer: A"></textarea>
     <div id="quizPrev" style="font-size:0.8rem;color:var(--rdim);margin-bottom:0.5rem"></div>
-    <button class="rbtn" id="quizAdd" disabled>Add to plan</button>`;
-  $("loadExample").onclick = () => {
-    send({ type: "set_sequence", items: [
-      { mode: "one_word", prompt: "One word that comes to mind when you hear “training data”." },
-      { mode: "short_answer", prompt: "Explain an AI hallucination in your own words." },
-      { mode: "agree_disagree", prompt: "AI understands information the same way humans do." },
-      { mode: "confidence", prompt: "Could you explain generative AI to someone else?" },
-    ]});
-    toast("Example loaded");
+    <button class="rbtn" id="quizAdd" disabled>Add to this lesson</button>`;
+
+  const cp = $("closePlan");
+  if (cp) cp.onclick = () => {
+    if (confirm("Close this lesson? Responses so far are kept.")) send({ type: "set_sequence", items: [], plan: null, reset: true });
   };
+
+  loadRemotePlans();
+
   $("quizPaste").oninput = () => {
     parsedQuiz = parseQuiz($("quizPaste").value);
     $("quizPrev").textContent = parsedQuiz.length
@@ -516,9 +533,51 @@ function renderPlan() {
   };
   $("quizAdd").onclick = () => {
     send({ type: "set_sequence", items: [...(state.sequence || []), ...parsedQuiz.map((q) => ({ mode: "multi_choice", prompt: q.prompt, options: q.options, correct: q.correct }))] });
-    toast(`${parsedQuiz.length} added to plan`);
+    toast(`${parsedQuiz.length} added to this lesson`);
     $("quizPaste").value = ""; parsedQuiz = []; $("quizAdd").disabled = true; $("quizPrev").textContent = "";
   };
+}
+
+let remotePlans = null;
+async function loadRemotePlans() {
+  const box = $("planList");
+  if (!box) return;
+  const draw = () => {
+    const b = $("planList");
+    if (!b) return;
+    if (remotePlans === "off") { b.innerHTML = `<p style="color:var(--rdim)">Lesson plans need a signed-in account.</p>`; return; }
+    if (!remotePlans.length) { b.innerHTML = `<p style="color:var(--rdim)">No lesson plans yet.</p>`; return; }
+    b.innerHTML = remotePlans.map((pl) => `
+      <div class="seq-item ${pl.id === state.planId ? "current" : ""}">
+        <span class="sq-t"><b>${esc(pl.title || "Untitled lesson")}</b><br/><small style="color:var(--rdim)">${pl.stepCount} activit${pl.stepCount === 1 ? "y" : "ies"}${pl.id === state.planId ? " · open now" : ""}</small></span>
+        <button class="rbtn accent" style="margin:0;width:auto;padding:0.45rem 0.8rem" data-teach-plan="${pl.id}" ${pl.stepCount ? "" : "disabled"}>▶ Teach</button>
+      </div>`).join("");
+    b.querySelectorAll("[data-teach-plan]").forEach((btn) => (btn.onclick = () => teachRemotePlan(+btn.dataset.teachPlan)));
+  };
+  if (remotePlans) draw(); // show what we have straight away
+  try {
+    const res = await fetch(`/api/plans?${authQuery()}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error();
+    remotePlans = data.storage === false ? "off" : data.plans || [];
+  } catch {
+    if (!remotePlans) { const b = $("planList"); if (b) b.innerHTML = `<p style="color:#e79191">Couldn't load your lesson plans — pull to refresh.</p>`; }
+    return;
+  }
+  draw();
+}
+
+async function teachRemotePlan(id) {
+  let pl;
+  try {
+    const res = await fetch(`/api/plans/${id}?${authQuery()}`);
+    pl = await res.json();
+    if (!res.ok) throw new Error();
+  } catch { return toast("Couldn't open that plan"); }
+  const midLesson = (state.sequence || []).length && state.seqIndex >= 0;
+  if (midLesson && !confirm(state.planId === pl.id ? "Start this lesson again from step 1?" : `Switch to “${pl.title || "Untitled lesson"}”? The current lesson closes; responses are kept.`)) return;
+  send({ type: "set_sequence", items: pl.steps, plan: { id: pl.id, title: pl.title }, reset: true });
+  toast(`“${pl.title || "Untitled lesson"}” is ready`);
 }
 
 /* ---------------- TOOLS tab ---------------- */

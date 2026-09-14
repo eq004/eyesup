@@ -90,6 +90,152 @@
   .btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .btn.big { font-size: 1rem; padding: 0.65rem 1.3rem; border-radius: 12px; }
 
+  [hidden] { display: none !important; }
+
+  /* ---------- navigation ---------- */
+  .views { display: flex; gap: 0.25rem; margin-left: 0.8rem; flex-wrap: wrap; }
+  .view-tab {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.5rem 0.95rem; border-radius: 999px;
+    font-weight: 800; font-size: 0.92rem; color: var(--ink-soft);
+    border: 1px solid transparent; text-decoration: none;
+  }
+  .view-tab:hover { background: var(--paper); color: var(--ink); }
+  .view-tab.on { background: var(--ink); color: #fff; }
+  .menu-wrap { position: relative; }
+  .menu {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow-lift); padding: 0.35rem; min-width: 220px; display: none;
+  }
+  .menu.show { display: block; }
+  .menu button { display: block; width: 100%; text-align: left; padding: 0.6rem 0.8rem; border-radius: 8px; font-weight: 700; font-size: 0.9rem; }
+  .menu button:hover { background: var(--paper); }
+  .classbar { border-top: 1px solid var(--line); padding-top: 0.6rem; }
+  .spacer { flex: 1; }
+
+  /* ---------- lesson plans: library ---------- */
+  .plans-wrap { max-width: 1100px; margin: 0 auto; padding: 1.8rem 1.4rem 4rem; }
+  .plans-head { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
+  .plans-head h1 { font-family: var(--font-display); font-size: 2.1rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.1; }
+  .plans-head p { color: var(--ink-soft); margin-top: 0.35rem; max-width: 52ch; }
+  .quick-teach {
+    display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+    background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
+    padding: 0.75rem 1rem; margin-bottom: 1.4rem; color: var(--ink-soft); font-size: 0.92rem;
+  }
+  .plan-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 1rem; }
+  .plan-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow); padding: 1.15rem 1.2rem 1rem;
+    display: flex; flex-direction: column; gap: 0.4rem; animation: rise 0.3s ease both;
+  }
+  .plan-card:hover { border-color: #c9d1fb; }
+  .plan-card.live { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+  .pc-live { align-self: flex-start; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: var(--accent); border-radius: 999px; padding: 0.15rem 0.55rem; }
+  .pc-title { font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .pc-title.untitled { color: var(--muted); font-style: italic; }
+  .pc-meta { color: var(--ink-soft); font-size: 0.86rem; font-weight: 700; }
+  .pc-icons { font-size: 1.15rem; letter-spacing: 0.1em; min-height: 1.5rem; }
+  .pc-foot { color: var(--muted); font-size: 0.8rem; }
+  .pc-actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+  .pc-actions .grow { flex: 1; }
+  .pc-actions .btn { padding: 0.45rem 0.7rem; }
+  .empty-plans {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow); padding: 2.4rem 2rem; text-align: center; max-width: 760px; margin: 0.5rem auto;
+  }
+  .empty-plans h2 { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600; }
+  .how-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9rem; margin: 1.6rem 0; text-align: left; }
+  @media (max-width: 680px) { .how-steps { grid-template-columns: 1fr; } }
+  .how-step { background: var(--paper); border-radius: var(--radius); padding: 0.95rem 1rem; }
+  .how-step .n { display: inline-flex; width: 1.7rem; height: 1.7rem; border-radius: 50%; background: var(--accent); color: #fff; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; }
+  .how-step b { display: block; margin-top: 0.5rem; }
+  .how-step span { color: var(--ink-soft); font-size: 0.86rem; }
+
+  /* ---------- lesson plans: editor ---------- */
+  .editor-top { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.6rem; }
+  .link-btn { color: var(--accent-ink); font-weight: 800; font-size: 0.92rem; padding: 0.3rem 0; }
+  .link-btn:hover { text-decoration: underline; }
+  .save-state { margin-left: auto; font-size: 0.84rem; font-weight: 700; color: var(--muted); }
+  .save-state.saved { color: var(--green); }
+  .save-state.error { color: var(--red); }
+  .plan-title {
+    width: 100%; font-family: var(--font-display); font-size: 2rem; font-weight: 600;
+    border: 1px solid var(--line); border-radius: 12px; padding: 0.45rem 0.7rem;
+    background: var(--surface); color: var(--ink);
+  }
+  .plan-title:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .plan-title::placeholder { color: #b9bccb; }
+  .editor-help { color: var(--ink-soft); margin: 0.6rem 0 1.2rem; }
+  .step-list { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; padding: 0; margin: 0; }
+  .step-card {
+    display: flex; align-items: flex-start; gap: 0.9rem;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 0.9rem 1rem;
+  }
+  .step-card.flash { animation: stepflash 1.1s ease; }
+  @keyframes stepflash { from { background: var(--accent-soft); border-color: var(--accent); } to { background: var(--surface); border-color: var(--line); } }
+  .step-num { flex: 0 0 auto; width: 2.1rem; height: 2.1rem; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .step-body { flex: 1; min-width: 0; }
+  .step-type { font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-ink); }
+  .step-q { font-weight: 700; font-size: 1.02rem; margin-top: 0.15rem; overflow-wrap: anywhere; }
+  .step-q.aloud { color: var(--muted); font-style: italic; font-weight: 600; }
+  .step-extra { color: var(--ink-soft); font-size: 0.85rem; margin-top: 0.3rem; overflow-wrap: anywhere; }
+  .step-extra img { max-height: 60px; border-radius: 6px; border: 1px solid var(--line); vertical-align: middle; }
+  .step-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; justify-content: flex-end; }
+  .step-actions .btn { padding: 0.38rem 0.62rem; font-size: 0.84rem; }
+  .steps-empty { border: 2px dashed var(--line); border-radius: var(--radius); padding: 2rem; text-align: center; color: var(--ink-soft); background: var(--surface); }
+  .add-row { display: flex; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; align-items: center; }
+  .editor-foot {
+    position: sticky; bottom: 0; margin-top: 1.4rem; padding: 1rem 0 1.2rem;
+    background: linear-gradient(to top, var(--paper) 72%, transparent);
+    display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+  }
+
+  /* ---------- activity picker sheet ---------- */
+  .sheet.wide { max-width: 1000px; padding: 1.3rem 1.5rem 1.5rem; }
+  .act-head { display: flex; align-items: center; gap: 0.8rem; }
+  .act-head h2 { font-family: var(--font-display); font-size: 1.6rem; font-weight: 600; }
+  .act-help { color: var(--ink-soft); margin-top: 0.2rem; }
+  #activityPickHost .modes { padding: 0.9rem 0 0; }
+  #activityFormHost .composer { margin: 0.7rem 0 0; }
+
+  /* ---------- teaching: the lesson strip ---------- */
+  .lesson-strip { margin-bottom: 1.25rem; overflow: hidden; }
+  .ls-head { display: flex; align-items: center; gap: 0.7rem; padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .ls-kicker { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .ls-title { font-family: var(--font-display); font-size: 1.3rem; font-weight: 600; line-height: 1.2; }
+  .ls-progress { color: var(--ink-soft); font-weight: 800; font-size: 0.82rem; background: var(--paper); border-radius: 999px; padding: 0.25rem 0.7rem; }
+  .ls-unsaved { color: #9a6200; font-weight: 800; font-size: 0.8rem; }
+  .ls-head .btn { padding: 0.4rem 0.75rem; font-size: 0.85rem; }
+  .ls-steps { display: flex; gap: 0.45rem; padding: 0.85rem 1.25rem; overflow-x: auto; }
+  .ls-chip {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 0.45rem; max-width: 230px;
+    border: 1px solid var(--line); border-radius: 12px; padding: 0.45rem 0.7rem;
+    background: var(--paper); font-size: 0.84rem; text-align: left;
+  }
+  .ls-chip:hover { border-color: var(--accent); }
+  .ls-chip .n { flex: 0 0 auto; width: 1.45rem; height: 1.45rem; border-radius: 50%; background: #fff; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.74rem; }
+  .ls-chip .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ls-chip.done { opacity: 0.62; }
+  .ls-chip.done .n { background: var(--green); border-color: var(--green); color: #fff; }
+  .ls-chip.now { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; opacity: 1; }
+  .ls-chip.now .n { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ls-next { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg, #f3f5ff, #ffffff); border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .ls-next-info { flex: 1; min-width: 220px; }
+  .ls-next-type { font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-ink); }
+  .ls-next-q { font-size: 1.12rem; font-weight: 700; margin-top: 0.15rem; overflow-wrap: anywhere; }
+  .ls-next-q.aloud { color: var(--muted); font-style: italic; }
+  .ls-next .btn.big { font-size: 1.05rem; padding: 0.8rem 1.5rem; }
+  .no-plan-bar {
+    display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+    background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
+    padding: 0.75rem 1rem; margin-bottom: 1.25rem; color: var(--ink-soft); font-size: 0.92rem;
+  }
+  #launchPanel.collapsed #launchBody { display: none; }
+  #launchPanel .composer { margin-top: 1.1rem; }
+
   /* ---------- layout ---------- */
   .layout {
     display: grid;
@@ -224,7 +370,7 @@
   .composer .tip { font-size: 0.8rem; color: var(--ink-soft); }
 
   /* ---------- live interaction ---------- */
-  .live-empty { padding: 2.2rem 1.25rem; text-align: center; color: var(--muted); }
+  .live-empty { padding: 1.1rem 1.25rem; text-align: center; color: var(--muted); }
   .live-empty .big { font-size: 1.05rem; font-weight: 700; color: var(--ink-soft); }
 
   .live { padding: 1.1rem 1.25rem 1.25rem; }
@@ -523,70 +669,94 @@
   <header>
     <div class="hrow">
       <span class="wordmark">Eyes Up <span class="eye">👀</span></span>
-      <input id="titleInput" placeholder="Class / lesson title…" maxlength="80"
-        title="Names this session — shows on the summary and PDF export" />
-      <button class="code-chip" id="codeChip" title="Click to copy join code">
+      <nav class="views" aria-label="Main">
+        <button class="view-tab" data-view="plans">📝 Lesson plans</button>
+        <button class="view-tab" data-view="teach">🎤 Teach</button>
+        <button class="view-tab" id="lessonsBtn" style="display:none" title="Reports from classes you've already taught">📚 Past lessons</button>
+        <a class="view-tab" id="dataBtn" href="/data" style="display:none" title="Interactive charts over everything you've captured">📈 Data</a>
+      </nav>
+      <span class="spacer"></span>
+      <span id="whoAmI" style="color:var(--muted);font-size:0.85rem;font-weight:700"></span>
+      <div class="menu-wrap">
+        <button class="btn" id="menuBtn" aria-haspopup="true">☰ Menu</button>
+        <div class="menu" id="menu">
+          <button id="inviteBtn">➕ Invite a colleague</button>
+          <button id="signOutBtn" style="display:none">↪ Sign out</button>
+        </div>
+      </div>
+    </div>
+    <div class="hrow classbar" id="classBar">
+      <input id="titleInput" placeholder="Class name, e.g. 4B Maths" maxlength="80"
+        title="Names this class — shows on the summary and PDF export" />
+      <button class="code-chip" id="codeChip" title="Click to copy the join link">
         <small>CODE</small> <span id="codeText">····</span>
       </button>
       <span class="join-url" id="joinUrl"></span>
+      <span class="pill"><span class="dot"></span><span id="studentCount">0</span>&nbsp;joined</span>
       <span class="spacer"></span>
-      <span class="pill"><span class="dot"></span><span id="studentCount">0</span>&nbsp;connected</span>
-      <button class="btn" id="newLessonBtn" title="Archive this lesson and start a fresh one — new code, clean roster">🆕 New lesson</button>
-      <button class="btn" id="endBtn">Finish &amp; summarise</button>
-    </div>
-    <div class="hrow">
-      <button class="btn" id="copyLink" title="Copy the join link — paste it into Google Classroom, Teams, email…">🔗 Copy join link</button>
-      <button class="btn" id="qrToggle" title="Throw the big QR / join screen onto the projector">🔳 QR</button>
+      <button class="btn" id="copyLink" title="Copy the join link — paste it into Google Classroom, Teams, email…">🔗 Link</button>
+      <button class="btn" id="qrToggle" title="Put the big QR / join screen on the projector">🔳 QR</button>
       <a class="btn" id="openProjector" target="_blank" rel="noopener" href="/projector" style="text-decoration:none">📽️ Projector</a>
-      <button class="btn" id="remoteBtn" title="Control the session from your phone while the projector shows the class screen">📱 Remote</button>
-      <button class="btn" id="togglePreview" title="See exactly what students see, right here">📱 Student view</button>
-      <button class="btn" id="lessonsBtn" style="display:none" title="Every stored lesson, with its full report">📚 Past lessons</button>
-      <a class="btn" id="dataBtn" href="/data" style="display:none;text-decoration:none" title="Interactive charts over everything you've captured">📈 Data</a>
+      <button class="btn" id="remoteBtn" title="Control the class from your phone">📱 Remote</button>
+      <button class="btn" id="togglePreview" title="See exactly what students see">👁 Student view</button>
       <button class="btn" id="namesBtn" title="Show student names on the projector, for every activity (anonymous ones excepted)">🏷 Names: off</button>
-      <span class="spacer"></span>
-      <span id="whoAmI" style="color:var(--muted);font-size:0.8rem"></span>
-      <button class="btn" id="inviteBtn" style="font-size:0.8rem;padding:0.35rem 0.6rem" title="Copy a link a colleague can use to create their account">➕ Invite a colleague</button>
-      <button class="btn" id="signOutBtn" style="display:none;font-size:0.8rem;padding:0.35rem 0.6rem">↪ Sign out</button>
       <button class="btn dark" id="eyesUpTop">👀 EYES UP</button>
+      <button class="btn" id="newLessonBtn" title="Save this class and start the next one — new code, same lesson plan">🆕 Next class</button>
+      <button class="btn" id="endBtn">✅ Finish</button>
     </div>
   </header>
 
+  <!-- ============ LESSON PLANS ============ -->
+  <div class="view" id="viewPlans" hidden>
+    <div class="plans-wrap" id="planLibrary"></div>
+    <div class="plans-wrap" id="planEditor" hidden></div>
+  </div>
+
+  <!-- ============ TEACH ============ -->
+  <div class="view" id="viewTeach" hidden>
   <div class="layout">
     <main>
-      <!-- Launch panel -->
-      <section class="panel">
-        <div class="panel-head">Launch an interaction <span class="sub">— think it, say it aloud, tap it. Students respond in seconds.</span>
-          <button class="btn" id="pasteQuizBtn" style="margin-left:auto;font-size:0.82rem;padding:0.35rem 0.7rem">📋 Paste a quiz</button>
-        </div>
-        <div class="modes" id="modeGrid"></div>
-        <div class="composer" id="composer">
-          <div class="mode-label" id="composerMode"></div>
-          <input type="text" id="composerPrompt" placeholder="Type the question — or leave blank and just ask it aloud" maxlength="300" />
-          <div class="opts" id="composerOpts"></div>
-          <div class="row">
-            <button class="btn primary big" id="launchBtn">Launch now ⏎</button>
-            <button class="btn" id="addStepBtn">＋ Add to plan instead</button>
-            <button class="btn" id="cancelComposer">Cancel</button>
-            <span class="tip" id="composerTip"></span>
-          </div>
-        </div>
-      </section>
+      <!-- The lesson plan being taught -->
+      <div id="lessonStrip"></div>
 
       <!-- Live interaction -->
-      <section class="panel" style="margin-top:1.25rem">
+      <section class="panel">
         <div class="panel-head">Live now <span class="sub" id="liveSub"></span></div>
         <div id="liveArea">
           <div class="live-empty">
             <p class="big">Nothing live — the room is yours. 🎤</p>
-            <p>Teach, question, discuss. Launch an interaction when you want the whole class to respond.</p>
           </div>
+        </div>
+      </section>
+
+      <!-- Ask something on the spot -->
+      <section class="panel" id="launchPanel" style="margin-top:1.25rem">
+        <div class="panel-head">Ask something on the spot <span class="sub">pick an activity, type or say the question, launch</span>
+          <span class="spacer"></span>
+          <button class="btn" id="pasteQuizBtn" style="font-size:0.82rem;padding:0.35rem 0.7rem">📋 Paste a quiz</button>
+          <button class="btn" id="launchToggle" style="font-size:0.82rem;padding:0.35rem 0.7rem">Hide activities</button>
+        </div>
+        <div id="launchBody">
+          <div class="composer" id="composer">
+            <div class="mode-label" id="composerMode"></div>
+            <input type="text" id="composerPrompt" placeholder="Type the question — or leave blank and just ask it aloud" maxlength="300" />
+            <div class="opts" id="composerOpts"></div>
+            <div class="row">
+              <button class="btn primary big" id="launchBtn">▶ Launch now</button>
+              <button class="btn primary big" id="saveStepBtn" hidden>＋ Add to lesson plan</button>
+              <button class="btn" id="addStepBtn">＋ Add to lesson instead</button>
+              <button class="btn" id="cancelComposer">Cancel</button>
+              <span class="tip" id="composerTip"></span>
+            </div>
+          </div>
+          <div class="modes" id="modeGrid"></div>
         </div>
       </section>
     </main>
 
     <!-- Sequence sidebar -->
     <aside>
-      <section class="panel" style="margin-bottom:1.25rem">
+      <section class="panel">
         <div class="panel-head">Room tools</div>
         <div class="tools">
           <div class="tool-block">
@@ -640,19 +810,8 @@
           <div class="tool-row" id="focusClearRow"></div>
         </div>
       </section>
-      <section class="panel">
-        <div class="panel-head">Recall plan <span class="sub">optional</span></div>
-        <div id="seqArea"></div>
-        <div class="seq-actions">
-          <button class="btn primary" id="nextBtn">▶ Next in plan</button>
-          <button class="btn" id="loadExample">Load example: Gen-AI Lesson 2</button>
-        </div>
-        <div class="ai-stub">
-          <b>✨ Create Recall (coming soon)</b><br />
-          Speak for 30 seconds about last lesson and get a suggested recall sequence to review. AI assists planning — it never replaces you.
-        </div>
-      </section>
     </aside>
+  </div>
   </div>
 
   <!-- Student preview (teacher testing) -->
@@ -681,9 +840,28 @@
         style="width:100%;margin-top:0.9rem;border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font-size:0.9rem;font-family:ui-monospace,monospace;resize:vertical"></textarea>
       <div id="quizPreview" style="margin-top:0.9rem"></div>
       <div style="margin-top:1.1rem;display:flex;gap:0.6rem;align-items:center">
-        <button class="btn primary" id="quizAdd" disabled>Add to plan</button>
+        <button class="btn primary" id="quizAdd" disabled>Add to lesson</button>
         <button class="btn" id="quizCancel">Cancel</button>
-        <span style="color:var(--muted);font-size:0.8rem">Questions land in your Recall plan — run them with ▶ Next.</span>
+        <span style="color:var(--muted);font-size:0.8rem" id="quizNote">Questions are added to the end of your lesson, in order.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Choose / edit an activity for a lesson plan -->
+  <div class="overlay" id="activityOverlay">
+    <div class="sheet wide">
+      <div class="act-head">
+        <h2 id="activityTitle">Add an activity</h2>
+        <span class="spacer"></span>
+        <button class="btn" id="activityClose">✕ Close</button>
+      </div>
+      <div id="activityPick">
+        <p class="act-help">Choose the kind of activity. Next you'll type the question.</p>
+        <div id="activityPickHost"></div>
+      </div>
+      <div id="activityForm" hidden>
+        <button class="link-btn" id="activityBack">← Choose a different activity</button>
+        <div id="activityFormHost"></div>
       </div>
     </div>
   </div>

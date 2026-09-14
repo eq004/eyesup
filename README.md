@@ -101,3 +101,15 @@ Signed-in teachers click **➕ Invite a colleague** (dashboard header, or the re
 Pictures students submit (Drop an Image, Image + Writing, Sketch, Annotate) are saved to the database **the moment they arrive**, so nothing depends on downloading during class. Afterwards they appear in the archived lesson report, the Data dashboard's Lesson dashboard tab, and as ZIP downloads (whole lesson, or one activity) — files named per student, with a `captions.txt` for Image + Writing. Only the lesson's owner can view or download them; shared links never include pictures.
 
 Images are kept for **60 days** by default (`IMAGE_KEEP_DAYS` on Render changes this) and then pruned, to keep the free database within its limits. Everything else about the lesson stays forever.
+
+## Lesson plans (plan ahead, teach again and again)
+
+The dashboard opens on **📝 Lesson plans**: every saved lesson as a card with **▶ Teach**, **✎ Edit**, copy and delete. No live class is needed to plan.
+
+- **Editor** — name the lesson, then **＋ Add an activity**: choose the activity type, type the question, add. Steps can be edited (the form comes back filled in), reordered with ↑ ↓, duplicated or deleted, and a pasted ChatGPT quiz lands at the end. It saves itself as you work.
+- **Teach** — pressing ▶ Teach opens the lesson in **🎤 Teach** as a strip across the top: every step as a chip, and one big **▶ Start the lesson / ▶ Launch step N** button showing what's next. Tap any chip to jump to that step. The activity grid folds away behind "Ask something on the spot".
+- **Changes in class** — adding a question on the spot marks the lesson "changed during class" with a **💾 Save changes to plan** button. A lesson built on the spot can be kept with **💾 Save as a lesson plan**.
+- **Back-to-back classes** — **🆕 Next class** keeps the same lesson loaded, restarted at step 1, with a fresh class code.
+- **Phone remote** — the **📝 Lessons** tab lists your plans with ▶ Teach and runs the open lesson step by step. Plans are created and edited on a computer.
+
+Plans are stored per teacher in the `lesson_plans` table (steps as JSON, pictures included) and count how often and how recently each was taught.
