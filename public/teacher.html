@@ -230,6 +230,16 @@
   .ls-chip.done .n { background: var(--green); border-color: var(--green); color: #fff; }
   .ls-chip.now { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; opacity: 1; }
   .ls-chip.now .n { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ls-chip.skipped { opacity: 0.6; border-style: dashed; }
+  .ls-chip.skipped .n { background: var(--muted); border-color: var(--muted); color: #fff; }
+  .ls-chip { padding: 0; }
+  .ls-chip .ls-run { display: flex; align-items: center; gap: 0.45rem; padding: 0.45rem 0.55rem 0.45rem 0.7rem; min-width: 0; font: inherit; text-align: left; }
+  .ls-chip .ls-run .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ls-chip .ls-point { flex: 0 0 auto; padding: 0.45rem 0.55rem; border-left: 1px solid var(--line); color: var(--muted); font-weight: 800; }
+  .ls-chip .ls-point:hover { color: var(--accent); background: var(--accent-soft); }
+  .ls-help { padding: 0 1.25rem 0.6rem; margin: -0.3rem 0 0; color: var(--muted); font-size: 0.76rem; }
+  .ls-nav { display: flex; gap: 0.4rem; }
+  .ls-nav .btn:disabled { opacity: 0.4; }
   .ls-next { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg, #eef3f9, #ffffff); border-top: 1px solid var(--line); flex-wrap: wrap; }
   .ls-next-info { flex: 1; min-width: 220px; }
   .ls-next-type { font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-ink); }

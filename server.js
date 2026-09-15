@@ -931,6 +931,7 @@ function createSession(teacherWs) {
     history: [],
     sequence: [],
     seqIndex: -1,
+    skipped: [], // step indexes the teacher chose to skip rather than run
     counter: 0,
     // Room tools
     showJoin: false, // teacher-toggled: force the big join screen onto the projector
@@ -1422,6 +1423,7 @@ function teacherState(session) {
     students: [...session.students.values()].map((s) => ({ id: s.id, name: s.name })),
     sequence: session.sequence,
     seqIndex: session.seqIndex,
+    skipped: session.skipped || [],
     planId: session.planId || null,
     planTitle: session.planTitle || "",
     historyCount: session.history.length,
@@ -2032,8 +2034,10 @@ async function handle(ws, msg) {
       // Loading a saved lesson starts it from the top.
       if (msg.reset) {
         session.seqIndex = -1;
+        session.skipped = [];
         session.planCounted = false;
       }
+      session.skipped = (session.skipped || []).filter((i) => i < session.sequence.length);
       // plan: {id, title} links a saved lesson; null unlinks; absent keeps it.
       if (msg.plan === null) {
         session.planId = null;
@@ -2049,6 +2053,7 @@ async function handle(ws, msg) {
     case "next": {
       if (session.seqIndex + 1 < session.sequence.length) {
         session.seqIndex += 1;
+        session.skipped = session.skipped.filter((k) => k !== session.seqIndex);
         startInteraction(session, session.sequence[session.seqIndex]);
         markPlanTaught(session);
       }
@@ -2058,8 +2063,35 @@ async function handle(ws, msg) {
       const i = msg.index;
       if (Number.isInteger(i) && i >= 0 && i < session.sequence.length) {
         session.seqIndex = i;
+        session.skipped = session.skipped.filter((k) => k !== i);
         startInteraction(session, session.sequence[i]);
         markPlanTaught(session);
+      }
+      break;
+    }
+    /* Move through the lesson without launching anything. */
+    case "seq_skip": {
+      // Pass over the upcoming step; it stays in the plan, marked skipped.
+      if (session.seqIndex + 1 < session.sequence.length) {
+        session.seqIndex += 1;
+        if (!session.skipped.includes(session.seqIndex)) session.skipped.push(session.seqIndex);
+      }
+      break;
+    }
+    case "seq_back": {
+      // The step just passed (run or skipped) becomes "up next" again.
+      if (session.seqIndex >= 0) {
+        session.skipped = session.skipped.filter((k) => k !== session.seqIndex);
+        session.seqIndex -= 1;
+      }
+      break;
+    }
+    case "seq_point": {
+      // Make a chosen step the next one, without running it.
+      const i = msg.index;
+      if (Number.isInteger(i) && i >= 0 && i < session.sequence.length) {
+        session.seqIndex = i - 1;
+        session.skipped = session.skipped.filter((k) => k < i);
       }
       break;
     }

@@ -198,6 +198,7 @@ function bindActions() {
   }));
   main.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openComposer(b.dataset.open)));
   main.querySelectorAll("[data-jump]").forEach((b) => (b.onclick = () => send({ type: "jump_to_step", index: +b.dataset.jump })));
+  main.querySelectorAll("[data-point]").forEach((b) => (b.onclick = () => send({ type: "seq_point", index: +b.dataset.point })));
 }
 
 /* ---------------- LIVE tab ---------------- */
@@ -285,7 +286,8 @@ function renderLive() {
     ${controls}
     ${nextStep ? `<button class="rbtn accent" data-act="next" style="flex-direction:column;gap:0.2rem">
         <span>▶ ${state.seqIndex < 0 ? "Start the lesson" : `Launch step ${state.seqIndex + 2} of ${seq.length}`}</span>
-        <small style="font-weight:600;opacity:0.85">${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(nextStep.prompt.slice(0, 40)) : ""}</small></button>` : ""}
+        <small style="font-weight:600;opacity:0.85">${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(nextStep.prompt.slice(0, 40)) : ""}</small></button>
+      <div class="timer-row"><button class="rbtn" data-act="seq_back" ${state.seqIndex < 0 ? "disabled" : ""}>◀ Back</button><button class="rbtn" data-act="seq_skip">Skip ⏭</button></div>` : ""}
     ${itx ? renderLiveResponses(itx) : ""}
   `;
 }
@@ -501,13 +503,19 @@ function renderPlan() {
         ? `<button class="rbtn accent" data-act="next" style="flex-direction:column;gap:0.2rem">
             <span>▶ ${idx < 0 ? "Start the lesson" : `Launch step ${nextI + 1}`}</span>
             <small style="font-weight:600;opacity:0.85">${esc(modeName(nextSt.mode, nextSt.counterKind))}${nextSt.prompt ? " — " + esc(nextSt.prompt.slice(0, 40)) : ""}</small></button>`
-        : `<div class="status"><div class="q">🎉 All ${seq.length} steps launched</div></div>`}
-      ${seq.map((st, i) => `
-        <div class="seq-item ${i < idx ? "done" : ""} ${i === idx ? "current" : ""}">
-          <span class="sq-n">${i < idx ? "✓" : i + 1}</span>
+        : `<div class="status"><div class="q">🎉 All ${seq.length} steps done</div></div>`}
+      <div class="timer-row"><button class="rbtn" data-act="seq_back" ${idx < 0 ? "disabled" : ""}>◀ Back</button><button class="rbtn" data-act="seq_skip" ${nextSt ? "" : "disabled"}>Skip ⏭</button></div>
+      <p style="color:var(--rdim);font-size:0.78rem;margin:0.3rem 0 0.2rem">▶ runs a step now · ▸ makes it the next one · Skip passes over a step without running it</p>
+      ${seq.map((st, i) => {
+        const wasSkipped = (state.skipped || []).includes(i) && i <= idx;
+        return `
+        <div class="seq-item ${wasSkipped ? "skipped" : i < idx ? "done" : ""} ${i === idx ? "current" : ""}">
+          <span class="sq-n">${wasSkipped ? "⏭" : i < idx ? "✓" : i + 1}</span>
           <span class="sq-t">${modeName(st.mode, st.counterKind)}${st.prompt ? " — " + esc(st.prompt) : ""}</span>
-          <button data-jump="${i}" title="Launch this step">▶</button>
-        </div>`).join("")}
+          ${i !== idx + 1 ? `<button data-point="${i}" title="Make this the next step">▸</button>` : ""}
+          <button data-jump="${i}" title="Run this step now">▶</button>
+        </div>`;
+      }).join("")}
       <button class="rbtn warn" id="closePlan">✕ Close this lesson</button>
     ` : `<div class="status"><div class="q">No lesson open. Pick one of your lesson plans below, or ask on the spot from 🚀 Launch.</div></div>`}
 

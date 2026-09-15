@@ -1933,6 +1933,12 @@ function renderLessonStrip() {
   const unsaved = state.planId ? saved && canon(seq) !== planSnapshot.json : true;
   const upcoming = idx + 1 < n ? idx + 1 : null;
   const nextSt = upcoming != null ? seq[upcoming] : null;
+  const skipped = new Set(state.skipped || []);
+  const nav = `
+      <div class="ls-nav">
+        <button class="btn" data-strip="back" ${idx < 0 ? "disabled" : ""} title="Go back one step (it becomes 'up next' again)">◀ Back</button>
+        <button class="btn" data-strip="skip" ${nextSt ? "" : "disabled"} title="Skip this step without running it">Skip ⏭</button>
+      </div>`;
 
   let nextBlock;
   if (nextSt) {
@@ -1943,15 +1949,17 @@ function renderLessonStrip() {
         <div class="ls-next-type">${stepTag(nextSt)}</div>
         <div class="ls-next-q ${nextSt.prompt ? "" : "aloud"}">${nextSt.prompt ? esc(nextSt.prompt) : "Ask this one aloud"}</div>
       </div>
-      <button class="btn primary big" data-strip="next">${idx < 0 ? "▶ Start the lesson" : `▶ Launch step ${upcoming + 1}`}</button>`;
+      <button class="btn primary big" data-strip="next">${idx < 0 ? "▶ Start the lesson" : `▶ Launch step ${upcoming + 1}`}</button>
+      ${nav}`;
   } else {
     nextBlock = `
       <div class="ls-next-info">
-        <div class="ls-kicker">All ${n} steps launched</div>
+        <div class="ls-kicker">All ${n} steps done${skipped.size ? ` · ${skipped.size} skipped` : ""}</div>
         <div class="ls-next-q">🎉 That was the last step of this lesson.</div>
       </div>
       <button class="btn" data-strip="again">↺ Start again from step 1</button>
-      <button class="btn primary big" data-strip="finish">✅ Finish &amp; summarise</button>`;
+      <button class="btn primary big" data-strip="finish">✅ Finish &amp; summarise</button>
+      ${nav}`;
   }
 
   el.innerHTML = `
@@ -1961,7 +1969,7 @@ function renderLessonStrip() {
           <div class="ls-kicker">${state.planId ? "Teaching from your lesson plan" : "Lesson (not saved as a plan)"}</div>
           <div class="ls-title">📘 ${esc(state.planTitle || (state.planId ? "Untitled lesson" : "Today's lesson"))}</div>
         </div>
-        <span class="ls-progress">${idx < 0 ? `${n} steps · not started` : `Step ${idx + 1} of ${n}`}</span>
+        <span class="ls-progress">${idx < 0 ? `${n} steps · not started` : `Step ${idx + 1} of ${n}`}${skipped.size ? ` · ${skipped.size} skipped` : ""}</span>
         ${state.planId && unsaved ? `<span class="ls-unsaved">● changed during class</span>` : ""}
         <span class="spacer"></span>
         ${state.planId
@@ -1972,19 +1980,30 @@ function renderLessonStrip() {
         <button class="btn" data-strip="close" title="Close this lesson plan">✕ Close</button>
       </div>
       <div class="ls-steps">${seq
-        .map((st, i) => `
-        <button class="ls-chip ${i < idx ? "done" : ""} ${i === idx ? "now" : ""}" data-jump="${i}"
-          title="Launch step ${i + 1}: ${esc(MODES[keyForStep(st)]?.name || st.mode)}${st.prompt ? " — " + esc(st.prompt) : ""}">
-          <span class="n">${i < idx ? "✓" : i + 1}</span><span>${stepIcon(st)}</span>
-          <span class="t">${st.prompt ? esc(st.prompt) : esc(MODES[keyForStep(st)]?.name || st.mode)}</span>
-        </button>`)
+        .map((st, i) => {
+          const wasSkipped = skipped.has(i) && i <= idx;
+          const cls = wasSkipped ? "skipped" : i < idx ? "done" : i === idx ? "now" : "";
+          const badge = wasSkipped ? "⏭" : i < idx ? "✓" : i + 1;
+          return `
+        <span class="ls-chip ${cls}" title="Step ${i + 1}: ${esc(MODES[keyForStep(st)]?.name || st.mode)}${st.prompt ? " — " + esc(st.prompt) : ""}${wasSkipped ? " (skipped)" : ""}">
+          <button class="ls-run" data-jump="${i}" title="Run step ${i + 1} now">
+            <span class="n">${badge}</span><span>${stepIcon(st)}</span>
+            <span class="t">${st.prompt ? esc(st.prompt) : esc(MODES[keyForStep(st)]?.name || st.mode)}</span>
+          </button>
+          ${i !== idx + 1 ? `<button class="ls-point" data-point="${i}" title="Make step ${i + 1} the next one (without running it)">▸</button>` : ""}
+        </span>`;
+        })
         .join("")}</div>
+      <p class="ls-help">Tap a step to run it · ▸ makes it next · Skip ⏭ passes over a step without running it</p>
       <div class="ls-next">${nextBlock}</div>
     </section>`;
 
   el.querySelectorAll("[data-jump]").forEach((b) => (b.onclick = () => send({ type: "jump_to_step", index: +b.dataset.jump })));
+  el.querySelectorAll("[data-point]").forEach((b) => (b.onclick = () => send({ type: "seq_point", index: +b.dataset.point })));
   const act = (name, fn) => { const b = el.querySelector(`[data-strip="${name}"]`); if (b) b.onclick = fn; };
   act("next", () => send({ type: "next" }));
+  act("skip", () => send({ type: "seq_skip" }));
+  act("back", () => send({ type: "seq_back" }));
   act("finish", () => $("endBtn").click());
   act("again", () => send({ type: "set_sequence", items: seq, reset: true }));
   act("edit", () => openEditor(state.planId));
