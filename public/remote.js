@@ -32,6 +32,7 @@ const MODES = {
   mindmap:       { icon: "🕸️", name: "Mindmap", multiOpt: true, ph: "The central concept" },
   post_its:      { icon: "🗒️", name: "Post-its", postits: true, multiOpt: true },
   phonics:       { icon: "🔤", name: "Phonics" },
+  phonics_cloze: { icon: "🖼️", name: "Picture Phonics", imageUpload: true, wordUI: true, ph: "Optional instruction, e.g. “Build the word”" },
   short_answer:  { icon: "✏️", name: "Short Answer" },
   long_response: { icon: "📜", name: "Long Response", ph: "The question that deserves a full answer" },
   picture_prompt:{ icon: "🖼️", name: "Picture Prompt", imageUpload: true },
@@ -71,7 +72,7 @@ const MODES = {
 
 const CATEGORIES = [
   { label: "Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
-  { label: "Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics"] },
+  { label: "Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
   { label: "Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
@@ -393,6 +394,7 @@ function openComposer(key) {
   if (m.hasCorrect) fields += `<select class="rin" id="cCorrect"><option value="">Correct answer: not set</option>${["A", "B", "C", "D", "E"].map((L, i) => `<option value="${i}">Correct: ${L}</option>`).join("")}</select>`;
   if (m.pairs) fields += Array.from({ length: m.pairs.max }, (_, i) =>
     `<div class="pair-row"><input class="rin" data-cleft maxlength="60" placeholder="Term ${i + 1}${i < m.pairs.min ? "" : " (opt)"}" /><span class="pair-eq">↔</span><input class="rin" data-cright maxlength="60" placeholder="Match" /></div>`).join("");
+  if (m.wordUI) fields += `<input class="rin" id="cWord" maxlength="60" placeholder="Word with [brackets] round the sounds to build, e.g. sh[ee]p" autocomplete="off" />`;
   if (m.clozeUI) fields += `<textarea class="rin" id="cCloze" rows="5" maxlength="1500" placeholder="Paste the passage; put [brackets] around hidden words"></textarea>
     <select class="rin" id="cClozeMode"><option value="type">⌨️ Students type</option><option value="bank">🧺 Word bank</option></select>`;
   if (m.tableUI) fields += `<select class="rin" id="cRows"><option value="1">1 row of answers</option><option value="2">2 rows</option><option value="3">3 rows</option></select>`;
@@ -438,6 +440,10 @@ function readComposer() {
     const rights = [...sheet.querySelectorAll("[data-cright]")];
     options = lefts.map((l, i) => (l.value.trim() && rights[i].value.trim() ? `${l.value.trim()} = ${rights[i].value.trim()}` : null)).filter(Boolean);
     if (options.length < m.pairs.min) { toast(`Needs ${m.pairs.min}+ complete pairs`); return null; }
+  }
+  if (m.wordUI) {
+    passage = $("cWord").value.trim();
+    if (!/\[[^\]]+\]/.test(passage)) { toast("Put [brackets] round the sounds to build, e.g. sh[ee]p"); return null; }
   }
   if (m.clozeUI) {
     passage = $("cCloze").value;

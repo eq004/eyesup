@@ -15,7 +15,7 @@ const MODE_TAGS = {
   one_word: "One Word", ask_question: "Your Questions",
   true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
   muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint — 60 seconds",
-  sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", image_long: "Image + Long Answer", maths_board: "Maths Board", counters_draw: "Counters + Drawing", spot_mistake: "Spot the Mistake",
+  phonics_cloze: "Picture Phonics", sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", image_long: "Image + Long Answer", maths_board: "Maths Board", counters_draw: "Counters + Drawing", spot_mistake: "Spot the Mistake",
   example_nonexample: "Example or Non-example?", teach_back: "Teach It Back",
   match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
@@ -154,7 +154,38 @@ function renderInner() {
   if (!itx) return renderLobby();
 
   renderInteraction(itx);
+  renderSprintClock(itx);
 }
+
+/* ---------------- retrieval sprint: the countdown on the big screen ---------------- */
+
+let sprintClock = { id: null, deadline: 0, total: 0 };
+function renderSprintClock(itx) {
+  if (itx.mode !== "retrieval_sprint" || !itx.timeLimit) return;
+  if (sprintClock.id !== itx.id) {
+    // First sight of this sprint: pin the deadline from the server's seconds-left.
+    sprintClock = { id: itx.id, deadline: Date.now() + (itx.secondsLeft ?? itx.timeLimit) * 1000, total: itx.timeLimit * 1000 };
+  }
+  const box = document.createElement("div");
+  box.className = "sprint-clock";
+  box.id = "sprintClock";
+  stage.prepend(box);
+  paintSprintClock();
+}
+function paintSprintClock() {
+  const box = document.getElementById("sprintClock");
+  if (!box) return;
+  const left = Math.max(0, sprintClock.deadline - Date.now());
+  const s = Math.ceil(left / 1000);
+  const pct = sprintClock.total ? (left / sprintClock.total) * 100 : 0;
+  box.classList.toggle("urgent", left > 0 && left <= 10000);
+  box.classList.toggle("done", left <= 0);
+  box.innerHTML = `
+    <div class="sc-digits">${left <= 0 ? "⏰ Time's up — answers are in" : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`}</div>
+    <div class="sc-bar"><div class="sc-fill" style="width:${pct}%"></div></div>
+    ${left > 0 ? `<div class="sc-note">Keep writing — everything is sent automatically at zero</div>` : ""}`;
+}
+setInterval(paintSprintClock, 250);
 
 /* ---------------- always-on join badge ---------------- */
 
@@ -167,11 +198,24 @@ function joinTarget() {
   return { host, url: `${proto}//${host}/join?code=${state.code}` };
 }
 
+let joinOpen = (() => { try { return localStorage.getItem("eyesup_qr_open") === "1"; } catch { return false; } })();
+function setJoinOpen(open) {
+  joinOpen = open;
+  try { localStorage.setItem("eyesup_qr_open", open ? "1" : "0"); } catch {}
+  document.getElementById("joinDock").classList.toggle("open", open);
+  document.getElementById("joinTabArrow").textContent = open ? "▼" : "▲";
+}
+document.getElementById("joinTab").onclick = (e) => { e.stopPropagation(); setJoinOpen(!joinOpen); };
+
 function updateJoinBadge() {
   const el = document.getElementById("joinBadge");
+  const dock = document.getElementById("joinDock");
   // Hidden in the lobby / forced join screen (a big one is already up) and when over.
   const wanted = state.phase !== "lobby" && !state.showJoin && state.phase !== "ended";
-  el.classList.toggle("show", wanted);
+  dock.classList.toggle("show", wanted);
+  dock.classList.toggle("open", joinOpen);
+  document.getElementById("joinTabArrow").textContent = joinOpen ? "▼" : "▲";
+  document.getElementById("joinTabCode").textContent = state.code || "";
   if (!wanted) return;
   if (badgeCode === state.code) return;
   badgeCode = state.code;
@@ -355,7 +399,7 @@ function promptBlock(itx) {
   const tag = itx.mode === "counters" && itx.counterKind === "base10" ? "Tens & Ones" : MODE_TAGS[itx.mode] || itx.mode;
   return `
     <div class="q-tag">${tag}</div>
-    <h1 class="prompt">${itx.prompt ? esc(itx.prompt) : `<span class="aloud">Listen to the question…</span>`}</h1>`;
+    <h1 class="prompt">${itx.prompt ? esc(itx.prompt) : itx.mode === "phonics_cloze" ? "What's the word?" : `<span class="aloud">Listen to the question…</span>`}</h1>`;
 }
 
 function progressLine(itx) {
@@ -370,7 +414,9 @@ function renderInteraction(itx) {
   const agg = itx.aggregate;
   let body = "";
 
-  if (!agg) {
+  if (itx.mode === "phonics_cloze") {
+    body = renderPictureWord(itx, agg);
+  } else if (!agg) {
     // Results hidden — build anticipation, show only the count.
     body = `<p class="waiting-note">${itx.open ? "Thinking time… responses are coming in." : "Responses are in. Waiting for the reveal…"}</p>`;
   } else if (agg.words) {
@@ -621,6 +667,18 @@ function renderCloze(agg) {
     ${slips.length ? `<p class="waiting-note" style="margin-top:1.2rem;font-size:clamp(0.9rem,1.6vw,1.2rem)">Common slips: ${slips
       .map((s) => `${esc(s.wrongTop[0].text)} (for ${esc(s.target)})`)
       .join(" · ")}</p>` : ""}`;
+}
+
+/* Picture Phonics — the picture stays up; the word shows its gaps until the reveal. */
+function renderPictureWord(itx, agg) {
+  const img = itx.imageUrl
+    ? `<img src="${itx.imageUrl}" alt="the picture to name" style="max-height:${agg?.stats ? "34vh" : "50vh"};max-width:80%;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,0.45);margin-bottom:1.2rem" /><br/>`
+    : "";
+  if (agg?.stats && agg.total) return img + renderCloze(agg);
+  const parts = itx.clozeParts || itx.cloze?.parts || [];
+  const frame = parts.map((p, i) => `${esc(p)}${i < parts.length - 1 ? `<span class="cloze-fill" style="border-color:var(--glow);min-width:1.6em">&nbsp;</span>` : ""}`).join("");
+  return `${img}<div class="cloze-reveal" style="font-size:clamp(2rem,5vw,4rem);letter-spacing:0.06em">${frame}</div>
+    <p class="waiting-note" style="margin-top:1rem">${itx.open ? "Build the word on your device — the sounds appear here at the reveal." : "Answers are in. Waiting for the reveal…"}</p>`;
 }
 
 /* Working out — answer spread plus the working stacks. */

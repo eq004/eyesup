@@ -313,6 +313,16 @@
   .dice-q.show { opacity: 1; transform: none; }
   .dice-q .prompt { font-size: clamp(1.6rem, 4vw, 3.4rem); }
 
+  /* retrieval sprint countdown */
+  .sprint-clock { max-width: 900px; margin: 0 auto 1.6rem; }
+  .sprint-clock .sc-digits { font-family: var(--font-display); font-weight: 800; font-size: clamp(2.6rem, 8vw, 6rem); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .sprint-clock .sc-bar { height: clamp(10px, 1.4vh, 16px); border-radius: 999px; background: rgba(255,255,255,0.1); overflow: hidden; margin-top: 0.8rem; }
+  .sprint-clock .sc-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #5c83c2, #a3bde4); transition: width 0.25s linear; }
+  .sprint-clock .sc-note { color: var(--chalk-dim); font-size: clamp(0.9rem, 1.6vw, 1.2rem); margin-top: 0.5rem; }
+  .sprint-clock.urgent .sc-digits { color: #ff8f8f; animation: pulse-dot 1s infinite; }
+  .sprint-clock.urgent .sc-fill { background: linear-gradient(90deg, #d05f5f, #e79191); }
+  .sprint-clock.done .sc-digits { font-size: clamp(1.6rem, 4vw, 3rem); color: #8fd6a9; }
+
   /* timer overlay */
   .timer-overlay {
     position: fixed;
@@ -578,10 +588,18 @@
   }
 
   /* always-on join badge — latecomers can always get in */
+  .join-dock { position: fixed; left: 1rem; bottom: 0; z-index: 25; display: none; flex-direction: column; align-items: flex-start; }
+  .join-dock.show { display: flex; }
+  .join-tab {
+    font: inherit; font-weight: 800; font-size: 0.9rem; letter-spacing: 0.04em; cursor: pointer;
+    color: var(--chalk); background: rgba(7, 23, 47, 0.92); border: 1px solid var(--night-line); border-bottom: none;
+    border-radius: 12px 12px 0 0; padding: 0.45rem 1rem;
+  }
+  .join-tab b { letter-spacing: 0.16em; margin-left: 0.3rem; }
+  .join-dock.open .join-tab { border-radius: 12px 12px 0 0; }
   .join-badge {
-    position: fixed;
-    left: 1rem;
-    bottom: 1rem;
+    position: static;
+    margin-bottom: 1rem;
     display: none;
     align-items: center;
     gap: 0.7rem;
@@ -592,7 +610,7 @@
     z-index: 25;
     animation: fade-in 0.3s ease both;
   }
-  .join-badge.show { display: flex; }
+  .join-dock.open .join-badge { display: flex; }
   .join-badge .mini-qr { background: #fff; border-radius: 8px; padding: 4px; line-height: 0; }
   .join-badge .mini-qr svg { width: 96px; height: 96px; display: block; }
   .join-badge .txt { font-size: 0.9rem; color: var(--chalk-dim); line-height: 1.35; }
@@ -631,7 +649,10 @@
   <main><div class="stage" id="stage"></div></main>
   <div class="timer-overlay" id="timerOverlay"></div>
   <div class="timer-full" id="timerFull" title="Tap to make the timer small"></div>
-  <div class="join-badge" id="joinBadge"></div>
+  <div class="join-dock" id="joinDock">
+    <button class="join-tab" id="joinTab" title="Show or hide the join code and QR"><span id="joinTabArrow">▲</span> Join code <b id="joinTabCode"></b></button>
+    <div class="join-badge" id="joinBadge"></div>
+  </div>
   <script src="/vendor/qrcode.js"></script>
   <script src="/projector.js"></script>
 </body>

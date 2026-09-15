@@ -528,7 +528,7 @@ app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
 const MAX_STEPS = 40;
 const STEP_MODES = new Set([
   "multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley",
-  "scale", "example_nonexample", "word_cloud", "one_word", "mindmap", "post_its", "phonics", "short_answer",
+  "scale", "example_nonexample", "word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze", "short_answer",
   "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example",
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
@@ -1030,7 +1030,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
   // Cloze: parse "[bracketed]" answers out of the passage.
   let cloze = null;
   let bank = null;
-  if (mode === "cloze") {
+  if (mode === "cloze" || mode === "phonics_cloze") {
     const text = String(passage || "").slice(0, 1500);
     const parts = [];
     const answers = [];
@@ -1054,7 +1054,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
 
   let imageUrl = null;
   if (
-    (mode === "annotate" || mode === "picture_prompt" || mode === "picture_vote") &&
+    (mode === "annotate" || mode === "picture_prompt" || mode === "picture_vote" || mode === "phonics_cloze") &&
     typeof image === "string" &&
     /^data:image\/(png|jpeg|webp);base64,/.test(image) &&
     image.length < 900000
@@ -1097,7 +1097,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     // are revealed by the teacher (gradually or all at once).
     // Quiz/test-style modes hide results until the teacher shows them, so
     // nobody bandwagons — and spellings/answers don't leak mid-test.
-    resultsVisible: !["multi_choice", "spelling", "cloze", "working", "counters"].includes(mode),
+    resultsVisible: !["multi_choice", "spelling", "cloze", "phonics_cloze", "working", "counters"].includes(mode),
     responses: new Map(), // studentId -> {name, payload, revealed, at}
     startedAt: Date.now(),
   };
@@ -1297,7 +1297,7 @@ function aggregate(session, itx) {
     return { ...base, builds: revealed, revealedCount: revealed.length };
   }
 
-  if (itx.mode === "spelling" || itx.mode === "cloze") {
+  if (itx.mode === "spelling" || itx.cloze) {
     // Auto-marked: per target word/blank, how many got it, and the
     // most common wrong attempts (misconception gold).
     const targets = itx.mode === "spelling" ? itx.words : itx.cloze.answers;
@@ -1318,7 +1318,7 @@ function aggregate(session, itx) {
       return { target, correct, wrongTop };
     });
     const out = { ...base, stats };
-    if (itx.mode === "cloze") out.parts = itx.cloze.parts;
+    if (itx.cloze) out.parts = itx.cloze.parts;
     return out;
   }
 
@@ -1481,6 +1481,7 @@ function projectorState(session) {
     respondedCount: itx ? itx.responses.size : 0,
     interaction: itx
       ? {
+          id: itx.id,
           mode: itx.mode,
           prompt: itx.prompt,
           options: itx.options,
@@ -1488,6 +1489,11 @@ function projectorState(session) {
           counterKind: itx.counterKind,
           open: itx.open,
           resultsVisible: itx.resultsVisible,
+          // Timed sprints: the big screen runs the same countdown as the devices.
+          timeLimit: itx.timeLimit,
+          secondsLeft: itx.timeLimit ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000)) : undefined,
+          // Picture Phonics: the word frame with its gaps (answers stay hidden).
+          clozeParts: itx.cloze ? itx.cloze.parts : null,
           aggregate: itx.resultsVisible ? aggregate(session, itx) : null,
         }
       : null,
@@ -1593,7 +1599,7 @@ function describePayload(itx, p) {
     return itx.words
       .map((w, i) => `${p.answers[i] || "—"}${markMatch(p.answers[i], w) ? " ✓" : ` ✗(${w})`}`)
       .join(", ");
-  if (itx.mode === "cloze")
+  if (itx.cloze)
     return itx.cloze.answers
       .map((w, i) => `${p.fills[i] || "—"}${markMatch(p.fills[i], w) ? " ✓" : ` ✗(${w})`}`)
       .join(", ");
@@ -1686,7 +1692,7 @@ function buildSummary(session, { withImages = false } = {}) {
     if (itx.mode === "counters") item.counterKind = itx.counterKind;
     if (itx.mode === "venn")
       item.venn = { labels: itx.options, regions: agg.regions.map((r) => r.slice(0, 8)) };
-    if (itx.mode === "spelling" || itx.mode === "cloze")
+    if (itx.mode === "spelling" || itx.cloze)
       item.distribution = agg.stats.map((s) => ({
         label: `${s.target}${s.wrongTop.length ? `  (common slip: ${s.wrongTop[0].text})` : ""}`,
         count: s.correct,
@@ -2251,14 +2257,16 @@ function startInteraction(session, spec) {
   const itx = newInteraction(session, spec);
   session.interaction = itx;
   session.phase = "interaction";
-  // Timed modes (Retrieval Sprint) close themselves when time is up.
+  // Timed modes (Retrieval Sprint) close themselves when time is up. Students'
+  // devices send whatever they have written at zero, so leave a few seconds'
+  // grace for those answers to arrive before the door shuts.
   if (itx.timeLimit) {
     setTimeout(() => {
       if (session.interaction === itx && itx.open) {
         itx.open = false;
         broadcast(session);
       }
-    }, itx.timeLimit * 1000 + 500);
+    }, itx.timeLimit * 1000 + 6000);
   }
 }
 
@@ -2379,7 +2387,7 @@ function sanitizePayload(itx, payload) {
     return answers.some(Boolean) ? { answers } : null;
   }
 
-  if (itx.mode === "cloze") {
+  if (itx.cloze) {
     const n = itx.cloze.answers.length;
     const fills = Array.from({ length: n }, (_, i) =>
       String((payload.fills || [])[i] || "").trim().slice(0, 40)

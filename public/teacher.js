@@ -23,6 +23,8 @@ const MODES = {
   post_its:      { icon: "🗒️", name: "Post-its",     hint: "Sticky notes fill the board — screened or straight up", opts: null, postits: true, multiOpt: true },
   phonics:       { icon: "🔤", name: "Phonics Keyboard", hint: "Say a word — students build it from sounds", opts: null,
                    ph: "Optional: show the word/question on screens — or just say it aloud" },
+  phonics_cloze: { icon: "🖼️", name: "Picture Phonics", hint: "Picture on the board only; students build the missing sounds on the phonics keyboard",
+                   opts: null, imageUpload: true, wordUI: true, ph: "Optional instruction on their screens, e.g. “Look at the board and build the word”" },
   /* written recall */
   short_answer:  { icon: "✏️", name: "Short Answer",  hint: "Written replies, reveal in turn", opts: null },
   long_response: { icon: "📜", name: "Long Response", hint: "Extended writing — paragraphs, not phrases", opts: null,
@@ -86,7 +88,7 @@ const MODES = {
 
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
-  { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics"] },
+  { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
   { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
@@ -402,6 +404,15 @@ function openComposer(key, keepImage) {
     multiSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(multiSel);
   }
+  if (m.wordUI) {
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.id = "wordFrame";
+    inp.maxLength = 60;
+    inp.placeholder = "The word, with [brackets] round the sounds to build — e.g. sh[ee]p, or [c][a][t] for every sound";
+    inp.autocomplete = "off";
+    opts.appendChild(inp);
+  }
   if (m.clozeUI) {
     const wrap = document.createElement("div");
     wrap.innerHTML = `
@@ -535,6 +546,13 @@ function readComposer() {
     return null;
   }
   let passage, wordBank;
+  if (m.wordUI) {
+    passage = $("wordFrame").value.trim();
+    if (!/\[[^\]]+\]/.test(passage)) {
+      toast("Put [square brackets] round the sound(s) to build, e.g. sh[ee]p");
+      return null;
+    }
+  }
   if (m.clozeUI) {
     passage = $("clozeText").value;
     if (!/\[[^\]]+\]/.test(passage)) {
@@ -847,7 +865,7 @@ function renderLive() {
     });
   } else if (itx.mode === "phonics") {
     body = revealCards((r) => phonChips(r.payload.parts));
-  } else if (itx.mode === "spelling" || itx.mode === "cloze") {
+  } else if (itx.mode === "spelling" || itx.mode === "cloze" || itx.mode === "phonics_cloze") {
     const targets = itx.mode === "spelling" ? itx.words : itx.cloze.answers;
     const attemptsOf = (r) => (itx.mode === "spelling" ? r.payload.answers : r.payload.fills);
     const stats = agg?.stats || [];
@@ -1861,6 +1879,7 @@ function fillComposer(st) {
     $("clozeText").value = st.passage || "";
     $("clozeMode").value = st.wordBank ? "bank" : "type";
   }
+  if (m.wordUI && $("wordFrame")) $("wordFrame").value = st.passage || "";
   if (m.workingUI && $("expectedAns")) $("expectedAns").value = st.expected || "";
   if (m.tableUI && $("rowsSel") && st.tableRows) $("rowsSel").value = String(st.tableRows);
   if (m.sprintUI && $("durSel") && st.sprintSeconds) $("durSel").value = String(st.sprintSeconds);

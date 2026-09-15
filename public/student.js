@@ -34,7 +34,7 @@ const MODE_NAMES = {
   smiley: "😊 Smiley Review", scale: "🎚️ Scale", annotate: "🖍️ Annotate",
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
   phonics: "🔤 Phonics Keyboard",
-  spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", working: "🧮 Working Out",
+  spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", phonics_cloze: "🖼️ Picture Phonics", working: "🧮 Working Out",
   counters: "🟠 Counters", table: "📋 Table", plus_minus: "➕➖ Plus & Minus",
   long_response: "📜 Long Response",
 };
@@ -249,8 +249,8 @@ function renderInteraction(itx) {
     show(`${h}
       <div class="timer"><div class="timer-fill" id="timerFill"></div></div>
       <div class="timer-num" id="timerNum"></div>
-      <textarea id="textInput" rows="6" maxlength="1500" placeholder="Go — everything you can recall. Short phrases are fine."></textarea>
-      <button class="btn send" id="sendBtn">Send</button>`, () => {
+      <textarea id="textInput" rows="7" maxlength="1500" placeholder="Go — everything you can recall. Short phrases are fine. Keep writing until the timer ends."></textarea>
+      <p class="hint" id="sprintNote">⏳ Your writing is sent automatically when the timer reaches zero. Keep going!</p>`, () => {
       const input = $("textInput");
       input.focus();
       const totalMs = (itx.timeLimit ?? 60) * 1000;
@@ -259,21 +259,20 @@ function renderInteraction(itx) {
         if (!fill) { clearInterval(sprintTimer); sprintTimer = null; return; }
         const left = Math.max(0, sprintDeadline - Date.now());
         fill.style.width = (left / totalMs) * 100 + "%";
-        $("timerNum").textContent = Math.ceil(left / 1000) + "s";
+        $("timerNum").textContent = left <= 0 ? "Time's up!" : Math.ceil(left / 1000) + "s";
+        if (left <= 10000 && left > 0) $("timerNum").style.color = "var(--red)";
         if (left <= 0) {
           clearInterval(sprintTimer);
           sprintTimer = null;
+          input.disabled = true;
           const text = input.value.trim();
           if (text) submit({ text }); // whatever's down when time's up counts
+          else $("sprintNote").textContent = "⏰ Time's up — nothing was written, so nothing was sent.";
         }
       };
       if (sprintTimer) clearInterval(sprintTimer);
       sprintTimer = setInterval(tick, 250);
       tick();
-      $("sendBtn").onclick = () => {
-        const text = input.value.trim();
-        if (text) { clearInterval(sprintTimer); sprintTimer = null; submit({ text }); }
-      };
     });
     return;
   }
@@ -584,16 +583,79 @@ function renderInteraction(itx) {
     const bank = itx.clozeBank;
     const gap = (i) =>
       bank
-        ? `<select class="cloze-gap" data-cz="${i}"><option value="">___</option>${bank.map((w) => `<option value="${esc(w)}">${esc(w)}</option>`).join("")}</select>`
+        ? `<span class="cloze-drop" data-cz="${i}" data-word=""><span class="cz-ph">drop here</span></span>`
         : `<input class="cloze-gap" data-cz="${i}" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="____" />`;
     show(`${h}
+      ${bank ? `<div class="cloze-bank" id="clozeBank">${bank.map((w, k) => `<button type="button" class="cz-word" data-w="${k}">${esc(w)}</button>`).join("")}</div>
+        <p class="hint" style="margin:0 0 0.5rem">Drag a word into a gap — or tap a word, then tap the gap. Tap a placed word to take it out.</p>` : ""}
       <div class="cloze-text">${parts
         .map((p, i) => `${esc(p)}${i < parts.length - 1 ? gap(i) : ""}`)
         .join("")}</div>
       <button class="btn send" id="sendBtn">Send</button>`, () => {
-      screenEl.querySelector("[data-cz]")?.focus();
+      if (bank) {
+        const drops = [...screenEl.querySelectorAll(".cloze-drop")];
+        let picked = null; // word chosen by tap, waiting for a gap
+        const place = (drop, word) => {
+          drop.dataset.word = word;
+          drop.innerHTML = `<span class="cz-filled">${esc(word)} <i>✕</i></span>`;
+          drop.classList.add("filled");
+        };
+        const clear = (drop) => {
+          drop.dataset.word = "";
+          drop.innerHTML = `<span class="cz-ph">drop here</span>`;
+          drop.classList.remove("filled");
+        };
+        const setPicked = (btn) => {
+          screenEl.querySelectorAll(".cz-word").forEach((b) => b.classList.remove("picked"));
+          picked = btn;
+          if (btn) btn.classList.add("picked");
+        };
+        drops.forEach((d) => (d.onclick = () => {
+          if (d.dataset.word) { clear(d); return; }
+          if (picked) { place(d, bank[+picked.dataset.w]); setPicked(null); }
+        }));
+        // Pointer-based drag (works with fingers, mice and styluses): the
+        // word chip follows the finger; letting go over a gap drops it there.
+        screenEl.querySelectorAll(".cz-word").forEach((btn) => {
+          btn.onpointerdown = (e) => {
+            e.preventDefault();
+            const startX = e.clientX, startY = e.clientY;
+            let ghost = null, moved = false;
+            const move = (ev) => {
+              if (!moved && Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) < 8) return;
+              if (!ghost) {
+                moved = true;
+                ghost = btn.cloneNode(true);
+                ghost.className = "cz-word cz-ghost";
+                document.body.appendChild(ghost);
+              }
+              ghost.style.left = `${ev.clientX}px`;
+              ghost.style.top = `${ev.clientY}px`;
+              drops.forEach((d) => d.classList.toggle("over", d === document.elementFromPoint(ev.clientX, ev.clientY)?.closest(".cloze-drop")));
+            };
+            const up = (ev) => {
+              window.removeEventListener("pointermove", move);
+              window.removeEventListener("pointerup", up);
+              window.removeEventListener("pointercancel", up);
+              if (ghost) ghost.remove();
+              drops.forEach((d) => d.classList.remove("over"));
+              if (moved) {
+                const target = document.elementFromPoint(ev.clientX, ev.clientY)?.closest(".cloze-drop");
+                if (target) { place(target, bank[+btn.dataset.w]); setPicked(null); }
+              } else {
+                setPicked(picked === btn ? null : btn); // a tap picks it up for the tap-a-gap route
+              }
+            };
+            window.addEventListener("pointermove", move);
+            window.addEventListener("pointerup", up);
+            window.addEventListener("pointercancel", up);
+          };
+        });
+      } else {
+        screenEl.querySelector("[data-cz]")?.focus();
+      }
       $("sendBtn").onclick = () => {
-        const fills = [...screenEl.querySelectorAll("[data-cz]")].map((i) => i.value.trim());
+        const fills = [...screenEl.querySelectorAll("[data-cz]")].map((el) => (el.dataset.word !== undefined && !("value" in el) ? el.dataset.word : el.value).trim());
         if (fills.some(Boolean)) submit({ fills });
       };
     });
@@ -928,6 +990,61 @@ function renderInteraction(itx) {
   }
 
   /* --- phonics keyboard: build the word from graphemes --- */
+  /* --- picture phonics: the picture is on the board; build the missing sounds here --- */
+  if (itx.mode === "phonics_cloze" && itx.clozeParts) {
+    const parts = itx.clozeParts;
+    const nGaps = parts.length - 1;
+    const fills = Array.from({ length: nGaps }, () => "");
+    let active = 0;
+    const key = (p, wide) =>
+      `<button class="phon-key pc-${phonCat(p)}${wide ? " wide" : ""}" data-p="${p}">${p === "-e" ? "silent e" : esc(p)}</button>`;
+    const hdr = `<span class="mode-tag">🖼️ Picture Phonics</span>
+      <h1 class="q">${itx.prompt ? esc(itx.prompt) : "Look at the picture on the board. Build the word."}</h1>`;
+    show(`${hdr}
+      <div class="pw-frame" id="pwFrame"></div>
+      <div class="phon-strip-row" style="justify-content:flex-end">
+        <button class="phon-ctl" id="phonBack" title="Backspace">⌫</button>
+        <button class="phon-ctl" id="phonClear" title="Clear">✕</button>
+      </div>
+      <div class="phon-board">
+        ${PHON_ROWS.map((row) => `<div class="phon-row">${row.map((p) => key(p)).join("")}</div>`).join("")}
+        <div class="phon-divider"></div>
+        ${PHON_EXTRAS.map((row) => `<div class="phon-row">${row.map((p) => key(p, p === "-e")).join("")}</div>`).join("")}
+      </div>
+      <button class="btn send" id="sendBtn" disabled>Send my word</button>
+      <p class="hint">Tap the sounds to fill the gaps. Tap a gap to choose which one you're filling.</p>`, () => {
+      const frame = $("pwFrame");
+      const paint = () => {
+        frame.innerHTML = parts
+          .map((p, i) => `${p ? `<span class="pw-fixed">${esc(p)}</span>` : ""}${i < nGaps
+            ? `<button type="button" class="pw-gap ${i === active ? "active" : ""} ${fills[i] ? "filled" : ""}" data-g="${i}">${fills[i] ? esc(fills[i]) : "&nbsp;"}</button>`
+            : ""}`)
+          .join("");
+        frame.querySelectorAll(".pw-gap").forEach((g) => (g.onclick = () => { active = +g.dataset.g; paint(); }));
+        $("sendBtn").disabled = !fills.every(Boolean);
+      };
+      const nextEmpty = () => { const i = fills.findIndex((f) => !f); if (i >= 0) active = i; };
+      screenEl.querySelectorAll(".phon-key").forEach((b) => (b.onclick = () => {
+        const p = b.dataset.p === "-e" ? "e" : b.dataset.p;
+        if (fills[active].length >= 8) return;
+        fills[active] += p;
+        // A filled gap moves you on to the next empty one.
+        if (fills.every(Boolean)) { /* stay */ } else nextEmpty();
+        paint();
+      }));
+      $("phonBack").onclick = () => {
+        // Take the last sound out of the active gap, or step back to the previous filled gap.
+        if (!fills[active] && active > 0) active -= 1;
+        fills[active] = fills[active].slice(0, -1);
+        paint();
+      };
+      $("phonClear").onclick = () => { fills.fill(""); active = 0; paint(); };
+      $("sendBtn").onclick = () => { if (fills.every(Boolean)) submit({ fills }); };
+      paint();
+    });
+    return;
+  }
+
   if (itx.mode === "phonics") {
     const key = (p, wide) =>
       `<button class="phon-key pc-${phonCat(p)}${wide ? " wide" : ""}" data-p="${p}">${p === "-e" ? "silent e" : esc(p)}</button>`;
