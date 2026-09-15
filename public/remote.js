@@ -189,7 +189,7 @@ function render() {
 
 function bindActions() {
   main.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => send({ type: b.dataset.act })));
-  main.querySelectorAll("[data-timer]").forEach((b) => (b.onclick = () => send({ type: "timer_start", seconds: +b.dataset.timer })));
+  main.querySelectorAll("[data-timer]").forEach((b) => (b.onclick = () => send({ type: "timer_start", seconds: +b.dataset.timer, big: remoteTimerBig() })));
   main.querySelectorAll("[data-spot]").forEach((el) => (el.onclick = () => send({ type: "spotlight_response", studentId: el.dataset.spot })));
   main.querySelectorAll("[data-reveal]").forEach((b) => (b.onclick = () => send({ type: "reveal", studentId: b.dataset.reveal })));
   main.querySelectorAll("[data-note]").forEach((b) => (b.onclick = () => {
@@ -585,6 +585,10 @@ async function teachRemotePlan(id) {
 
 /* ---------------- TOOLS tab ---------------- */
 
+function remoteTimerBig() {
+  try { return localStorage.getItem("eyesup_timer_big") === "1"; } catch { return false; }
+}
+
 function renderTools() {
   const t = state.timer;
   // Keep half-typed dice questions across re-renders (a student joining redraws this tab).
@@ -599,6 +603,7 @@ function renderTools() {
       ${t
         ? `<span class="timer-live" id="timerLive"></span>
            ${t.paused ? `<button class="rbtn" data-act="timer_resume">▶ Resume</button>` : `<button class="rbtn" data-act="timer_pause">⏸ Pause</button>`}
+           <button class="rbtn ${t.big ? "accent" : ""}" data-act="timer_big">${t.big ? "⤡ Small" : "⛶ Full"}</button>
            <button class="rbtn" data-act="timer_clear">✕ Clear</button>`
         : `<button class="rbtn" data-timer="30">30s</button>
            <button class="rbtn" data-timer="60">1m</button>
@@ -607,7 +612,9 @@ function renderTools() {
     </div>
     ${!t ? `<div class="timer-row" style="margin-top:0.5rem">
       <input class="rin" id="timerCustom" type="number" min="5" max="3600" placeholder="seconds" style="margin:0;flex:1" />
-      <button class="rbtn" id="timerGo" style="flex:0 0 30%">Go</button></div>` : ""}
+      <button class="rbtn" id="timerGo" style="flex:0 0 30%">Go</button></div>
+      <label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;font-size:0.9rem;color:var(--rdim);font-weight:700">
+        <input type="checkbox" id="timerBigPref" style="width:20px;height:20px" ${remoteTimerBig() ? "checked" : ""} /> ⛶ Start full screen on the projector</label>` : ""}
 
     <h3 class="sec">🎲 Random student</h3>
     <button class="rbtn" data-act="pick_student">Pick someone</button>
@@ -625,7 +632,7 @@ function renderTools() {
     <div id="diceFaces" style="display:flex;flex-direction:column;gap:0.4rem">${faces
       .map((f, i) => `<label style="display:flex;align-items:center;gap:0.5rem">
         <span style="font-size:1.6rem;line-height:1;width:1.4rem;text-align:center">${DICE_GLYPHS[i]}</span>
-        <span style="font-size:0.72rem;font-weight:800;color:#9db1ff;width:3rem;flex:0 0 auto">Face ${i + 1}</span>
+        <span style="font-size:0.72rem;font-weight:800;color:#a3bde4;width:3rem;flex:0 0 auto">Face ${i + 1}</span>
         <input class="rin dice-in" data-face="${i}" maxlength="200" value="${esc(f)}" placeholder="Question for face ${i + 1}" style="margin:0;flex:1;min-width:0" /></label>`)
       .join("")}</div>
     <div class="timer-row" style="margin-top:0.6rem"><button class="rbtn accent" id="diceRoll">🎲 Roll the dice</button></div>
@@ -638,7 +645,9 @@ function renderTools() {
       ${state.focus ? `<button class="rbtn" data-act="clear_focus">✕ Clear screen</button>` : ""}
     </div>`;
   const tg = $("timerGo");
-  if (tg) tg.onclick = () => { const s = parseInt($("timerCustom").value, 10); if (s >= 5) send({ type: "timer_start", seconds: s }); };
+  if (tg) tg.onclick = () => { const s = parseInt($("timerCustom").value, 10); if (s >= 5) send({ type: "timer_start", seconds: s, big: remoteTimerBig() }); };
+  const tb = $("timerBigPref");
+  if (tb) tb.onchange = () => { try { localStorage.setItem("eyesup_timer_big", tb.checked ? "1" : "0"); } catch {} };
   $("groupsGo").onclick = () => send({ type: "make_groups", n: parseInt($("groupN").value, 10) || 2, by: $("groupBy").value });
   const diceIn = [...main.querySelectorAll(".dice-in")];
   const diceFacesOf = () => diceIn.map((i) => i.value.trim());

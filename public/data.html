@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0e2445" />
 <title>Eyes Up — Data</title>
 <link rel="stylesheet" href="/shared.css" />
 <style>
@@ -12,13 +13,14 @@
     align-items: center;
     gap: 1rem;
     padding: 0.9rem 1.5rem;
-    background: var(--surface);
-    border-bottom: 1px solid var(--line);
+    background: var(--navy);
+    color: var(--navy-text);
+    border-bottom: 1px solid var(--navy-2);
     position: sticky;
     top: 0;
     z-index: 10;
   }
-  header .wordmark { font-size: 1.2rem; }
+  header .wordmark { font-size: 1.2rem; color: #fff; }
   header .spacer { flex: 1; }
   header a {
     text-decoration: none;
@@ -63,7 +65,7 @@
   .lchart { display: flex; align-items: flex-end; gap: 10px; height: 190px; padding-top: 1.4rem; overflow-x: auto; }
   .lbar { flex: 1; min-width: 46px; max-width: 90px; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
   .lbar .stack { width: 100%; display: flex; flex-direction: column; justify-content: flex-end; height: 130px; position: relative; }
-  .lbar .joined { background: #e3e6f5; border-radius: 6px 6px 0 0; width: 100%; position: absolute; bottom: 0; }
+  .lbar .joined { background: #dfe6f0; border-radius: 6px 6px 0 0; width: 100%; position: absolute; bottom: 0; }
   .lbar .part { background: var(--accent); border-radius: 6px 6px 0 0; width: 100%; position: absolute; bottom: 0; transition: background 0.15s ease; }
   .lbar:hover .part, .lbar.sel .part { background: var(--accent-ink); }
   .lbar.sel .lab { color: var(--accent-ink); }
@@ -73,14 +75,14 @@
   /* mode mix */
   .mix-row { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.45rem; font-size: 0.88rem; }
   .mix-row .nm { min-width: 170px; font-weight: 700; }
-  .mix-row .track { flex: 1; height: 14px; background: #eef0f6; border-radius: 8px; overflow: hidden; }
-  .mix-row .fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, var(--accent), #7b93ff); }
+  .mix-row .track { flex: 1; height: 14px; background: #e9eef5; border-radius: 8px; overflow: hidden; }
+  .mix-row .fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, var(--accent), #7fa3dc); }
   .mix-row .n { min-width: 2.4ch; text-align: right; font-weight: 800; }
 
   /* lesson detail */
   .ichart { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding-top: 1.6rem; overflow-x: auto; }
   .ibar { flex: 1; min-width: 34px; max-width: 64px; display: flex; flex-direction: column; align-items: center; }
-  .ibar .bar { width: 100%; background: linear-gradient(180deg, #7b93ff, var(--accent)); border-radius: 6px 6px 0 0; position: relative; }
+  .ibar .bar { width: 100%; background: linear-gradient(180deg, #7fa3dc, var(--accent)); border-radius: 6px 6px 0 0; position: relative; }
   .ibar .cnt { font-size: 0.72rem; font-weight: 800; margin-top: 0.25rem; }
   .ibar .ic { font-size: 1rem; margin-top: 0.05rem; }
   .ibar[title] { cursor: default; }
@@ -95,9 +97,9 @@
     white-space: nowrap;
   }
   .stab th:hover { color: var(--accent-ink); }
-  .stab td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #efede6; }
+  .stab td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #e5eaf2; }
   .stab .bar-cell { width: 40%; }
-  .stab .pbarr { height: 10px; background: #eef0f6; border-radius: 6px; overflow: hidden; }
+  .stab .pbarr { height: 10px; background: #e9eef5; border-radius: 6px; overflow: hidden; }
   .stab .pfill { height: 100%; border-radius: 6px; }
   .p-hi { background: #2f9e44; }
   .p-mid { background: #e8a13c; }
@@ -142,7 +144,7 @@
   .share-link {
     font-size: 0.8rem;
     color: var(--accent-ink);
-    background: #eceffe;
+    background: #e6edf7;
     border-radius: 8px;
     padding: 0.35rem 0.6rem;
     word-break: break-all;

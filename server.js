@@ -1924,6 +1924,13 @@ async function handle(ws, msg) {
   if (ws.meta.role !== "teacher") {
     // The projector often runs on an interactive whiteboard: allow
     // tap-to-spotlight straight from the board — and only that.
+    if (ws.meta.role === "projector" && type === "timer_big") {
+      // Tapping the big countdown on an interactive board shrinks it.
+      if (session.timer) {
+        session.timer.big = typeof msg.on === "boolean" ? msg.on : !session.timer.big;
+        broadcast(session);
+      }
+    }
     if (ws.meta.role === "projector" && type === "toggle_names") {
       session.showNames = !session.showNames;
       const itx = session.interaction;
@@ -2059,7 +2066,13 @@ async function handle(ws, msg) {
     /* ---- room tools ---- */
     case "timer_start": {
       const s = Math.min(3600, Math.max(5, Math.round(msg.seconds || 60)));
-      session.timer = { seconds: s, endsAt: Date.now() + s * 1000, paused: false, remaining: null };
+      session.timer = { seconds: s, endsAt: Date.now() + s * 1000, paused: false, remaining: null, big: msg.big === true };
+      break;
+    }
+    case "timer_big": {
+      // Full-screen countdown on the projector, or back to the small pill.
+      const t = session.timer;
+      if (t) t.big = typeof msg.on === "boolean" ? msg.on : !t.big;
       break;
     }
     case "timer_pause": {

@@ -43,7 +43,7 @@ function boardSvg(items, kind, width) {
         : `<circle cx="${it.x}" cy="${it.y}" r="3.4" fill="${COUNTER_COLORS[it.k] || "#999"}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`
     )
     .join("");
-  return `<svg viewBox="0 0 100 62" style="width:${width};background:#f4f2ea;border-radius:10px" aria-label="counter board">${inner}</svg>`;
+  return `<svg viewBox="0 0 100 62" style="width:${width};background:#eef3fa;border-radius:10px" aria-label="counter board">${inner}</svg>`;
 }
 
 function phonCat(p) {
@@ -54,7 +54,7 @@ function phonCat(p) {
   return "let";
 }
 
-const CLOUD_COLORS = ["#e9ecff", "#9db1ff", "#8fd6a9", "#edc27a", "#e0a7f0", "#7fd0d4", "#f4f2ea", "#c4cdfb"];
+const CLOUD_COLORS = ["#e6edf7", "#a3bde4", "#8fd6a9", "#edc27a", "#e0a7f0", "#7fd0d4", "#eef3fa", "#c2d0e6"];
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -279,10 +279,35 @@ function animateDice(n, rollId) {
 
 function updateTimerOverlay() {
   const el = document.getElementById("timerOverlay");
+  const full = document.getElementById("timerFull");
   const t = state?.timer;
-  if (!t) { el.classList.remove("show", "urgent"); return; }
+  if (!t) {
+    el.classList.remove("show", "urgent");
+    full.classList.remove("show", "urgent", "done");
+    return;
+  }
   const left = t.paused ? t.remaining : Math.max(0, t.endsAt - Date.now());
   const s = Math.ceil(left / 1000);
+  const clock = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+  if (t.big) {
+    // Full screen: giant digits, a draining bar, tap to shrink.
+    el.classList.remove("show", "urgent");
+    full.classList.add("show");
+    full.classList.toggle("urgent", left > 0 && left <= 10000);
+    full.classList.toggle("done", left <= 0);
+    const pct = t.seconds ? Math.max(0, Math.min(100, (left / (t.seconds * 1000)) * 100)) : 0;
+    const html = `
+      <div class="tf-label">${left <= 0 ? "Timer" : "Time left"}</div>
+      <div class="tf-digits">${left <= 0 ? "⏰ Time's up" : clock}</div>
+      <div class="tf-bar"><div class="tf-fill" style="width:${pct}%"></div></div>
+      ${t.paused && left > 0 ? `<div class="tf-paused">⏸ Paused</div>` : ""}
+      <div class="tf-hint">Tap to make the timer small</div>`;
+    if (full._html !== html) { full.innerHTML = html; full._html = html; }
+    full.onclick = () => send({ type: "timer_big", on: false });
+    return;
+  }
+  full.classList.remove("show", "urgent", "done");
   el.classList.add("show");
   el.classList.toggle("urgent", left > 0 && left <= 10000);
   el.innerHTML =
@@ -482,8 +507,8 @@ function renderMindmap(itx, agg) {
         font-size="${n.size}" font-weight="800" fill="${n.color}"
         style="animation:fade-in 0.5s ${(i % 10) * 0.05}s ease both">${esc(n.word)}${n.count > 1 ? ` ×${n.count}` : ""}</text>`).join("")}
     <g>
-      <ellipse cx="${cx}" cy="${cy}" rx="${Math.min(190, 40 + center.length * 7)}" ry="52" fill="#1d2140" stroke="#7b93ff" stroke-width="2"/>
-      <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="24" font-weight="800" fill="#f4f2ea">${esc(center.length > 40 ? center.slice(0, 38) + "…" : center)}</text>
+      <ellipse cx="${cx}" cy="${cy}" rx="${Math.min(190, 40 + center.length * 7)}" ry="52" fill="#0f2a52" stroke="#7fa3dc" stroke-width="2"/>
+      <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="24" font-weight="800" fill="#eef3fa">${esc(center.length > 40 ? center.slice(0, 38) + "…" : center)}</text>
     </g>
   </svg>`;
 }
@@ -493,7 +518,7 @@ function renderVenn(agg) {
   const W = 1200, H = 640, cy = 330, r = 275;
   const cxA = 430, cxB = 770;
   const anchors = [285, 600, 915]; // A-only, both, B-only
-  const colors = ["#aab8ff", "#8fd6a9", "#edc27a"];
+  const colors = ["#b0c6e8", "#8fd6a9", "#edc27a"];
   const CAP = 9, LH = 42;
 
   const regionWords = (list, x, color) => {
@@ -514,9 +539,9 @@ function renderVenn(agg) {
 
   const empty = agg.regions.every((reg) => !reg.length);
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:62vh" role="img" aria-label="class venn diagram">
-    <circle cx="${cxA}" cy="${cy}" r="${r}" fill="rgba(111,134,255,0.16)" stroke="#7b93ff" stroke-width="3"/>
+    <circle cx="${cxA}" cy="${cy}" r="${r}" fill="rgba(111,134,255,0.16)" stroke="#7fa3dc" stroke-width="3"/>
     <circle cx="${cxB}" cy="${cy}" r="${r}" fill="rgba(232,161,60,0.13)" stroke="#edc27a" stroke-width="3"/>
-    <text x="${cxA - 90}" y="34" text-anchor="middle" font-size="30" font-weight="800" fill="#aab8ff">${esc(agg.labels[0])}</text>
+    <text x="${cxA - 90}" y="34" text-anchor="middle" font-size="30" font-weight="800" fill="#b0c6e8">${esc(agg.labels[0])}</text>
     <text x="${cxB + 90}" y="34" text-anchor="middle" font-size="30" font-weight="800" fill="#edc27a">${esc(agg.labels[1])}</text>
     ${empty ? `<text x="600" y="${cy}" text-anchor="middle" font-size="24" fill="var(--chalk-dim)">Ideas land here as the class sorts them…</text>` : ""}
     ${agg.regions.map((list, i) => regionWords(list, anchors[i], colors[i])).join("")}

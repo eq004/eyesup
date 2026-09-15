@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0e2445" />
 <title>Eyes Up — Lesson Report</title>
 <link rel="stylesheet" href="/shared.css" />
 <style>
@@ -59,7 +60,7 @@
   .dist { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
   .dist .row { display: flex; align-items: center; gap: 0.7rem; font-size: 0.9rem; }
   .dist .lbl { min-width: 130px; font-weight: 700; }
-  .dist .track { flex: 1; height: 12px; background: #eef0f4; border-radius: 6px; overflow: hidden; }
+  .dist .track { flex: 1; height: 12px; background: #e8edf4; border-radius: 6px; overflow: hidden; }
   .dist .fill { height: 100%; background: var(--accent); border-radius: 6px; }
   .dist .num { min-width: 2ch; text-align: right; color: var(--ink-soft); }
   ol.answers, ol.ranked-list { margin: 0.5rem 0 0 1.2rem; }
@@ -172,7 +173,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 
 /* Packed word cloud for print — same spiral layout the projector uses,
    in report-friendly colours. */
-const CLOUD_INK = ["#3d5af1", "#191c26", "#2f9e44", "#c07d10", "#7048ba", "#0e7490"];
+const CLOUD_INK = ["#1d3f78", "#0f1c30", "#2f9e44", "#c07d10", "#7048ba", "#0e7490"];
 function cloudSvg(wordList) {
   const words = [...wordList].sort((a, b) => b.count - a.count).slice(0, 50);
   if (!words.length) return "";

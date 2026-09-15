@@ -768,7 +768,7 @@ function renderInteraction(itx) {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       canvas.width = Math.min(1800, Math.round(bw * dpr));
       canvas.height = Math.round(canvas.width * (bh / bw));
-      ctx.strokeStyle = "#191c26";
+      ctx.strokeStyle = "#0f1c30";
       ctx.lineWidth = Math.max(3, Math.round(canvas.width / 180));
       ctx.lineCap = "round"; ctx.lineJoin = "round";
 
@@ -843,7 +843,7 @@ function renderInteraction(itx) {
         const out = document.createElement("canvas");
         out.width = canvas.width; out.height = canvas.height;
         const o = out.getContext("2d");
-        o.fillStyle = "#fbfaf5"; o.fillRect(0, 0, out.width, out.height);
+        o.fillStyle = "#f7f9fc"; o.fillRect(0, 0, out.width, out.height);
         const W = out.width, H = out.height, px = (p) => (p / 100) * W, py = (p) => (p / 100) * H;
         for (const it of items) {
           if (it.k === 4) { // a ten: striped rod
@@ -1113,7 +1113,7 @@ function renderInteraction(itx) {
         img.onload = () => { bg = img; blank(); };
         img.src = itx.imageUrl;
       }
-      ctx.strokeStyle = anno ? "#e02d2d" : "#191c26";
+      ctx.strokeStyle = anno ? "#e02d2d" : "#0f1c30";
       ctx.lineWidth = Math.max(3, Math.round(canvas.width / 150)); // same feel at any resolution
       ctx.lineCap = "round";
       ctx.lineJoin = "round";

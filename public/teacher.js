@@ -124,7 +124,7 @@ function boardSvg(items, kind, width) {
         : `<circle cx="${it.x}" cy="${it.y}" r="3.4" fill="${COUNTER_COLORS[it.k] || "#999"}" stroke="rgba(0,0,0,0.25)" stroke-width="0.5"/>`
     )
     .join("");
-  return `<svg viewBox="0 0 100 62" style="width:${width};background:#f2f0e9;border-radius:8px;border:1px solid #ddd8cc" aria-label="counter board">${inner}</svg>`;
+  return `<svg viewBox="0 0 100 62" style="width:${width};background:#eef2f7;border-radius:8px;border:1px solid #d5dde8" aria-label="counter board">${inner}</svg>`;
 }
 
 // Same forgiving marker the server uses (case/space-insensitive, numeric-aware).
@@ -181,7 +181,7 @@ function wakeNote(show) {
   if (el) return;
   el = document.createElement("div");
   el.id = "wakeNote";
-  el.style.cssText = "position:fixed;left:50%;top:0.8rem;transform:translateX(-50%);z-index:9999;background:#191c26;color:#fff;padding:0.6rem 1rem;border-radius:12px;font-size:0.85rem;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,0.25)";
+  el.style.cssText = "position:fixed;left:50%;top:0.8rem;transform:translateX(-50%);z-index:9999;background:#0f1c30;color:#fff;padding:0.6rem 1rem;border-radius:12px;font-size:0.85rem;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,0.25)";
   el.textContent = "⏳ Waking the server up… first visit of the day can take up to a minute. Hang tight.";
   document.body.appendChild(el);
 }
@@ -399,7 +399,7 @@ function openComposer(key, keepImage) {
     multiSel.innerHTML = `
       <option value="1">🙌 Multiple contributions each</option>
       <option value="0">1️⃣ One contribution each</option>`;
-    multiSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    multiSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(multiSel);
   }
   if (m.clozeUI) {
@@ -407,8 +407,8 @@ function openComposer(key, keepImage) {
     wrap.innerHTML = `
       <textarea id="clozeText" rows="5" maxlength="1500"
         placeholder="Paste the passage and put [square brackets] around each hidden word.&#10;e.g. Plants make food by [photosynthesis] using light from the [sun]."
-        style="width:100%;margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.6rem 0.8rem;font-size:0.9rem;background:#fff;resize:vertical"></textarea>
-      <select id="clozeMode" style="margin-top:0.45rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem">
+        style="width:100%;margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.6rem 0.8rem;font-size:0.9rem;background:#fff;resize:vertical"></textarea>
+      <select id="clozeMode" style="margin-top:0.45rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem">
         <option value="type">⌨️ Students type the missing words</option>
         <option value="bank">🧺 Word bank — students pick from your bracketed words</option>
       </select>`;
@@ -420,21 +420,21 @@ function openComposer(key, keepImage) {
     kindSel.innerHTML = `
       <option value="colors">🔴 Coloured counters</option>
       <option value="base10">🔟 Tens & ones (place value)</option>`;
-    kindSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    kindSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(kindSel);
   }
   if (m.tableUI) {
     const rowsSel = document.createElement("select");
     rowsSel.id = "rowsSel";
     rowsSel.innerHTML = `<option value="1">1 row of answers</option><option value="2">2 rows</option><option value="3">3 rows</option>`;
-    rowsSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    rowsSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(rowsSel);
   }
   if (m.sprintUI) {
     const durSel = document.createElement("select");
     durSel.id = "durSel";
     durSel.innerHTML = `<option value="60">⏱ 1 minute</option><option value="120">⏱ 2 minutes</option><option value="180">⏱ 3 minutes</option>`;
-    durSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    durSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(durSel);
   }
   if (m.workingUI) {
@@ -451,7 +451,7 @@ function openComposer(key, keepImage) {
     modSel.innerHTML = `
       <option value="0">⚡ Notes go straight to the board</option>
       <option value="1">🛡 I approve notes before they appear</option>`;
-    modSel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    modSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(modSel);
   }
   if (m.hasCorrect) {
@@ -460,7 +460,7 @@ function openComposer(key, keepImage) {
     sel.innerHTML =
       `<option value="">Correct answer: not set</option>` +
       ["A", "B", "C", "D", "E"].slice(0, m.opts.max).map((L, i) => `<option value="${i}">Correct answer: ${L}</option>`).join("");
-    sel.style.cssText = "margin-top:0.55rem;border:1px solid #c9d1fb;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    sel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(sel);
   }
   if (m.pairs) {
@@ -604,6 +604,7 @@ function renderTools() {
       ${t.paused
         ? `<button class="btn mini" data-tact="timer_resume">▶ Resume</button>`
         : `<button class="btn mini" data-tact="timer_pause">⏸ Pause</button>`}
+      <button class="btn mini ${t.big ? "primary-mini" : ""}" data-tact="timer_big" title="Show the countdown full screen on the projector, or shrink it back">${t.big ? "⤡ Make small" : "⛶ Full screen"}</button>
       <button class="btn mini" data-tact="timer_clear">✕ Clear</button>`;
   } else {
     controls.innerHTML = "";
@@ -1141,12 +1142,18 @@ $("composer").addEventListener("keydown", (e) => {
   }
 });
 
+// Remember whether this teacher likes the countdown full screen.
+const timerBig = () => $("timerBigPref").checked;
+try { $("timerBigPref").checked = localStorage.getItem("eyesup_timer_big") === "1"; } catch {}
+$("timerBigPref").onchange = () => {
+  try { localStorage.setItem("eyesup_timer_big", timerBig() ? "1" : "0"); } catch {}
+};
 document.querySelectorAll("[data-timer]").forEach(
-  (b) => (b.onclick = () => send({ type: "timer_start", seconds: +b.dataset.timer }))
+  (b) => (b.onclick = () => send({ type: "timer_start", seconds: +b.dataset.timer, big: timerBig() }))
 );
 $("timerGo").onclick = () => {
   const s = parseInt($("timerCustom").value, 10);
-  if (s >= 5) send({ type: "timer_start", seconds: s });
+  if (s >= 5) send({ type: "timer_start", seconds: s, big: timerBig() });
 };
 $("pickBtn").onclick = () => send({ type: "pick_student" });
 $("namesBtn").onclick = () => send({ type: "toggle_names" });

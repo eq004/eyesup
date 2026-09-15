@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0e2445" />
 <title>Eyes Up — the teacher holds the room</title>
 <link rel="stylesheet" href="/shared.css" />
 <style>
@@ -14,12 +15,12 @@
     justify-content: center;
     padding: 2rem 1.25rem;
     background:
-      radial-gradient(1200px 600px at 80% -10%, #eef0ff 0%, transparent 60%),
-      var(--paper);
+      radial-gradient(1200px 700px at 80% -10%, var(--navy-2) 0%, transparent 60%),
+      var(--navy);
   }
   .hero { text-align: center; max-width: 640px; animation: rise 0.5s ease both; }
-  .hero .wordmark { font-size: clamp(2.2rem, 6vw, 3.2rem); }
-  .tagline { margin-top: 0.5rem; font-size: 1.05rem; color: var(--ink-soft); }
+  .hero .wordmark { font-size: clamp(2.2rem, 6vw, 3.2rem); color: #fff; }
+  .tagline { margin-top: 0.5rem; font-size: 1.05rem; color: var(--navy-text); }
 
   /* students first: code entry is the hero */
   .join-box {
@@ -82,7 +83,7 @@
     transition: transform 0.12s ease, box-shadow 0.12s ease;
   }
   a.card:hover { transform: translateY(-2px); box-shadow: var(--shadow); color: var(--ink); }
-  .foot { margin-top: 2.6rem; color: var(--muted); font-size: 0.88rem; text-align: center; }
+  .foot { margin-top: 2.6rem; color: var(--navy-text); font-size: 0.88rem; text-align: center; }
 </style>
 </head>
 <body>

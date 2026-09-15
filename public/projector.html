@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0e2445" />
 <title>Eyes Up — Classroom Screen</title>
 <link rel="stylesheet" href="/shared.css" />
 <style>
@@ -31,7 +32,7 @@
     font-weight: 800;
     letter-spacing: 0.25em;
     color: var(--chalk);
-    background: rgba(123, 147, 255, 0.14);
+    background: rgba(138, 178, 240, 0.14);
     border: 1px solid var(--night-line);
     border-radius: 10px;
     padding: 0.3rem 0.9rem;
@@ -42,7 +43,7 @@
     color: var(--chalk-dim); background: rgba(255,255,255,0.05);
     border: 1px solid var(--night-line); border-radius: 10px; padding: 0.3rem 0.8rem;
   }
-  .names-btn.on { color: #fff; background: rgba(123, 147, 255, 0.35); border-color: #7b93ff; }
+  .names-btn.on { color: #fff; background: rgba(138, 178, 240, 0.35); border-color: #7fa3dc; }
   .bar .dot { width: 9px; height: 9px; border-radius: 50%; background: #5fd38a; animation: pulse-dot 2s infinite; }
 
   main {
@@ -91,7 +92,7 @@
     font-weight: 800;
     letter-spacing: 0.22em;
     line-height: 1;
-    background: linear-gradient(135deg, #aab8ff, #e8ebff);
+    background: linear-gradient(135deg, #b0c6e8, #e6eef9);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -156,7 +157,7 @@
   .pbar .track { height: clamp(18px, 2.6vw, 30px); background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; }
   .pbar .fill {
     height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, #6f86ff, #9db1ff);
+    background: linear-gradient(90deg, #5c83c2, #a3bde4);
     transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
     min-width: 0;
   }
@@ -228,11 +229,11 @@
     box-shadow: 0 12px 32px rgba(0,0,0,0.35);
   }
   .sketch-card img { display: block; width: clamp(160px, 18vw, 240px); border-radius: 10px; }
-  .sketch-cap { max-width: clamp(160px, 18vw, 240px); margin-top: 0.5rem; font-size: 0.85rem; line-height: 1.35; color: #191c26; text-align: left; overflow-wrap: anywhere;
+  .sketch-cap { max-width: clamp(160px, 18vw, 240px); margin-top: 0.5rem; font-size: 0.85rem; line-height: 1.35; color: #0f1c30; text-align: left; overflow-wrap: anywhere;
     display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .sketch-more { display: flex; gap: 4px; margin-top: 4px; max-width: clamp(160px, 18vw, 240px); flex-wrap: wrap; }
   .sketch-more img { width: calc((100% - 12px) / 4); aspect-ratio: 1; object-fit: cover; border-radius: 6px; }
-  .sketch-cap.big { max-width: min(70vw, 900px); margin: 0.9rem auto 0; font-size: clamp(1rem, 1.8vw, 1.5rem); text-align: center; color: #e8e8f0;
+  .sketch-cap.big { max-width: min(70vw, 900px); margin: 0.9rem auto 0; font-size: clamp(1rem, 1.8vw, 1.5rem); text-align: center; color: #e6edf7;
     display: block; -webkit-line-clamp: unset; overflow: visible; white-space: pre-wrap; }
 
   .tappable { cursor: pointer; }
@@ -335,13 +336,34 @@
   .timer-overlay.urgent { color: #ff8f8f; border-color: #d05f5f; animation: pulse-dot 1s infinite; }
   .timer-overlay .paused-tag { font-size: 0.4em; color: var(--chalk-dim); vertical-align: middle; margin-left: 0.6em; }
 
+  /* full-screen countdown */
+  .timer-full {
+    position: fixed; inset: 0; z-index: 45; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 2vh;
+    background: radial-gradient(1400px 800px at 50% 30%, var(--night-2) 0%, transparent 70%), var(--night);
+    color: var(--chalk); cursor: pointer; animation: fade-in 0.25s ease both;
+  }
+  .timer-full.show { display: flex; }
+  .timer-full .tf-label { font-size: clamp(1rem, 2.4vw, 2rem); font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: var(--glow); }
+  .timer-full .tf-digits {
+    font-family: var(--font-display); font-weight: 800; line-height: 0.95; letter-spacing: -0.03em;
+    font-size: clamp(7rem, 30vw, 30rem); font-variant-numeric: tabular-nums;
+  }
+  .timer-full .tf-bar { width: min(80vw, 1100px); height: clamp(10px, 1.6vh, 18px); border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+  .timer-full .tf-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #5c83c2, #a3bde4); transition: width 0.25s linear; }
+  .timer-full .tf-paused { font-size: clamp(1.2rem, 3vw, 2.4rem); font-weight: 800; color: var(--chalk-dim); }
+  .timer-full .tf-hint { position: absolute; bottom: 3vh; font-size: clamp(0.8rem, 1.3vw, 1.05rem); color: var(--chalk-dim); }
+  .timer-full.urgent .tf-digits { color: #ff8f8f; animation: pulse-dot 1s infinite; }
+  .timer-full.urgent .tf-fill { background: linear-gradient(90deg, #d05f5f, #e79191); }
+  .timer-full.done .tf-digits { font-size: clamp(3rem, 10vw, 11rem); white-space: nowrap; max-width: 94vw; color: #ff8f8f; }
+
   /* spotlight */
   .spot-name {
     font-family: var(--font-display);
     font-size: clamp(3.5rem, 11vw, 8.5rem);
     font-weight: 700;
     letter-spacing: -0.02em;
-    background: linear-gradient(135deg, #aab8ff, #f0e6c8);
+    background: linear-gradient(135deg, #b0c6e8, #e7eef9);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -399,7 +421,7 @@
     height: clamp(14px, 1.6vw, 20px);
     margin-left: -9px;
     border-radius: 50%;
-    background: #9db1ff;
+    background: #a3bde4;
     box-shadow: 0 0 14px rgba(155, 177, 255, 0.7);
     animation: pop-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
@@ -419,7 +441,7 @@
     font-size: clamp(1.1rem, 2.4vw, 1.9rem);
     font-weight: 800;
   }
-  .cont-ends span:first-child { color: #aab8ff; }
+  .cont-ends span:first-child { color: #b0c6e8; }
   .cont-ends span:last-child { color: #edc27a; }
 
   /* smiley review */
@@ -477,8 +499,8 @@
   /* tables */
   .proj-table { border-collapse: collapse; text-align: left; width: 100%; }
   .proj-table th {
-    background: rgba(123, 147, 255, 0.18);
-    color: #c4cdfb;
+    background: rgba(138, 178, 240, 0.18);
+    color: #c2d0e6;
     padding: 0.4em 0.6em;
     border: 1px solid var(--night-line);
     font-size: 0.85em;
@@ -563,7 +585,7 @@
     display: none;
     align-items: center;
     gap: 0.7rem;
-    background: rgba(20, 23, 45, 0.9);
+    background: rgba(7, 23, 47, 0.92);
     border: 1px solid var(--night-line);
     border-radius: 14px;
     padding: 0.55rem 0.8rem;
@@ -608,6 +630,7 @@
   </div>
   <main><div class="stage" id="stage"></div></main>
   <div class="timer-overlay" id="timerOverlay"></div>
+  <div class="timer-full" id="timerFull" title="Tap to make the timer small"></div>
   <div class="join-badge" id="joinBadge"></div>
   <script src="/vendor/qrcode.js"></script>
   <script src="/projector.js"></script>

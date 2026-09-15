@@ -26,39 +26,39 @@
     it.mode === "counters" && it.counterKind === "base10" ? ["🔟", "Tens & Ones"] : META[it.mode] || ["▫️", it.mode];
 
   const CSS = `
-  .ins-note { color:#878da0; font-size:0.82rem; margin-bottom:0.9rem; }
-  .ins-card { background:#fff; border:1px solid #e6e4dd; border-radius:16px; box-shadow:0 1px 2px rgba(25,28,38,0.05),0 8px 24px rgba(25,28,38,0.07); padding:1.1rem 1.3rem; margin-bottom:1rem; animation:rise .35s ease both; }
+  .ins-note { color:#74829a; font-size:0.82rem; margin-bottom:0.9rem; }
+  .ins-card { background:#fff; border:1px solid #dbe2ec; border-radius:16px; box-shadow:0 1px 2px rgba(14,36,69,0.05),0 8px 24px rgba(14,36,69,0.07); padding:1.1rem 1.3rem; margin-bottom:1rem; animation:rise .35s ease both; }
   .ins-head { display:flex; align-items:baseline; gap:0.6rem; flex-wrap:wrap; }
-  .ins-tag { font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:#2941c8; background:#eceffe; border-radius:6px; padding:0.15rem 0.5rem; }
-  .ins-q { font-family:"Fraunces",Georgia,serif; font-size:1.15rem; font-weight:600; }
-  .ins-q i { color:#878da0; }
-  .ins-n { margin-left:auto; color:#878da0; font-size:0.8rem; white-space:nowrap; }
+  .ins-tag { font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:#15305c; background:#e6edf7; border-radius:6px; padding:0.15rem 0.5rem; }
+  .ins-q { font-family:"Plus Jakarta Sans","Manrope",sans-serif; font-size:1.15rem; font-weight:600; }
+  .ins-q i { color:#74829a; }
+  .ins-n { margin-left:auto; color:#74829a; font-size:0.8rem; white-space:nowrap; }
   .ins-body { margin-top:0.8rem; }
   .ins-bar { margin-bottom:0.5rem; font-size:0.88rem; }
   .ins-bar .t { display:flex; justify-content:space-between; font-weight:700; margin-bottom:0.15rem; }
-  .ins-bar .tr { height:12px; background:#eef0f6; border-radius:7px; overflow:hidden; }
-  .ins-bar .fl { height:100%; border-radius:7px; background:linear-gradient(90deg,#3d5af1,#7b93ff); }
+  .ins-bar .tr { height:12px; background:#e9eef5; border-radius:7px; overflow:hidden; }
+  .ins-bar .fl { height:100%; border-radius:7px; background:linear-gradient(90deg,#1d3f78,#7fa3dc); }
   .ins-bar.good .fl { background:#2f9e44; } .ins-bar.bad .fl { background:#d64545; }
   .ins-cloud { text-align:center; } .ins-cloud svg { max-height:300px; width:100%; }
   .ins-smiley { display:flex; justify-content:center; align-items:flex-end; gap:1.5rem; }
   .ins-smiley .c { text-align:center; } .ins-smiley .f { line-height:1.1; }
-  .ins-smiley .n { font-weight:800; margin-top:0.15rem; } .ins-smiley .p { color:#878da0; font-size:0.75rem; }
+  .ins-smiley .n { font-weight:800; margin-top:0.15rem; } .ins-smiley .p { color:#74829a; font-size:0.75rem; }
   .ins-list { list-style:none; padding:0; }
-  .ins-list li { border-left:3px solid #e6e4dd; padding:0.25rem 0 0.25rem 0.7rem; margin-bottom:0.3rem; font-size:0.9rem; overflow-wrap:anywhere; }
-  .ins-list li b.who { color:#4b5163; font-size:0.78rem; margin-right:0.4rem; }
-  .ins-more { color:#3d5af1; font-weight:700; font-size:0.85rem; cursor:pointer; background:none; border:none; padding:0.2rem 0; }
-  .ins-scale { position:relative; height:16px; background:linear-gradient(90deg,#eceffe,#dfe5ff); border-radius:9px; margin:1.4rem 0 0.3rem; }
+  .ins-list li { border-left:3px solid #dbe2ec; padding:0.25rem 0 0.25rem 0.7rem; margin-bottom:0.3rem; font-size:0.9rem; overflow-wrap:anywhere; }
+  .ins-list li b.who { color:#435169; font-size:0.78rem; margin-right:0.4rem; }
+  .ins-more { color:#1d3f78; font-weight:700; font-size:0.85rem; cursor:pointer; background:none; border:none; padding:0.2rem 0; }
+  .ins-scale { position:relative; height:16px; background:linear-gradient(90deg,#e6edf7,#dbe5f3); border-radius:9px; margin:1.4rem 0 0.3rem; }
   .ins-scale .avg { position:absolute; top:-11px; transform:translateX(-50%); font-size:1rem; color:#e8a13c; }
-  .ins-ends { display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700; color:#4b5163; }
+  .ins-ends { display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700; color:#435169; }
   .ins-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:0.8rem; }
-  .ins-col { background:#f6f5f1; border:1px solid #e6e4dd; border-radius:10px; padding:0.6rem 0.8rem; font-size:0.85rem; }
-  .ins-col b { display:block; color:#2941c8; margin-bottom:0.3rem; font-size:0.78rem; }
-  .ins-chip { display:inline-block; background:#eceffe; color:#2941c8; border-radius:999px; padding:0.15rem 0.6rem; font-weight:700; font-size:0.8rem; margin:0 0.25rem 0.3rem 0; }
+  .ins-col { background:#f1f4f9; border:1px solid #dbe2ec; border-radius:10px; padding:0.6rem 0.8rem; font-size:0.85rem; }
+  .ins-col b { display:block; color:#15305c; margin-bottom:0.3rem; font-size:0.78rem; }
+  .ins-chip { display:inline-block; background:#e6edf7; color:#15305c; border-radius:999px; padding:0.15rem 0.6rem; font-weight:700; font-size:0.8rem; margin:0 0.25rem 0.3rem 0; }
   .ins-gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:0.7rem; }
   .ins-gallery figure { margin:0; text-align:center; break-inside:avoid; }
-  .ins-gallery img { width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:10px; border:1px solid #e6e4dd; background:#fff; }
-  .ins-gallery p { font-size:0.78rem; text-align:left; margin:0.3rem 0 0; line-height:1.35; color:#191c26; }
-  .ins-gallery figcaption { font-size:0.75rem; font-weight:800; color:#4b5163; margin-top:0.2rem; }
+  .ins-gallery img { width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:10px; border:1px solid #dbe2ec; background:#fff; }
+  .ins-gallery p { font-size:0.78rem; text-align:left; margin:0.3rem 0 0; line-height:1.35; color:#0f1c30; }
+  .ins-gallery figcaption { font-size:0.75rem; font-weight:800; color:#435169; margin-top:0.2rem; }
   @media print {
     * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     .ins-card { break-inside: avoid; box-shadow: none; }
@@ -67,7 +67,7 @@
   }
   `;
 
-  const CLOUD_INK = ["#3d5af1", "#191c26", "#2f9e44", "#c07d10", "#7048ba", "#0e7490"];
+  const CLOUD_INK = ["#1d3f78", "#0f1c30", "#2f9e44", "#c07d10", "#7048ba", "#0e7490"];
   function cloudSvg(wordList) {
     const words = [...wordList].sort((a, b) => b.count - a.count).slice(0, 50);
     if (!words.length) return "";
@@ -152,7 +152,7 @@
     } else if (it.matchStats) {
       body = bars(it.matchStats.map((m) => ({ label: m.pair + (m.correctPct >= 50 ? " ✓" : ""), count: m.correctPct })));
     } else if (it.ranked) {
-      body = `<ol style="padding-left:1.3rem;font-weight:700">${it.ranked.map((r) => `<li>${esc(r.label)}${r.correctPct != null ? ` <small style="color:#878da0;font-weight:500">${r.correctPct}% placed it here</small>` : ""}</li>`).join("")}</ol>`;
+      body = `<ol style="padding-left:1.3rem;font-weight:700">${it.ranked.map((r) => `<li>${esc(r.label)}${r.correctPct != null ? ` <small style="color:#74829a;font-weight:500">${r.correctPct}% placed it here</small>` : ""}</li>`).join("")}</ol>`;
     } else if (it.distribution) {
       body = bars(it.distribution);
     } else if (it.images?.length && showNames) {
@@ -161,7 +161,7 @@
           ${im.text ? `<p>${esc(im.text)}</p>` : ""}${im.name ? `<figcaption>${esc(im.name)}</figcaption>` : ""}</figure>`)
         .join("")}</div>`;
     } else if (it.sketchCount != null) {
-      body = `<p style="color:#4b5163">${it.sketchCount} ${["image_drop", "image_caption", "image_long"].includes(it.mode) ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted${showNames ? " — no stored pictures for this activity." : "."}</p>`;
+      body = `<p style="color:#435169">${it.sketchCount} ${["image_drop", "image_caption", "image_long"].includes(it.mode) ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted${showNames ? " — no stored pictures for this activity." : "."}</p>`;
     }
     const answers = ["smiley"].includes(it.mode) || it.words ? "" : answerList(it, showNames);
     const extraAnswers = (it.words || it.mode === "smiley") && showNames && it.students?.length ? answerList(it, showNames) : "";

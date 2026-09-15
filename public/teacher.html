@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0e2445" />
 <title>Eyes Up — Teacher</title>
 <link rel="stylesheet" href="/shared.css" />
 <style>
@@ -11,7 +12,8 @@
   /* ---------- header ---------- */
   header {
     padding: 0.7rem 1.4rem 0.75rem;
-    background: var(--surface);
+    background: var(--navy);
+    color: #fff;
     border-bottom: 1px solid var(--line);
     position: sticky;
     top: 0;
@@ -19,7 +21,11 @@
   }
   .hrow { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
   .hrow + .hrow { margin-top: 0.55rem; }
-  header .wordmark { font-size: 1.25rem; }
+  header .wordmark { font-size: 1.3rem; color: #fff; }
+  header #whoAmI { color: var(--navy-text) !important; }
+  /* white buttons and the dropdown keep dark text on the navy bar */
+  header .btn { color: var(--ink); }
+  header .menu { color: var(--ink); }
   #titleInput {
     border: 1px dashed transparent;
     border-radius: 8px;
@@ -84,7 +90,7 @@
   .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .btn.primary:hover { background: var(--accent-ink); }
   .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
-  .btn.dark:hover { background: #2c3040; }
+  .btn.dark:hover { background: #16345f; }
   .btn.danger-ghost { color: var(--red); }
   .btn.danger-ghost:hover { background: var(--red-soft); }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -100,8 +106,9 @@
     font-weight: 800; font-size: 0.92rem; color: var(--ink-soft);
     border: 1px solid transparent; text-decoration: none;
   }
-  .view-tab:hover { background: var(--paper); color: var(--ink); }
-  .view-tab.on { background: var(--ink); color: #fff; }
+  .view-tab { color: var(--navy-text); }
+  .view-tab:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+  .view-tab.on { background: #fff; color: var(--navy); }
   .menu-wrap { position: relative; }
   .menu {
     position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
@@ -111,7 +118,8 @@
   .menu.show { display: block; }
   .menu button { display: block; width: 100%; text-align: left; padding: 0.6rem 0.8rem; border-radius: 8px; font-weight: 700; font-size: 0.9rem; }
   .menu button:hover { background: var(--paper); }
-  .classbar { border-top: 1px solid var(--line); padding-top: 0.6rem; }
+  /* the class controls sit on a white band under the navy bar */
+  .classbar { background: var(--surface); color: var(--ink); margin: 0.7rem -1.4rem -0.75rem; padding: 0.6rem 1.4rem; }
   .spacer { flex: 1; }
 
   /* ---------- lesson plans: library ---------- */
@@ -130,7 +138,7 @@
     box-shadow: var(--shadow); padding: 1.15rem 1.2rem 1rem;
     display: flex; flex-direction: column; gap: 0.4rem; animation: rise 0.3s ease both;
   }
-  .plan-card:hover { border-color: #c9d1fb; }
+  .plan-card:hover { border-color: #c7d4e8; }
   .plan-card.live { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
   .pc-live { align-self: flex-start; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: var(--accent); border-radius: 999px; padding: 0.15rem 0.55rem; }
   .pc-title { font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
@@ -166,7 +174,7 @@
     background: var(--surface); color: var(--ink);
   }
   .plan-title:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .plan-title::placeholder { color: #b9bccb; }
+  .plan-title::placeholder { color: #aeb9ca; }
   .editor-help { color: var(--ink-soft); margin: 0.6rem 0 1.2rem; }
   .step-list { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; padding: 0; margin: 0; }
   .step-card {
@@ -222,7 +230,7 @@
   .ls-chip.done .n { background: var(--green); border-color: var(--green); color: #fff; }
   .ls-chip.now { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; opacity: 1; }
   .ls-chip.now .n { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .ls-next { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg, #f3f5ff, #ffffff); border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .ls-next { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg, #eef3f9, #ffffff); border-top: 1px solid var(--line); flex-wrap: wrap; }
   .ls-next-info { flex: 1; min-width: 220px; }
   .ls-next-type { font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-ink); }
   .ls-next-q { font-size: 1.12rem; font-weight: 700; margin-top: 0.15rem; overflow-wrap: anywhere; }
@@ -290,7 +298,7 @@
     top: 0.35rem;
     right: 0.45rem;
     font-size: 0.95rem;
-    color: #c9c4b4;
+    color: #b6c1d1;
     cursor: pointer;
     line-height: 1;
   }
@@ -328,7 +336,7 @@
   .composer input[type="text"] {
     width: 100%;
     margin-top: 0.55rem;
-    border: 1px solid #c9d1fb;
+    border: 1px solid #c7d4e8;
     border-radius: 10px;
     padding: 0.65rem 0.85rem;
     font-size: 1rem;
@@ -340,7 +348,7 @@
   .composer .row { display: flex; gap: 0.6rem; margin-top: 0.8rem; align-items: center; flex-wrap: wrap; }
   .drop-zone {
     margin-top: 0.55rem;
-    border: 2px dashed #a9b6f7;
+    border: 2px dashed #9fb3d3;
     border-radius: 10px;
     padding: 1rem;
     text-align: center;
@@ -354,7 +362,7 @@
   .drop-hint {
     position: fixed;
     inset: 0;
-    background: rgba(61, 90, 241, 0.12);
+    background: rgba(29, 63, 120, 0.12);
     border: 4px dashed var(--accent);
     display: none;
     align-items: center;
@@ -452,6 +460,8 @@
   .tool-title { font-weight: 800; font-size: 0.88rem; display: flex; align-items: center; gap: 0.5rem; }
   .tool-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
   .tool-hint { color: var(--muted); font-size: 0.75rem; }
+  .timer-big-opt { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--ink-soft); font-weight: 700; cursor: pointer; }
+  .timer-big-opt input { width: 16px; height: 16px; accent-color: var(--accent); }
   .dice-faces { display: flex; flex-direction: column; gap: 0.3rem; }
   .dice-row { display: flex; align-items: center; gap: 0.45rem; }
   .dice-glyph { font-size: 1.45rem; line-height: 1; color: var(--ink); width: 1.3rem; text-align: center; }
@@ -525,7 +535,7 @@
   .note-chip.on-board { opacity: 1; box-shadow: 0 2px 6px rgba(0,0,0,0.12); border-color: var(--green); }
 
   .mini-table { border-collapse: collapse; font-size: 0.8rem; width: 100%; }
-  .mini-table th { background: var(--accent-soft); color: var(--accent-ink); padding: 0.3rem 0.5rem; text-align: left; border: 1px solid #d5dbf7; }
+  .mini-table th { background: var(--accent-soft); color: var(--accent-ink); padding: 0.3rem 0.5rem; text-align: left; border: 1px solid #d0dbec; }
   .mini-table td { border: 1px solid var(--line); padding: 0.3rem 0.5rem; vertical-align: top; }
 
   .phon-word { display: inline-flex; gap: 2px; flex-wrap: wrap; }
@@ -597,13 +607,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    color: #cfd3e6;
+    color: #c9d5e6;
     font-size: 0.78rem;
     font-weight: 700;
     padding: 0.15rem 0.7rem 0.5rem;
   }
   .phone-panel .phone-head button {
-    color: #cfd3e6;
+    color: #c9d5e6;
     font-size: 0.95rem;
     padding: 0.1rem 0.4rem;
     border-radius: 6px;
@@ -620,7 +630,7 @@
   /* ---------- summary overlay ---------- */
   .overlay {
     position: fixed; inset: 0;
-    background: rgba(20, 22, 34, 0.55);
+    background: rgba(8, 23, 47, 0.6);
     display: none;
     align-items: flex-start;
     justify-content: center;
@@ -769,6 +779,7 @@
               <input type="number" id="timerCustom" min="5" max="3600" placeholder="secs" />
               <button class="btn mini" id="timerGo">Go</button>
             </div>
+            <label class="timer-big-opt"><input type="checkbox" id="timerBigPref" /> ⛶ Start full screen on the projector</label>
             <div class="tool-row" id="timerControls"></div>
           </div>
           <div class="tool-block">
