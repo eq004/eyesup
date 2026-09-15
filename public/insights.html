@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#0e2445" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <title>Eyes Up — Lesson dashboard</title>
 <link rel="stylesheet" href="/shared.css" />
 <style>
@@ -21,7 +22,7 @@
     top: 0;
     z-index: 10;
   }
-  header .wordmark { font-size: 1.2rem; color: #fff; }
+  header .wordmark { font-size: 1.2rem; }
   .wrap { max-width: 900px; margin: 0 auto; padding: 1.4rem 1.5rem 4rem; }
   .muted { color: var(--muted); }
   .gate { text-align: center; padding: 5rem 1rem; }
@@ -52,7 +53,7 @@
 </head>
 <body>
   <header>
-    <span class="wordmark">Eyes Up <span class="eye">👀</span> <span id="pageKind" style="font-family:var(--font-ui);font-weight:600;font-size:0.9rem;color:var(--muted)">· Lesson dashboard</span></span>
+    <span class="wordmark inverted"><svg class="logo-eyes" viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="var(--eyeball)"/><circle cx="97.5" cy="19" r="3.6" fill="var(--eyeball)"/></svg><span class="logo-text">eyes up</span><span class="logo-sub" id="pageKind">· Lesson dashboard</span></span>
   </header>
   <div class="wrap" id="wrap"><div class="gate muted">Loading…</div></div>
   <script src="/insights-render.js"></script>

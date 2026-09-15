@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Eyes Up — Join</title>
 <link rel="stylesheet" href="/shared.css" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <style>
   body {
     min-height: 100vh; min-height: 100dvh;
@@ -17,7 +18,7 @@
     font-size: 0.85rem; color: var(--navy-text);
     background: var(--navy);
   }
-  .top .wordmark { font-size: 1rem; color: #fff; }
+  .top .wordmark { font-size: 1rem; }
   main {
     flex: 1;
     display: flex; flex-direction: column;
@@ -458,7 +459,7 @@
 </head>
 <body>
   <div class="top">
-    <span class="wordmark">Eyes Up 👀</span>
+    <span class="wordmark inverted"><svg class="logo-eyes" viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="var(--eyeball)"/><circle cx="97.5" cy="19" r="3.6" fill="var(--eyeball)"/></svg><span class="logo-text">eyes up</span></span>
     <span id="topInfo"></span>
   </div>
   <main><div class="screen" id="screen"></div></main>
