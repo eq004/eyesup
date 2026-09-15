@@ -20,7 +20,7 @@
     confidence: ["🎯", "Confidence Check"], smiley: ["😊", "Smiley Review"], scale: ["🎚️", "Scale"],
     example_nonexample: ["↔️", "Example / Non-example"], ranking: ["🔢", "Ranking"], put_in_order: ["🪜", "Put in Order"],
     match_up: ["🧩", "Match Up"], venn: ["◉", "Venn Diagram"], spelling: ["🔡", "Spelling Test"], cloze: ["▭", "Cloze Passage"],
-    working: ["🧮", "Working Out"], counters: ["🟠", "Counters"], sketch: ["🎨", "Sketch It"], annotate: ["🖍️", "Annotate"], image_drop: ["📥", "Drop an Image"], image_caption: ["📸", "Image + Writing"], maths_board: ["🧮", "Maths Board"], counters_draw: ["🟠", "Counters + Drawing"],
+    working: ["🧮", "Working Out"], counters: ["🟠", "Counters"], sketch: ["🎨", "Sketch It"], annotate: ["🖍️", "Annotate"], image_drop: ["📥", "Drop an Image"], image_caption: ["📸", "Image + Writing"], image_long: ["📓", "Image + Long Answer"], maths_board: ["🧮", "Maths Board"], counters_draw: ["🟠", "Counters + Drawing"],
   };
   const meta = (it) =>
     it.mode === "counters" && it.counterKind === "base10" ? ["🔟", "Tens & Ones"] : META[it.mode] || ["▫️", it.mode];
@@ -161,7 +161,7 @@
           ${im.text ? `<p>${esc(im.text)}</p>` : ""}${im.name ? `<figcaption>${esc(im.name)}</figcaption>` : ""}</figure>`)
         .join("")}</div>`;
     } else if (it.sketchCount != null) {
-      body = `<p style="color:#4b5163">${it.sketchCount} ${it.mode === "image_drop" || it.mode === "image_caption" ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted${showNames ? " — no stored pictures for this activity." : "."}</p>`;
+      body = `<p style="color:#4b5163">${it.sketchCount} ${["image_drop", "image_caption", "image_long"].includes(it.mode) ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted${showNames ? " — no stored pictures for this activity." : "."}</p>`;
     }
     const answers = ["smiley"].includes(it.mode) || it.words ? "" : answerList(it, showNames);
     const extraAnswers = (it.words || it.mode === "smiley") && showNames && it.students?.length ? answerList(it, showNames) : "";

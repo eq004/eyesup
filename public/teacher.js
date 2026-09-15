@@ -78,7 +78,9 @@ const MODES = {
                    ph: "What should they mark up? e.g. “Circle the error / label the diagram”" },
   image_drop:    { icon: "📥", name: "Drop an Image", hint: "Students drop, choose or photograph an image as their answer", opts: null,
                    ph: "What should they show? e.g. “A photo of your finished model”" },
-  image_caption: { icon: "📸", name: "Image + Writing", hint: "An image and a few sentences, submitted together", opts: null,
+  image_long:    { icon: "📓", name: "Image + Long Answer", hint: "Images plus a full written answer, sent together", opts: null,
+                   ph: "e.g. “Photograph each stage of your experiment and write up what happened”" },
+  image_caption: { icon: "📸", name: "Image + Writing", hint: "Images and a few sentences, submitted together", opts: null,
                    ph: "e.g. “Photograph your experiment and explain what happened”" },
 };
 
@@ -89,7 +91,7 @@ const CATEGORIES = [
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
-  { label: "🎨 Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption"] },
+  { label: "🎨 Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption", "image_long"] },
 ];
 
 const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
@@ -98,7 +100,7 @@ const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "maths_board" || m === "counters_draw" ||
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
   m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" ||
   m === "counters" || m === "table" || m === "plus_minus";
 
@@ -818,20 +820,30 @@ function renderLive() {
         .filter(Boolean)
         .join("<br/>")
     );
-  } else if (["sketch", "annotate", "image_drop", "image_caption", "maths_board", "counters_draw"].includes(itx.mode)) {
+  } else if (["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
+    const picsOf = (r) => (r.payload.images && r.payload.images.length ? r.payload.images : [r.payload.image]);
+    const totalPics = itx.responses.reduce((n, r) => n + picsOf(r).length, 0);
     const source = itx.imageUrl
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.78rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
     const hint = itx.responses.length
-      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["image_drop", "image_caption", "maths_board", "counters_draw"].includes(itx.mode) ? "a board" : "a drawing"} to blow it up on the projector; click again to shrink it back.
-         <a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all (${itx.responses.length}) as ZIP</a></p>`
+      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the projector; click again to shrink it back.
+         <a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a></p>`
       : "";
-    body = source + hint + revealCards((r) =>
-      `<img src="${r.payload.image}" alt="student drawing" data-spot="${r.studentId}"
-        style="height:90px;border-radius:8px;background:#fff;cursor:zoom-in;border:3px solid ${itx.spotlightId === r.studentId ? "var(--amber)" : "var(--line)"}" />
-       ${itx.spotlightId === r.studentId ? `<span style="font-size:0.72rem;font-weight:800;color:var(--amber)">◉ BIG ON SCREEN</span>` : ""}
-       ${r.payload.text ? `<div style="font-size:0.82rem;margin-top:0.3rem;max-width:260px">${esc(r.payload.text)}</div>` : ""}`
-    );
+    body = source + hint + revealCards((r) => {
+      const pics = picsOf(r);
+      const onScreen = pics.some((_, k) => itx.spotlightId === (k ? `${r.studentId}|${k}` : r.studentId));
+      return `<span style="display:inline-flex;gap:0.35rem;flex-wrap:wrap;vertical-align:top">${pics
+        .map((src, k) => {
+          const id = k ? `${r.studentId}|${k}` : r.studentId;
+          return `<img src="${src}" alt="student image ${k + 1}" data-spot="${id}" title="${pics.length > 1 ? `Image ${k + 1} of ${pics.length} — ` : ""}click to put it big on the projector"
+            style="height:${pics.length > 1 ? 70 : 90}px;border-radius:8px;background:#fff;cursor:zoom-in;border:3px solid ${itx.spotlightId === id ? "var(--amber)" : "var(--line)"}" />`;
+        })
+        .join("")}</span>
+       ${pics.length > 1 ? `<span style="font-size:0.72rem;font-weight:800;color:var(--muted)">${pics.length} images</span>` : ""}
+       ${onScreen ? `<span style="font-size:0.72rem;font-weight:800;color:var(--amber)">◉ BIG ON SCREEN</span>` : ""}
+       ${r.payload.text ? `<div style="font-size:0.82rem;margin-top:0.3rem;max-width:420px;max-height:9em;overflow:auto;white-space:pre-wrap">${esc(r.payload.text)}</div>` : ""}`;
+    });
   } else if (itx.mode === "phonics") {
     body = revealCards((r) => phonChips(r.payload.parts));
   } else if (itx.mode === "spelling" || itx.mode === "cloze") {
@@ -922,7 +934,7 @@ function renderLive() {
     (b) => (b.onclick = () => send({ type: "reveal", studentId: b.dataset.reveal }))
   );
   area.querySelectorAll("[data-spot]").forEach((img) => {
-    img.onclick = () => send({ type: "spotlight_response", studentId: img.dataset.spot });
+    img.onclick = (e) => { e.stopPropagation(); send({ type: "spotlight_response", studentId: img.dataset.spot }); };
   });
   area.querySelectorAll("[data-note]").forEach((b) => {
     b.onclick = () => {
@@ -951,7 +963,7 @@ function renderSummary(s) {
         d = it.distribution.map((x) => `${esc(x.label)}: ${x.count}`).join(" · ");
       if (it.ranked) d = "Class order: " + it.ranked.map((r) => esc(r.label)).join(" → ");
       if (it.matchStats) d = it.matchStats.map((m) => `${esc(m.pair)} (${m.correctPct}%)`).join(" · ");
-      if (it.sketchCount != null) d = it.mode === "image_drop" || it.mode === "image_caption" ? `${it.sketchCount} image${it.sketchCount === 1 ? "" : "s"} submitted` : `${it.sketchCount} sketch${it.sketchCount === 1 ? "" : "es"} drawn`;
+      if (it.sketchCount != null) d = ["image_drop", "image_caption", "image_long"].includes(it.mode) ? `${it.sketchCount} student${it.sketchCount === 1 ? "" : "s"} sent image${it.sketchCount === 1 ? "" : "s"} submitted` : `${it.sketchCount} sketch${it.sketchCount === 1 ? "" : "es"} drawn`;
       if (it.answers && it.answers.length)
         d = it.answers.slice(0, 5).map(esc).join(" — ") + (it.answers.length > 5 ? " …" : "");
       if (it.topWords && it.topWords.length)

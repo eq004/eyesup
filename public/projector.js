@@ -15,7 +15,7 @@ const MODE_TAGS = {
   one_word: "One Word", ask_question: "Your Questions",
   true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
   muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint — 60 seconds",
-  sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", maths_board: "Maths Board", counters_draw: "Counters + Drawing", spot_mistake: "Spot the Mistake",
+  sketch: "Sketch It", image_drop: "Drop an Image", image_caption: "Image + Writing", image_long: "Image + Long Answer", maths_board: "Maths Board", counters_draw: "Counters + Drawing", spot_mistake: "Spot the Mistake",
   example_nonexample: "Example or Non-example?", teach_back: "Teach It Back",
   match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
@@ -396,7 +396,7 @@ function renderInteraction(itx) {
           .join("")}</div>`
       : `<p class="waiting-note">Tables appear here as they're filled…</p>`;
   } else if (agg.sketches) {
-    body = renderSketches(agg, ["image_drop", "image_caption", "maths_board", "counters_draw"].includes(itx.mode));
+    body = renderSketches(agg, ["image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode));
   } else if (agg.fields) {
     body = renderStructured(agg);
   } else if (agg.revealed) {
@@ -405,7 +405,7 @@ function renderInteraction(itx) {
 
   // A spotlighted response (any type, except sketch which has its own stage)
   // replaces the body until tapped away.
-  if (agg?.spotlight && !["sketch", "annotate", "image_drop", "image_caption", "maths_board", "counters_draw"].includes(itx.mode)) {
+  if (agg?.spotlight && !["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
     body = renderGenericSpotlight(agg.spotlight);
   }
 
@@ -421,7 +421,10 @@ function renderInteraction(itx) {
   } else {
     stage.onclick = null;
     stage.querySelectorAll("[data-spot]").forEach((el) => {
-      el.onclick = () => send({ type: "spotlight_response", studentId: el.dataset.spot });
+      el.onclick = (e) => {
+        e.stopPropagation(); // a thumbnail inside a card spotlights that picture, not the card
+        send({ type: "spotlight_response", studentId: el.dataset.spot });
+      };
     });
   }
 }
@@ -751,8 +754,24 @@ function renderSketches(agg, isImage) {
         .map((s) => `<img class="tappable" data-spot="${s.sid}" src="${s.image}" alt="sketch thumbnail — tap to spotlight" />`)
         .join("")}</div>` : ""}`;
   }
-  return `<div class="answers">${agg.sketches
-    .map((s, i) => `<div class="sketch-card tappable" data-spot="${s.sid}" style="animation-delay:${(i % 8) * 0.06}s"><img src="${s.image}" alt="student sketch"/>${s.text ? `<div class="sketch-cap">${esc(s.text)}</div>` : ""}${s.name ? `<div class="sketch-name">${esc(s.name)}</div>` : ""}</div>`)
+  // One card per student: their first picture large, any others as a row of thumbnails.
+  const groups = [];
+  const byStudent = new Map();
+  for (const s of agg.sketches) {
+    const g = s.group || s.sid;
+    if (!byStudent.has(g)) { byStudent.set(g, []); groups.push(byStudent.get(g)); }
+    byStudent.get(g).push(s);
+  }
+  return `<div class="answers">${groups
+    .map((list, i) => {
+      const [first, ...more] = list;
+      return `<div class="sketch-card tappable" data-spot="${first.sid}" style="animation-delay:${(i % 8) * 0.06}s">
+        <img src="${first.image}" alt="student image"/>
+        ${more.length ? `<div class="sketch-more">${more.map((m) => `<img class="tappable" data-spot="${m.sid}" src="${m.image}" alt="another image from this student" />`).join("")}</div>` : ""}
+        ${first.text ? `<div class="sketch-cap">${esc(first.text)}</div>` : ""}
+        ${first.name ? `<div class="sketch-name">${esc(first.name)}${list.length > 1 ? ` · ${list.length} images` : ""}</div>` : list.length > 1 ? `<div class="sketch-name">${list.length} images</div>` : ""}
+      </div>`;
+    })
     .join("")}</div>
     <p class="tap-hint">👆 tap ${isImage ? "an image" : "a drawing"} to make it big</p>`;
 }

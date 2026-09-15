@@ -66,6 +66,7 @@ const MODES = {
   annotate:      { icon: "🖍️", name: "Annotate", imageUpload: true },
   image_drop:    { icon: "📥", name: "Drop an Image", ph: "What should they show? e.g. “A photo of your model”" },
   image_caption: { icon: "📸", name: "Image + Writing", ph: "e.g. “Photograph your experiment and explain it”" },
+  image_long:    { icon: "📓", name: "Image + Long Answer", ph: "e.g. “Photograph each stage and write it up”" },
 };
 
 const CATEGORIES = [
@@ -75,14 +76,14 @@ const CATEGORIES = [
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
-  { label: "Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption"] },
+  { label: "Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption", "image_long"] },
 ];
 
 const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "image_drop", "image_caption", "maths_board", "counters_draw", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "plus_minus"].includes(m);
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "plus_minus"].includes(m);
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -293,12 +294,14 @@ function renderLiveResponses(itx) {
   const agg = itx.aggregate;
   let out = "";
 
-  if (["sketch", "annotate", "image_drop", "image_caption", "maths_board", "counters_draw"].includes(itx.mode) && itx.responses.length) {
+  if (["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode) && itx.responses.length) {
+    const pics = itx.responses.flatMap((r) => (r.payload.images && r.payload.images.length ? r.payload.images : [r.payload.image])
+      .map((src, k) => ({ src, id: k ? `${r.studentId}|${k}` : r.studentId })));
     out += `<h3 class="sec">Tap ${itx.mode === "sketch" || itx.mode === "annotate" ? "a drawing" : "an image"} → big on the projector</h3>
-      <div class="thumb-grid">${itx.responses
-        .map((r) => `<img class="thumb ${itx.spotlightId === r.studentId ? "spot" : ""}" data-spot="${r.studentId}" src="${r.payload.image}" alt="drawing" />`)
+      <div class="thumb-grid">${pics
+        .map((p) => `<img class="thumb ${itx.spotlightId === p.id ? "spot" : ""}" data-spot="${p.id}" src="${p.src}" alt="student image" />`)
         .join("")}</div>
-      <a class="rbtn" style="text-decoration:none;display:block;text-align:center;margin-top:0.6rem" href="/api/images/${esc(state.code)}/${itx.id}?${authQuery()}">⬇ Download all ${itx.responses.length} as ZIP</a>`;
+      <a class="rbtn" style="text-decoration:none;display:block;text-align:center;margin-top:0.6rem" href="/api/images/${esc(state.code)}/${itx.id}?${authQuery()}">⬇ Download all ${pics.length} image${pics.length === 1 ? "" : "s"} as ZIP</a>`;
     return out;
   }
 

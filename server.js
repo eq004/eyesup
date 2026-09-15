@@ -104,10 +104,19 @@ if (process.env.DATABASE_URL) {
       mime text NOT NULL,
       data bytea NOT NULL,
       text text,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      UNIQUE (lesson_code, lesson_created_at, itx_id, student_id)
+      img_index int NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS lesson_images_lesson ON lesson_images (lesson_code, lesson_created_at)`,
+    // Students can now send several pictures per activity: the old
+    // one-picture-per-student rule gives way to one row per picture.
+    `ALTER TABLE lesson_images ADD COLUMN IF NOT EXISTS img_index int NOT NULL DEFAULT 0`,
+    `DO $$ DECLARE c text; BEGIN
+       SELECT conname INTO c FROM pg_constraint
+        WHERE conrelid = 'lesson_images'::regclass AND contype = 'u' AND cardinality(conkey) = 4;
+       IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE lesson_images DROP CONSTRAINT %I', c); END IF;
+     END $$`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS lesson_images_slot ON lesson_images (lesson_code, lesson_created_at, itx_id, student_id, img_index)`,
     // Lessons planned ahead of time, kept in the teacher's account and
     // taught as often as they like.
     `CREATE TABLE IF NOT EXISTS lesson_plans (
@@ -211,18 +220,28 @@ async function persistNow(session) {
 // answer replaces the earlier one).
 async function persistImage(session, itx, student, record) {
   if (!db || student.name === "👁 Preview") return;
-  const dataUrl = UPLOAD_MODES.has(itx.mode) ? session.respImages.get(`${itx.id}/${student.id}`) : record.payload.image;
-  const m = String(dataUrl || "").match(/^data:(image\/\w+);base64,(.+)$/);
-  if (!m) return;
+  const urls = UPLOAD_MODES.has(itx.mode)
+    ? imgsOf(record).map((_, k) => session.respImages.get(`${itx.id}/${student.id}/${k}`))
+    : [record.payload.image];
+  const parts = urls.map((u) => String(u || "").match(/^data:(image\/\w+);base64,(.+)$/));
+  if (!parts.length || parts.some((m) => !m)) return;
+  const at = new Date(session.createdAt);
   try {
+    // A changed answer replaces the earlier pictures, including any extras it no longer has.
     await db.query(
-      `INSERT INTO lesson_images (lesson_code, lesson_created_at, itx_id, student_id, student_name, mode, mime, data, text)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (lesson_code, lesson_created_at, itx_id, student_id)
-       DO UPDATE SET student_name = $5, mime = $7, data = $8, text = $9, created_at = now()`,
-      [session.code, new Date(session.createdAt), itx.id, student.id, student.name, itx.mode, m[1],
-       Buffer.from(m[2], "base64"), record.payload.text || null]
+      `DELETE FROM lesson_images WHERE lesson_code = $1 AND lesson_created_at = $2 AND itx_id = $3 AND student_id = $4 AND img_index >= $5`,
+      [session.code, at, itx.id, student.id, parts.length]
     );
+    for (let k = 0; k < parts.length; k++) {
+      await db.query(
+        `INSERT INTO lesson_images (lesson_code, lesson_created_at, itx_id, student_id, student_name, mode, mime, data, text, img_index)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT (lesson_code, lesson_created_at, itx_id, student_id, img_index)
+         DO UPDATE SET student_name = $5, mime = $7, data = $8, text = $9, created_at = now()`,
+        [session.code, at, itx.id, student.id, student.name, itx.mode, parts[k][1],
+         Buffer.from(parts[k][2], "base64"), k === 0 ? record.payload.text || null : null, k]
+      );
+    }
   } catch (e) {
     console.error("image persist failed:", e.message);
   }
@@ -276,9 +295,9 @@ app.get("/api/image/:code/:id", (req, res) => {
   res.type(m[1]).send(Buffer.from(m[2], "base64"));
 });
 
-app.get("/api/resp-image/:code/:itx/:sid", (req, res) => {
+app.get("/api/resp-image/:code/:itx/:sid/:k?", (req, res) => {
   const session = sessions.get(String(req.params.code || "").toUpperCase());
-  const dataUrl = session?.respImages.get(`${req.params.itx}/${req.params.sid}`);
+  const dataUrl = session?.respImages.get(`${req.params.itx}/${req.params.sid}/${parseInt(req.params.k, 10) || 0}`);
   const m = dataUrl?.match(/^data:(image\/\w+);base64,(.+)$/);
   if (!m) return res.status(404).end();
   res.set("Cache-Control", "public, max-age=86400");
@@ -417,7 +436,7 @@ app.get("/api/lessons/:id", async (req, res) => {
     const summary = JSON.parse(JSON.stringify(r.summary));
     // Stored pictures ride along as links, keyed to their activity.
     const imgs = await db.query(
-      `SELECT id, itx_id, student_name, text FROM lesson_images WHERE lesson_code = $1 AND lesson_created_at = $2 ORDER BY student_name, id`,
+      `SELECT id, itx_id, student_name, text FROM lesson_images WHERE lesson_code = $1 AND lesson_created_at = $2 ORDER BY student_name, student_id, img_index, id`,
       [r.code, r.created_at]
     );
     if (imgs.rows.length) {
@@ -468,8 +487,8 @@ app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
     const params = [lesson.code, lesson.created_at];
     if (req.params.itx) params.push(req.params.itx);
     const imgs = await db.query(
-      `SELECT itx_id, student_name, mime, data, text FROM lesson_images
-       WHERE lesson_code = $1 AND lesson_created_at = $2 ${req.params.itx ? "AND itx_id = $3" : ""} ORDER BY itx_id, student_name, id`,
+      `SELECT itx_id, student_id, student_name, img_index, mime, data, text FROM lesson_images
+       WHERE lesson_code = $1 AND lesson_created_at = $2 ${req.params.itx ? "AND itx_id = $3" : ""} ORDER BY itx_id, student_name, student_id, img_index, id`,
       params
     );
     if (!imgs.rows.length) return res.status(404).send("No stored images for this lesson.");
@@ -480,10 +499,11 @@ app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
       const it = items[idx];
       return `${String(idx + 1).padStart(2, "0")} ${safeName(it?.prompt || it?.mode || `activity ${itxId}`)}/`;
     };
-    const files = [], seen = new Map(), captions = new Map();
+    const files = [], seen = new Map(), captions = new Map(), perStudent = new Map();
+    for (const x of imgs.rows) perStudent.set(`${x.itx_id}/${x.student_id}`, (perStudent.get(`${x.itx_id}/${x.student_id}`) || 0) + 1);
     for (const x of imgs.rows) {
       const folder = folderFor(x.itx_id);
-      let base = safeName(x.student_name);
+      let base = safeName(x.student_name) + (perStudent.get(`${x.itx_id}/${x.student_id}`) > 1 ? ` ${x.img_index + 1}` : "");
       const k = folder + base, n = (seen.get(k) || 0) + 1;
       seen.set(k, n);
       if (n > 1) base += ` (${n})`;
@@ -513,7 +533,7 @@ const STEP_MODES = new Set([
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
   "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "annotate", "image_drop",
-  "image_caption",
+  "image_caption", "image_long",
 ]);
 
 function sanitizeStep(it) {
@@ -838,14 +858,17 @@ function imageFilesFor(session, itx, folder) {
   const seen = new Map();
   for (const [sid, r] of itx.responses) {
     if (r.name === "👁 Preview") continue;
-    const dataUrl = UPLOAD_MODES.has(itx.mode) ? session.respImages.get(`${itx.id}/${sid}`) : r.payload.image;
-    const m = String(dataUrl || "").match(/^data:image\/(\w+);base64,(.+)$/);
-    if (!m) continue;
-    let base = safeName(r.name);
-    const n = (seen.get(base) || 0) + 1;
-    seen.set(base, n);
-    if (n > 1) base += ` (${n})`;
-    files.push({ name: `${folder}${base}.${m[1] === "jpeg" ? "jpg" : m[1]}`, data: Buffer.from(m[2], "base64") });
+    const count = imgsOf(r).length;
+    for (let k = 0; k < count; k++) {
+      const dataUrl = UPLOAD_MODES.has(itx.mode) ? session.respImages.get(`${itx.id}/${sid}/${k}`) : r.payload.image;
+      const m = String(dataUrl || "").match(/^data:image\/(\w+);base64,(.+)$/);
+      if (!m) continue;
+      let base = safeName(r.name) + (count > 1 ? ` ${k + 1}` : "");
+      const n = (seen.get(base) || 0) + 1;
+      seen.set(base, n);
+      if (n > 1) base += ` (${n})`;
+      files.push({ name: `${folder}${base}.${m[1] === "jpeg" ? "jpg" : m[1]}`, data: Buffer.from(m[2], "base64") });
+    }
     if (r.payload.text) captions.push(`${r.name}: ${r.payload.text}`);
   }
   if (captions.length) files.push({ name: `${folder}captions.txt`, data: Buffer.from(captions.join("\n\n") + "\n", "utf8") });
@@ -932,9 +955,13 @@ const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes whose answer is a picture (drawn, marked up, or uploaded).
-const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop", "image_caption", "maths_board", "counters_draw"]);
+const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
 // Uploaded (not drawn) pictures — stored server-side, sent to screens by URL.
-const UPLOAD_MODES = new Set(["image_drop", "image_caption"]);
+const UPLOAD_MODES = new Set(["image_drop", "image_caption", "image_long"]);
+const MAX_UPLOAD_IMAGES = 6; // per student, per activity
+// A response's pictures: uploads can hold several, drawings hold one.
+const imgsOf = (r) =>
+  Array.isArray(r?.payload?.images) && r.payload.images.length ? r.payload.images : r?.payload?.image ? [r.payload.image] : [];
 // Custom options entered by the teacher at launch.
 const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale", "picture_vote", "table"]);
 
@@ -1089,7 +1116,11 @@ function buildSpotlight(itx) {
   const name = itx.showNames && !ANON_MODES.has(itx.mode) ? r.name : undefined;
   const key = itx.spotlightId;
   const m = itx.mode;
-  if (IMAGE_MODES.has(m)) return { kind: "image", image: r.payload.image, text: r.payload.text, name, sid: key };
+  if (IMAGE_MODES.has(m)) {
+    const list = imgsOf(r);
+    const k = Math.min(Math.max(0, parseInt(noteIdx, 10) || 0), Math.max(0, list.length - 1));
+    return { kind: "image", image: list[k], text: r.payload.text, name, sid: key };
+  }
   if (m === "post_its") {
     const i = parseInt(noteIdx, 10);
     const note = (r.payload.notes || [])[i];
@@ -1247,10 +1278,15 @@ function aggregate(session, itx) {
   }
 
   if (IMAGE_MODES.has(itx.mode)) {
-    const revealed = [...itx.responses.entries()]
-      .filter(([, r]) => r.revealed)
-      .map(([sid, r]) => ({ sid, image: r.payload.image, text: r.payload.text, name: nm(r) }));
-    return { ...base, sketches: revealed, revealedCount: revealed.length };
+    const shown = [...itx.responses.entries()].filter(([, r]) => r.revealed);
+    const revealed = shown.flatMap(([sid, r]) => {
+      const list = imgsOf(r);
+      return list.map((image, k) => ({
+        sid: k ? `${sid}|${k}` : sid, group: sid, k, of: list.length,
+        image, text: k === 0 ? r.payload.text : undefined, name: nm(r),
+      }));
+    });
+    return { ...base, sketches: revealed, revealedCount: shown.length };
   }
 
   if (itx.mode === "phonics") {
@@ -1539,10 +1575,17 @@ function describePayload(itx, p) {
   }
   if (STRUCTURED_FIELDS[itx.mode])
     return (p.parts || []).filter(Boolean).join("  ·  ");
-  if (itx.mode === "image_caption") return p.text ? `(image) ${p.text}` : "(image submitted)";
+  if (itx.mode === "image_caption" || itx.mode === "image_long") {
+    const n = imgsOf({ payload: p }).length;
+    const tag = n > 1 ? `(${n} images)` : "(image)";
+    return p.text ? `${tag} ${p.text}` : `${tag} submitted`;
+  }
   if (itx.mode === "maths_board") return p.text ? `(board) ${p.text}` : "(board submitted, no answer typed)";
   if (itx.mode === "counters_draw") return "(board submitted)";
-  if (itx.mode === "image_drop") return "(image submitted)";
+  if (itx.mode === "image_drop") {
+    const n = imgsOf({ payload: p }).length;
+    return n > 1 ? `(${n} images submitted)` : "(image submitted)";
+  }
   if (IMAGE_MODES.has(itx.mode)) return "(drawing submitted)";
   if (itx.mode === "spelling")
     return itx.words
@@ -1634,8 +1677,8 @@ function buildSummary(session, { withImages = false } = {}) {
       if (withImages)
         item.images = [...itx.responses.values()]
           .filter((r) => r.name !== "👁 Preview")
-          .map((r) => ({ name: r.name, image: r.payload.image, text: r.payload.text }));
-      if (itx.mode === "image_caption" || itx.mode === "maths_board")
+          .flatMap((r) => imgsOf(r).map((image, k) => ({ name: r.name, image, text: k === 0 ? r.payload.text : undefined })));
+      if (itx.mode === "image_caption" || itx.mode === "image_long" || itx.mode === "maths_board")
         item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
     }
     if (itx.mode === "counters") item.counterKind = itx.counterKind;
@@ -1843,10 +1886,15 @@ async function handle(ws, msg) {
     if (!payload) return;
     if (UPLOAD_MODES.has(itx.mode)) {
       // Full-size photos would multiply across every broadcast to every
-      // screen; park the bytes here and send everyone a link instead.
-      const key = `${itx.id}/${student.id}`;
-      session.respImages.set(key, payload.image);
-      payload.image = `/api/resp-image/${session.code}/${key}?v=${Date.now()}`;
+      // screen; park the bytes here and send everyone links instead.
+      const prefix = `${itx.id}/${student.id}/`;
+      for (const key of [...session.respImages.keys()]) if (key.startsWith(prefix)) session.respImages.delete(key);
+      const v = Date.now();
+      payload.images = payload.images.map((dataUrl, k) => {
+        session.respImages.set(prefix + k, dataUrl);
+        return `/api/resp-image/${session.code}/${prefix}${k}?v=${v}`;
+      });
+      payload.image = payload.images[0];
     }
     const record = {
       name: student.name,
@@ -2338,6 +2386,24 @@ function sanitizePayload(itx, payload) {
       .slice(0, 12);
     const answer = String(payload.answer || "").trim().slice(0, 30);
     return answer || lines.length ? { lines, answer } : null;
+  }
+
+  if (UPLOAD_MODES.has(itx.mode)) {
+    const list = (Array.isArray(payload.images) ? payload.images : payload.image ? [payload.image] : []).map(String);
+    if (!list.length || list.length > MAX_UPLOAD_IMAGES) return null;
+    let total = 0;
+    for (const im of list) {
+      // Photos stay print-size (≈2000px long edge), so each gets room.
+      if (!/^data:image\/(png|jpeg);base64,/.test(im) || im.length > 2600000) return null;
+      total += im.length;
+    }
+    if (total > 14000000) return null;
+    if (itx.mode === "image_caption" || itx.mode === "image_long") {
+      const text = String(payload.text || "").trim().slice(0, itx.mode === "image_long" ? 3000 : 1500);
+      if (!text) return null; // the writing is half the answer
+      return { images: list, image: list[0], text };
+    }
+    return { images: list, image: list[0] };
   }
 
   if (IMAGE_MODES.has(itx.mode)) {

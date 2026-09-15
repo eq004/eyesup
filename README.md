@@ -113,3 +113,12 @@ The dashboard opens on **📝 Lesson plans**: every saved lesson as a card with 
 - **Phone remote** — the **📝 Lessons** tab lists your plans with ▶ Teach and runs the open lesson step by step. Plans are created and edited on a computer.
 
 Plans are stored per teacher in the `lesson_plans` table (steps as JSON, pictures included) and count how often and how recently each was taught.
+
+## Several pictures per answer
+
+**Drop an Image**, **Image + Writing** and **Image + Long Answer** let each student send up to **6 pictures** in one answer (drag several in, choose several, or add them one at a time; each has a ✕ to remove). Image + Long Answer pairs the pictures with a full written answer of up to 3,000 characters.
+
+- The projector shows one card per student: the first picture large, the rest as thumbnails. Tapping any thumbnail puts that exact picture on the big screen, with the student's writing underneath.
+- The dashboard and phone remote show every picture; click one to spotlight it.
+- Downloads name them `Ava Nguyen 1.jpg`, `Ava Nguyen 2.jpg`…, with the writing once in `captions.txt`.
+- In the archive (`lesson_images`), each picture is its own row numbered by `img_index`; a changed answer replaces the student's earlier pictures, including any extras.

@@ -24,7 +24,7 @@ const MODE_NAMES = {
   one_word: "🗣️ One Word", ask_question: "❓ Ask a Question",
   true_false: "✅ True or False", mindmap: "🕸️ Mindmap", exit_ticket: "🎟️ Exit Ticket",
   muddiest_point: "🌫️ Muddiest Point", retrieval_sprint: "🧠 Retrieval Sprint",
-  sketch: "🎨 Sketch It", maths_board: "🧮 Maths Board", counters_draw: "🟠 Counters + Drawing", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", spot_mistake: "🔎 Spot the Mistake",
+  sketch: "🎨 Sketch It", maths_board: "🧮 Maths Board", counters_draw: "🟠 Counters + Drawing", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", image_long: "📓 Image + Long Answer", spot_mistake: "🔎 Spot the Mistake",
   example_nonexample: "↔️ Example / Non-example", teach_back: "🧑‍🏫 Teach It Back",
   match_up: "🧩 Match Up", put_in_order: "🪜 Put in Order", give_example: "💡 Give an Example",
   make_connection: "🔗 Make a Connection", finish_sentence: "📝 Finish the Sentence",
@@ -965,62 +965,91 @@ function renderInteraction(itx) {
     return;
   }
 
-  /* --- drop an image: a photo or picture IS the answer (optionally with writing) --- */
-  if (itx.mode === "image_drop" || itx.mode === "image_caption") {
-    const withText = itx.mode === "image_caption";
+  /* --- pictures as the answer: one or several, optionally with writing --- */
+  if (itx.mode === "image_drop" || itx.mode === "image_caption" || itx.mode === "image_long") {
+    const MAX = 6;
+    const withText = itx.mode !== "image_drop";
+    const longText = itx.mode === "image_long";
     show(`${h}
-      <div id="dropZone" style="border:2px dashed var(--line);border-radius:14px;padding:1.6rem 1rem;text-align:center;background:var(--surface);cursor:pointer">
-        <div id="dropPreview" style="display:none;margin-bottom:0.8rem"><img id="dropImg" alt="your image" style="max-width:100%;max-height:45vh;border-radius:10px" /></div>
-        <div id="dropText"><div style="font-size:2rem">📥</div><b>Drop an image here</b><br/><span class="hint" style="margin:0">or tap to choose a photo — or take one</span></div>
-        <input type="file" id="dropFile" accept="image/*" style="display:none" />
-      </div>
-      ${withText ? `<textarea id="capText" rows="4" maxlength="1500" placeholder="Write a few sentences about your image…" style="width:100%;margin-top:0.8rem;font:inherit;padding:0.7rem 0.8rem;border:1.5px solid var(--line);border-radius:12px;resize:vertical"></textarea>` : ""}
-      <div style="display:flex;gap:0.6rem;margin-top:0.8rem">
-        <button class="btn" id="dropClear" style="flex:0 0 auto;width:auto;margin-top:0;background:var(--surface);border:1.5px solid var(--line)">↺ Change</button>
-        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0" disabled>${withText ? "Send image + writing" : "Send my image"}</button>
-      </div>`, () => {
-      let dataUrl = null;
-      const zone = $("dropZone"), file = $("dropFile");
+      <div id="imgGrid" class="img-grid"></div>
+      <input type="file" id="dropFile" accept="image/*" multiple style="display:none" />
+      <p class="hint" id="imgCount" style="margin:0.4rem 0 0"></p>
+      ${withText ? `<textarea id="capText" rows="${longText ? 10 : 4}" maxlength="${longText ? 3000 : 1500}"
+        placeholder="${longText ? "Write your full answer here…" : "Write a few sentences about your images…"}"
+        style="width:100%;margin-top:0.8rem;font:inherit;padding:0.7rem 0.8rem;border:1.5px solid var(--line);border-radius:12px;resize:vertical"></textarea>
+        ${longText ? `<p class="hint" id="capCount" style="margin:0.2rem 0 0;text-align:right"></p>` : ""}` : ""}
+      <button class="btn send" id="sendBtn" style="margin-top:0.8rem" disabled></button>`, () => {
+      const images = []; // print-size JPEG data URLs, in the order added
+      const file = $("dropFile"), grid = $("imgGrid");
       const textOf = () => (withText ? $("capText").value.trim() : "");
-      // Both halves before it can go: the picture, and (here) the sentences.
-      const ready = () => { $("sendBtn").disabled = !dataUrl || (withText && !textOf()); };
-      if (withText) $("capText").oninput = ready;
-      const setImage = (blob) => {
-        if (!blob || !blob.type.startsWith("image/")) return;
+      const paint = () => {
+        const addTile = images.length < MAX
+          ? `<button class="img-add ${images.length ? "" : "empty"}" id="imgAdd" type="button">
+              ${images.length
+                ? `<span style="font-size:1.6rem">＋</span><span>Add another</span>`
+                : `<span style="font-size:2rem">📥</span><b>Drop images here</b><span class="hint" style="margin:0">or tap to choose photos — or take one. Up to ${MAX}.</span>`}
+            </button>`
+          : "";
+        grid.classList.toggle("has-images", images.length > 0);
+        grid.innerHTML = images
+          .map((src, i) => `<div class="img-tile"><img src="${src}" alt="your image ${i + 1}" /><span class="img-n">${i + 1}</span>
+            <button class="img-x" data-rm="${i}" type="button" aria-label="Remove image ${i + 1}">✕</button></div>`)
+          .join("") + addTile;
+        grid.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); images.splice(+b.dataset.rm, 1); paint(); }));
+        const add = $("imgAdd");
+        if (add) add.onclick = () => file.click();
+        $("imgCount").textContent = images.length ? `${images.length} of ${MAX} images${images.length < MAX ? " — you can add more" : ""}` : "";
+        const n = images.length;
+        $("sendBtn").textContent = n > 1
+          ? (withText ? `Send ${n} images + my answer` : `Send my ${n} images`)
+          : (withText ? (longText ? "Send image + my answer" : "Send image + writing") : "Send my image");
+        $("sendBtn").disabled = !n || (withText && !textOf());
+      };
+      // Keep it print-size: a 2000px long edge still prints crisply on A4.
+      const shrink = (blob) => new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
-          // Keep it print-size: a 2000px long edge still prints crisply on A4.
-          const s = Math.min(1, 2000 / Math.max(img.width, img.height));
+          const k = Math.min(1, 2000 / Math.max(img.width, img.height));
           const c = document.createElement("canvas");
-          c.width = Math.round(img.width * s);
-          c.height = Math.round(img.height * s);
+          c.width = Math.round(img.width * k);
+          c.height = Math.round(img.height * k);
           const cx = c.getContext("2d");
           cx.fillStyle = "#fff";
           cx.fillRect(0, 0, c.width, c.height);
           cx.drawImage(img, 0, 0, c.width, c.height);
-          dataUrl = c.toDataURL("image/jpeg", 0.85);
           URL.revokeObjectURL(img.src);
-          $("dropImg").src = dataUrl;
-          $("dropPreview").style.display = "block";
-          $("dropText").style.display = "none";
-          ready();
+          resolve(c.toDataURL("image/jpeg", 0.85));
         };
+        img.onerror = () => resolve(null);
         img.src = URL.createObjectURL(blob);
+      });
+      const addFiles = async (list) => {
+        const picked = [...(list || [])].filter((f) => f && f.type && f.type.startsWith("image/"));
+        const room = MAX - images.length;
+        if (picked.length > room) $("imgCount").textContent = `Only ${MAX} images fit — the first ${room} were added.`;
+        for (const f of picked.slice(0, room)) {
+          const url = await shrink(f);
+          if (url) images.push(url);
+          paint();
+        }
+        file.value = "";
       };
-      zone.onclick = () => file.click();
-      file.onchange = () => setImage(file.files[0]);
-      ["dragenter", "dragover"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.style.borderColor = "var(--accent)"; }));
-      ["dragleave", "drop"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.style.borderColor = "var(--line)"; }));
-      zone.addEventListener("drop", (e) => setImage(e.dataTransfer.files[0]));
-      document.onpaste = (e) => { const f = e.clipboardData?.files?.[0]; if (f) setImage(f); };
-      $("dropClear").onclick = () => {
-        dataUrl = null; file.value = "";
-        $("dropPreview").style.display = "none"; $("dropText").style.display = "block"; $("sendBtn").disabled = true;
-      };
+      file.onchange = () => addFiles(file.files);
+      ["dragenter", "dragover"].forEach((ev) => grid.addEventListener(ev, (e) => { e.preventDefault(); grid.classList.add("drag"); }));
+      ["dragleave", "drop"].forEach((ev) => grid.addEventListener(ev, (e) => { e.preventDefault(); grid.classList.remove("drag"); }));
+      grid.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+      document.onpaste = (e) => { if (e.clipboardData?.files?.length) addFiles(e.clipboardData.files); };
+      if (withText) {
+        $("capText").oninput = () => {
+          if (longText) $("capCount").textContent = `${$("capText").value.length} / 3000`;
+          paint();
+        };
+      }
       $("sendBtn").onclick = () => {
-        if (!dataUrl || (withText && !textOf())) return;
-        submit(withText ? { image: dataUrl, text: textOf() } : { image: dataUrl });
+        if (!images.length || (withText && !textOf())) return;
+        submit(withText ? { images: [...images], text: textOf() } : { images: [...images] });
       };
+      paint();
     });
     return;
   }
