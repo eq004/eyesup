@@ -106,6 +106,7 @@ function renderInner() {
   const itx = state.interaction;
 
   updateJoinBadge();
+  updateToolsDock();
 
   if (state.phase === "ended") {
     stage.innerHTML = bigState("🙌", "Great thinking today", "Recap complete.");
@@ -197,6 +198,74 @@ function joinTarget() {
   const proto = isLocal ? "http:" : location.protocol;
   return { host, url: `${proto}//${host}/join?code=${state.code}` };
 }
+
+/* ---------------- corner tools: pick a student, timer ---------------- */
+
+let toolsOpen = (() => { try { return localStorage.getItem("eyesup_tools_open") === "1"; } catch { return false; } })();
+function setToolsOpen(open) {
+  toolsOpen = open;
+  try { localStorage.setItem("eyesup_tools_open", open ? "1" : "0"); } catch {}
+  document.getElementById("toolsDock").classList.toggle("open", open);
+  document.getElementById("toolsArrow").textContent = open ? "▼" : "▲";
+}
+document.getElementById("toolsTab").onclick = (e) => { e.stopPropagation(); setToolsOpen(!toolsOpen); };
+
+function timerLeft(t) {
+  return t.paused ? t.remaining : Math.max(0, t.endsAt - Date.now());
+}
+function clockText(ms) {
+  const s = Math.ceil(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function updateToolsDock() {
+  const dock = document.getElementById("toolsDock");
+  const wanted = !!state && state.phase !== "ended";
+  dock.classList.toggle("show", wanted);
+  if (!wanted) return;
+  dock.classList.toggle("open", toolsOpen);
+  document.getElementById("toolsArrow").textContent = toolsOpen ? "▼" : "▲";
+  const t = state.timer;
+  const picked = state.focus?.type === "spotlight";
+  const panel = document.getElementById("toolsPanel");
+  panel.innerHTML = `
+    <h4>Random student</h4>
+    <div class="tools-row">
+      <button class="tbtn primary wide" data-tool="pick_student">🎲 ${picked ? "Pick another" : "Pick a student"}</button>
+      ${picked ? `<button class="tbtn" data-tool="clear_focus" title="Take the name off the screen">✕ Back</button>` : ""}
+    </div>
+    <h4>Timer</h4>
+    <div class="tools-row">
+      ${t
+        ? `<span class="tclock" id="toolsClock"></span>
+           ${t.paused ? `<button class="tbtn" data-tool="timer_resume">▶ Resume</button>` : `<button class="tbtn" data-tool="timer_pause">⏸ Pause</button>`}
+           <button class="tbtn" data-tool="timer_big">${t.big ? "⤡ Small" : "⛶ Full screen"}</button>
+           <button class="tbtn" data-tool="timer_clear">✕ Clear</button>`
+        : `<button class="tbtn" data-tool="timer_start" data-secs="30">30s</button>
+           <button class="tbtn" data-tool="timer_start" data-secs="60">1m</button>
+           <button class="tbtn" data-tool="timer_start" data-secs="120">2m</button>
+           <button class="tbtn" data-tool="timer_start" data-secs="300">5m</button>
+           <button class="tbtn" data-tool="timer_start" data-secs="600">10m</button>`}
+    </div>`;
+  panel.querySelectorAll("[data-tool]").forEach((b) => (b.onclick = (e) => {
+    e.stopPropagation();
+    const msg = { type: b.dataset.tool };
+    if (b.dataset.secs) msg.seconds = +b.dataset.secs;
+    send(msg);
+  }));
+  paintToolsClock();
+}
+function paintToolsClock() {
+  const t = state?.timer;
+  const live = document.getElementById("toolsLive");
+  const clock = document.getElementById("toolsClock");
+  if (!t) { if (live) { live.textContent = ""; live.classList.remove("urgent"); } return; }
+  const left = timerLeft(t);
+  const txt = left <= 0 ? "⏰" : clockText(left) + (t.paused ? " ⏸" : "");
+  if (live) { live.textContent = txt; live.classList.toggle("urgent", left > 0 && left <= 10000); }
+  if (clock) { clock.textContent = txt; clock.classList.toggle("urgent", left > 0 && left <= 10000); }
+}
+setInterval(paintToolsClock, 250);
 
 let joinOpen = (() => { try { return localStorage.getItem("eyesup_qr_open") === "1"; } catch { return false; } })();
 function setJoinOpen(open) {

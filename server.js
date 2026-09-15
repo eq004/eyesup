@@ -1929,9 +1929,11 @@ async function handle(ws, msg) {
 
   /* ---- teacher actions ---- */
 
-  if (ws.meta.role !== "teacher") {
+  // Room tools a teacher can also drive from the board's corner dock.
+  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear"]);
+  if (ws.meta.role !== "teacher" && !(ws.meta.role === "projector" && BOARD_ACTIONS.has(type))) {
     // The projector often runs on an interactive whiteboard: allow
-    // tap-to-spotlight straight from the board — and only that.
+    // tap-to-spotlight and the corner tools straight from the board — and only those.
     if (ws.meta.role === "projector" && type === "timer_big") {
       // Tapping the big countdown on an interactive board shrinks it.
       if (session.timer) {
