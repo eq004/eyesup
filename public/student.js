@@ -796,7 +796,8 @@ function renderInteraction(itx) {
       <div class="mb-tools">
         <button id="mbMove" class="on">✋ Move counters</button>
         <button id="mbDraw">✏️ Draw</button>
-        <button id="mbErase">🧽 Clear drawing</button>
+        <button id="mbRubber">🧽 Rubber</button>
+        <button id="mbErase">↺ Clear drawing</button>
       </div>
       <div class="ctr-tray">
         ${COLORS.map((c, i) => `<button class="ctr-src" data-k="${i}" style="background:${c};width:34px;height:34px;border-radius:50%"></button>`).join("")}
@@ -831,7 +832,8 @@ function renderInteraction(itx) {
       canvas.width = Math.min(1800, Math.round(bw * dpr));
       canvas.height = Math.round(canvas.width * (bh / bw));
       ctx.strokeStyle = "#0f1c30";
-      ctx.lineWidth = Math.max(3, Math.round(canvas.width / 180));
+      const penWidth = Math.max(3, Math.round(canvas.width / 180));
+      ctx.lineWidth = penWidth;
       ctx.lineCap = "round"; ctx.lineJoin = "round";
 
       /* pieces (k 0-3 colours, 4 ten, 5 one), positions in % of the board */
@@ -885,7 +887,19 @@ function renderInteraction(itx) {
       canvas.addEventListener("pointerdown", (e) => { drawing = true; try { canvas.setPointerCapture(e.pointerId); } catch {} const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 0.1, y + 0.1); ctx.stroke(); e.preventDefault(); });
       canvas.addEventListener("pointermove", (e) => { if (!drawing) return; const [x, y] = pos(e); ctx.lineTo(x, y); ctx.stroke(); e.preventDefault(); });
       canvas.addEventListener("pointerup", () => (drawing = false));
-      const setTool = (t) => { board.classList.toggle("drawing", t === "draw"); $("mbDraw").classList.toggle("on", t === "draw"); $("mbMove").classList.toggle("on", t !== "draw"); };
+      const setTool = (t) => {
+        const inking = t === "draw" || t === "rubber";
+        board.classList.toggle("drawing", inking);
+        board.classList.toggle("rubbing", t === "rubber");
+        $("mbDraw").classList.toggle("on", t === "draw");
+        $("mbRubber").classList.toggle("on", t === "rubber");
+        $("mbMove").classList.toggle("on", !inking);
+        // The drawing sits on its own layer above the counters, so the rubber
+        // lifts ink without disturbing the pieces.
+        ctx.globalCompositeOperation = t === "rubber" ? "destination-out" : "source-over";
+        ctx.lineWidth = t === "rubber" ? penWidth * 4 : penWidth;
+      };
+      $("mbRubber").onclick = () => setTool("rubber");
       $("mbMove").onclick = () => setTool("move");
       $("mbDraw").onclick = () => setTool("draw");
       $("mbErase").onclick = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
