@@ -1175,13 +1175,20 @@ function renderInteraction(itx) {
   if (itx.mode === "sketch" || itx.mode === "annotate") {
     const anno = itx.mode === "annotate";
     show(`${h}
-      <canvas id="pad" width="600" height="450"></canvas>
+      <div class="pad-tools">
+        <button type="button" class="pad-tool on" id="toolPen">✏️ Pen</button>
+        <button type="button" class="pad-tool" id="toolRubber">🧽 Rubber</button>
+        <button type="button" class="pad-tool" id="clearPad">↺ Clear all</button>
+      </div>
+      <div class="pad-wrap" id="padWrap"><canvas id="padBg" width="600" height="450"></canvas><canvas id="pad" width="600" height="450"></canvas></div>
       <div style="display:flex;gap:0.6rem;margin-top:0.8rem">
-        <button class="btn" id="clearPad" style="flex:0 0 auto;width:auto;margin-top:0;background:var(--surface);border:1.5px solid var(--line)">↺ Clear</button>
         <button class="btn send" id="sendBtn" style="flex:1;margin-top:0">${anno ? "Send my annotation" : "Send my sketch"}</button>
       </div>
-      <p class="hint">${anno ? "Draw on the image with your finger or mouse." : "Draw with your finger or mouse."}</p>`, () => {
-      const canvas = $("pad");
+      <p class="hint">${anno ? "Draw on the image with your finger or mouse. The rubber only removes your drawing, not the picture." : "Draw with your finger or mouse. Use the rubber to fix mistakes."}</p>`, () => {
+      // Two layers: the background (white, or the teacher's picture) underneath
+      // and the drawing on top, so the rubber can erase ink without touching the picture.
+      const wrap = $("padWrap"), bgCanvas = $("padBg"), canvas = $("pad");
+      const bgx = bgCanvas.getContext("2d");
       const ctx = canvas.getContext("2d");
       // Fill the screen: as wide as the device allows, as tall as fits above
       // the buttons, keeping 4:3. Resolution follows the display size so an
@@ -1190,7 +1197,7 @@ function renderInteraction(itx) {
       let padAspect = null; // height / width, fixed once the pad exists
       const fitPad = (first) => {
         const controls = 120; // buttons + hint below the pad
-        const top = canvas.getBoundingClientRect().top;
+        const top = wrap.getBoundingClientRect().top;
         const availH = Math.max(260, window.innerHeight - top - controls);
         const availW = screenEl.clientWidth;
         let w, hgt;
@@ -1202,45 +1209,62 @@ function renderInteraction(itx) {
           const dpr = Math.min(2, window.devicePixelRatio || 1);
           canvas.width = Math.min(2000, Math.round(w * dpr));
           canvas.height = Math.round(canvas.width * padAspect);
+          bgCanvas.width = canvas.width;
+          bgCanvas.height = canvas.height;
         } else {
           // Rotated or resized: scale, never reshape (that would warp the drawing).
           w = availW;
           hgt = w * padAspect;
           if (hgt > availH) { hgt = availH; w = hgt / padAspect; }
         }
-        canvas.style.width = `${Math.floor(w)}px`;
-        canvas.style.height = `${Math.floor(hgt)}px`;
+        wrap.style.width = `${Math.floor(w)}px`;
+        wrap.style.height = `${Math.floor(hgt)}px`;
       };
       fitPad(true);
       window.addEventListener("resize", () => fitPad(false), { passive: true });
       let bg = null; // the teacher's image, once loaded
-      const blank = () => {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const paintBg = () => {
+        bgx.fillStyle = "#ffffff";
+        bgx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
         if (bg) {
           // fit the image inside the canvas, centred
-          const s = Math.min(canvas.width / bg.width, canvas.height / bg.height);
+          const s = Math.min(bgCanvas.width / bg.width, bgCanvas.height / bg.height);
           const w = bg.width * s, hh = bg.height * s;
-          ctx.drawImage(bg, (canvas.width - w) / 2, (canvas.height - hh) / 2, w, hh);
+          bgx.drawImage(bg, (bgCanvas.width - w) / 2, (bgCanvas.height - hh) / 2, w, hh);
         }
       };
+      const blank = () => { paintBg(); ctx.clearRect(0, 0, canvas.width, canvas.height); };
       blank();
       if (anno && itx.imageUrl) {
         const img = new Image();
-        img.onload = () => { bg = img; blank(); };
+        img.onload = () => { bg = img; paintBg(); };
         img.src = itx.imageUrl;
       }
+      const penWidth = Math.max(3, Math.round(canvas.width / 150)); // same feel at any resolution
       ctx.strokeStyle = anno ? "#e02d2d" : "#0f1c30";
-      ctx.lineWidth = Math.max(3, Math.round(canvas.width / 150)); // same feel at any resolution
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
+      let tool = "pen";
+      const setTool = (t) => {
+        tool = t;
+        $("toolPen").classList.toggle("on", t === "pen");
+        $("toolRubber").classList.toggle("on", t === "rubber");
+        canvas.classList.toggle("rubber", t === "rubber");
+        // The rubber lifts ink off the drawing layer; the picture underneath stays.
+        ctx.globalCompositeOperation = t === "rubber" ? "destination-out" : "source-over";
+        ctx.lineWidth = t === "rubber" ? penWidth * 4 : penWidth;
+      };
+      setTool("pen");
+      $("toolPen").onclick = () => setTool("pen");
+      $("toolRubber").onclick = () => setTool("rubber");
       let drawing = false, drew = false;
       const pos = (e) => {
         const r = canvas.getBoundingClientRect();
         return [((e.clientX - r.left) * canvas.width) / r.width, ((e.clientY - r.top) * canvas.height) / r.height];
       };
       canvas.addEventListener("pointerdown", (e) => {
-        drawing = true; drew = true;
+        drawing = true;
+        if (tool === "pen") drew = true;
         try { canvas.setPointerCapture(e.pointerId); } catch { /* fine without capture */ }
         const [x, y] = pos(e);
         ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 0.1, y + 0.1); ctx.stroke();
@@ -1256,8 +1280,14 @@ function renderInteraction(itx) {
       $("clearPad").onclick = () => { blank(); drew = false; };
       $("sendBtn").onclick = () => {
         if (!drew) return;
+        // Flatten background + drawing into one picture to send.
+        const out = document.createElement("canvas");
+        out.width = canvas.width; out.height = canvas.height;
+        const o = out.getContext("2d");
+        o.drawImage(bgCanvas, 0, 0);
+        o.drawImage(canvas, 0, 0);
         // annotations carry a photo background — jpeg keeps them small
-        submit({ image: anno ? canvas.toDataURL("image/jpeg", 0.8) : canvas.toDataURL("image/png") });
+        submit({ image: anno ? out.toDataURL("image/jpeg", 0.8) : out.toDataURL("image/png") });
       };
     });
     return;
