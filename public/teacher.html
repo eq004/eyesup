@@ -183,6 +183,17 @@
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
     box-shadow: var(--shadow); padding: 0.9rem 1rem;
   }
+  .step-card { position: relative; cursor: grab; }
+  .step-card.dragging { cursor: grabbing; z-index: 5; box-shadow: var(--shadow-lift); border-color: var(--accent); opacity: 0.96; transition: none; }
+  body.step-dragging { user-select: none; cursor: grabbing; }
+  .step-grip { flex: 0 0 auto; align-self: center; color: var(--muted); font-size: 1.2rem; line-height: 1; padding: 0.4rem 0.1rem; cursor: grab; touch-action: none; user-select: none; }
+  .step-card:hover .step-grip { color: var(--accent); }
+  /* where the dragged step will land */
+  .step-card.drop-before::before, .step-card.drop-after::after {
+    content: ""; position: absolute; left: 0; right: 0; height: 4px; border-radius: 4px; background: var(--accent);
+  }
+  .step-card.drop-before::before { top: -0.45rem; }
+  .step-card.drop-after::after { bottom: -0.45rem; }
   .step-card.flash { animation: stepflash 1.1s ease; }
   @keyframes stepflash { from { background: var(--accent-soft); border-color: var(--accent); } to { background: var(--surface); border-color: var(--line); } }
   .step-num { flex: 0 0 auto; width: 2.1rem; height: 2.1rem; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-weight: 800; display: flex; align-items: center; justify-content: center; }

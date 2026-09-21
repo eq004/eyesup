@@ -1718,11 +1718,12 @@ function renderEditor(flashIndex) {
       <span class="save-state" id="saveState"></span>
     </div>
     <input class="plan-title" id="planTitle" maxlength="80" placeholder="Name this lesson, e.g. Year 4 Fractions recap" value="${esc(editing.title)}" />
-    <p class="editor-help">Add activities in the order you'll teach them. In class you'll launch them one at a time.</p>
+    <p class="editor-help">Add activities in the order you'll teach them. In class you'll launch them one at a time.${steps.length > 1 ? " <b>Drag a step</b> to change the order." : ""}</p>
     ${steps.length
       ? `<ol class="step-list">${steps
           .map((st, i) => `
         <li class="step-card ${i === flashIndex ? "flash" : ""}" data-i="${i}">
+          <span class="step-grip" title="Drag to move this step" aria-hidden="true">⠿</span>
           <span class="step-num">${i + 1}</span>
           <div class="step-body">
             <div class="step-type">${stepTag(st)}</div>
@@ -1770,6 +1771,7 @@ function renderEditor(flashIndex) {
     renderEditor(to);
     scheduleSave();
   };
+  enableStepDrag(ed, move);
   ed.querySelectorAll("[data-up]").forEach((b) => (b.onclick = () => move(+b.dataset.up, +b.dataset.up - 1)));
   ed.querySelectorAll("[data-down]").forEach((b) => (b.onclick = () => move(+b.dataset.down, +b.dataset.down + 1)));
   ed.querySelectorAll("[data-dup-step]").forEach((b) => (b.onclick = () => {
@@ -1787,6 +1789,63 @@ function renderEditor(flashIndex) {
   }));
   ed.querySelectorAll("[data-edit-step]").forEach((b) => (b.onclick = () => editStep(+b.dataset.editStep)));
   if (flashIndex != null) ed.querySelector(`.step-card[data-i="${flashIndex}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+// Drag a step card up or down to re-order the lesson. A mouse can grab the
+// card anywhere (except its buttons); a finger uses the ⠿ grip so the page
+// can still be scrolled by touch.
+function enableStepDrag(ed, move) {
+  const list = ed.querySelector(".step-list");
+  if (!list) return;
+  list.querySelectorAll(".step-card").forEach((card) => {
+    card.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.target.closest("button, a, input")) return;
+      if (e.pointerType !== "mouse" && !e.target.closest(".step-grip")) return;
+      const from = +card.dataset.i;
+      const startY = e.clientY, startScroll = window.scrollY;
+      let dragging = false, to = from;
+      const others = () => [...list.querySelectorAll(".step-card")].filter((c) => c !== card);
+      const clearMarks = () => list.querySelectorAll(".drop-before, .drop-after").forEach((c) => c.classList.remove("drop-before", "drop-after"));
+
+      const onMove = (ev) => {
+        if (!dragging) {
+          if (Math.abs(ev.clientY - startY) < 6) return;
+          dragging = true;
+          card.classList.add("dragging");
+          document.body.classList.add("step-dragging");
+          try { card.setPointerCapture(e.pointerId); } catch { /* fine without */ }
+        }
+        ev.preventDefault();
+        // Keep the card under the pointer even while the page auto-scrolls.
+        if (ev.clientY < 90) window.scrollBy(0, -14);
+        else if (ev.clientY > window.innerHeight - 90) window.scrollBy(0, 14);
+        card.style.transform = `translateY(${ev.clientY - startY + (window.scrollY - startScroll)}px)`;
+        // Where would it land? Count the other cards whose middle is above the pointer.
+        const rest = others();
+        const pos = rest.filter((c) => { const r = c.getBoundingClientRect(); return r.top + r.height / 2 < ev.clientY; }).length;
+        to = pos;
+        clearMarks();
+        if (pos !== from) {
+          if (pos < rest.length) rest[pos].classList.add("drop-before");
+          else if (rest.length) rest[rest.length - 1].classList.add("drop-after");
+        }
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        document.body.classList.remove("step-dragging");
+        clearMarks();
+        if (!dragging) return;
+        card.classList.remove("dragging");
+        card.style.transform = "";
+        if (to !== from) move(from, to);
+      };
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    });
+  });
 }
 
 let lastSaveState = "saved";
