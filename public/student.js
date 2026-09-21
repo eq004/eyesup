@@ -669,11 +669,28 @@ function renderInteraction(itx) {
     show(`<span class="mode-tag">🔗 Website</span>
       <h1 class="q">${itx.prompt ? esc(itx.prompt) : "Open this website"}</h1>
       <a class="btn send link-go" id="linkGo" href="${esc(itx.link.url)}" target="_blank" rel="noopener noreferrer">${esc(itx.link.label || "Open the website")} ↗</a>
+      <div class="link-copy-row">
+        <input id="linkText" class="link-text" readonly value="${esc(itx.link.url)}" aria-label="Website address" />
+        <button type="button" class="link-copy" id="linkCopy">📋 Copy link</button>
+      </div>
       <p class="hint" style="margin-top:0.6rem">${host ? `Goes to <b>${esc(host)}</b>. ` : ""}It opens in a new tab — come back to this tab when your teacher says.</p>
       ${state.submitted ? `<p class="hint" style="color:var(--green);font-weight:700">✓ Opened — tap again if you closed it.</p>` : ""}`, () => {
       $("linkGo").onclick = () => {
         // Tell the teacher this student has opened it (the link itself opens normally).
         send({ type: "respond", interactionId: itx.id, payload: { opened: true } });
+      };
+      const field = $("linkText"), copyBtn = $("linkCopy");
+      field.onfocus = () => field.select(); // tapping the address selects it all
+      copyBtn.onclick = async () => {
+        let ok = false;
+        try { await navigator.clipboard.writeText(itx.link.url); ok = true; } catch { /* older or locked-down browser */ }
+        if (!ok) {
+          // Fallback: select the address and use the browser's own copy command.
+          field.focus(); field.select();
+          try { ok = document.execCommand("copy"); } catch { ok = false; }
+        }
+        copyBtn.textContent = ok ? "✓ Copied" : "Select the address and copy it";
+        setTimeout(() => (copyBtn.textContent = "📋 Copy link"), 2500);
       };
     });
     return;
