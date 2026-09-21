@@ -35,7 +35,7 @@ const MODE_NAMES = {
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
   phonics: "🔤 Phonics Keyboard",
   spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", phonics_cloze: "🖼️ Picture Phonics", working: "🧮 Working Out",
-  counters: "🟠 Counters", table: "📋 Table", plus_minus: "➕➖ Plus & Minus",
+  counters: "🟠 Counters", table: "📋 Table", dot_points: "📌 Dot Points", plus_minus: "➕➖ Plus & Minus",
   long_response: "📜 Long Response",
 };
 
@@ -658,6 +658,56 @@ function renderInteraction(itx) {
         const fills = [...screenEl.querySelectorAll("[data-cz]")].map((el) => (el.dataset.word !== undefined && !("value" in el) ? el.dataset.word : el.value).trim());
         if (fills.some(Boolean)) submit({ fills });
       };
+    });
+    return;
+  }
+
+  /* --- dot points: a quick bulleted list, one point at a time --- */
+  if (itx.mode === "dot_points") {
+    const MAXP = 12;
+    const points = [];
+    show(`${h}
+      <ul class="dp-list" id="dpList"></ul>
+      <div class="dp-add">
+        <input id="dpInput" maxlength="160" autocomplete="off" placeholder="Type a point, then press Enter" />
+        <button type="button" class="dp-plus" id="dpAdd" aria-label="Add this point">＋</button>
+      </div>
+      <p class="hint" id="dpCount" style="margin:0.4rem 0 0"></p>
+      <button class="btn send" id="sendBtn" disabled>Send my list</button>`, () => {
+      const input = $("dpInput"), list = $("dpList");
+      // Typing only refreshes the counter and button; the list itself is redrawn
+      // just when a point is added or removed (so it doesn't flicker mid-word).
+      const paint = () => {
+        list.innerHTML = points
+          .map((pt, i) => `<li><span class="dp-dot">•</span><span class="dp-txt">${esc(pt)}</span><button type="button" class="dp-x" data-rm="${i}" aria-label="Remove this point">✕</button></li>`)
+          .join("");
+        list.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => { points.splice(+b.dataset.rm, 1); paint(); input.focus(); }));
+        paintMeta();
+      };
+      const paintMeta = () => {
+        const typed = input.value.trim() ? 1 : 0;
+        $("dpCount").textContent = points.length ? `${points.length} point${points.length === 1 ? "" : "s"}${points.length >= MAXP ? " — that's the most you can add" : ""}` : "Add your first point";
+        $("sendBtn").disabled = points.length + typed === 0;
+        $("sendBtn").textContent = points.length + typed > 1 ? `Send my ${points.length + typed} points` : "Send my list";
+        input.disabled = points.length >= MAXP;
+      };
+      const add = () => {
+        const v = input.value.trim().replace(/\s+/g, " ");
+        if (!v || points.length >= MAXP) return;
+        points.push(v);
+        input.value = "";
+        paint();
+        input.focus();
+      };
+      input.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } };
+      input.oninput = paintMeta;
+      $("dpAdd").onclick = add;
+      $("sendBtn").onclick = () => {
+        add(); // a half-typed last point counts too
+        if (points.length) submit({ points: [...points] });
+      };
+      paint();
+      input.focus();
     });
     return;
   }

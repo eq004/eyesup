@@ -32,6 +32,8 @@ const MODES = {
   picture_prompt:{ icon: "🖼️", name: "Picture Prompt", hint: "Put an image up — students write about it", opts: null, imageUpload: true,
                    ph: "The question about the image — or ask it aloud" },
   retrieval_sprint:{ icon: "🧠", name: "Retrieval Sprint", hint: "1–3 timed minutes — write everything you recall", opts: null, sprintUI: true },
+  dot_points:    { icon: "📌", name: "Dot Points",    hint: "Students build a quick bulleted list, one point at a time", opts: null,
+                   ph: "e.g. “List everything you know about volcanoes”" },
   table:         { icon: "📋", name: "Table",         hint: "Students fill a table — compare, sort, KWL", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true,
                    ph: "The task, e.g. “Compare solids, liquids and gases”" },
   exit_ticket:   { icon: "🎟️", name: "Exit Ticket",  hint: "One thing learned before you leave", opts: null },
@@ -89,7 +91,7 @@ const MODES = {
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
-  { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
+  { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "dot_points", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
@@ -104,7 +106,7 @@ const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
   TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
   m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" ||
-  m === "counters" || m === "table" || m === "plus_minus";
+  m === "counters" || m === "table" || m === "dot_points" || m === "plus_minus";
 
 function miniTable(columns, rows) {
   return `<table class="mini-table"><thead><tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>
@@ -899,6 +901,8 @@ function renderLive() {
           .join("") || "<span style='color:var(--muted);font-size:0.8rem'>—</span>"}</div>
       </div>`;
     body = `<div class="venn-cols" style="grid-template-columns:1fr 1fr">${col("＋ Positives", agg.plus, "var(--green)")}${col("− Negatives", agg.minus, "var(--red)")}</div>`;
+  } else if (itx.mode === "dot_points") {
+    body = revealCards((r) => `<ul style="margin:0;padding-left:1.1rem;text-align:left">${(r.payload.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`);
   } else if (itx.mode === "table") {
     body = revealCards((r) => miniTable(itx.options, r.payload.rows));
   } else if (itx.mode === "counters") {

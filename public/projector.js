@@ -25,7 +25,7 @@ const MODE_TAGS = {
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
   picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
   spelling: "Spelling Test", cloze: "Fill the Gaps", working: "Show Your Working",
-  counters: "Build It With Counters", table: "Fill the Table", plus_minus: "Plus & Minus",
+  counters: "Build It With Counters", table: "Fill the Table", dot_points: "Dot Points", plus_minus: "Plus & Minus",
   long_response: "Long Response",
 };
 
@@ -529,6 +529,12 @@ function renderInteraction(itx) {
           `<p class="waiting-note" style="font-size:1rem">…</p>`}
       </div>`;
     body = `<div class="pm-board">${col("＋", agg.plus, "pm-plus")}${col("−", agg.minus, "pm-minus")}</div>`;
+  } else if (itx.mode === "dot_points") {
+    body = agg.lists.length
+      ? `<div class="answers">${agg.lists
+          .map((l, i) => `<div class="answer-card tappable" data-spot="${l.sid}" style="animation-delay:${(i % 6) * 0.07}s"><ul class="dp-proj">${l.points.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>${nameTag(l.name)}</div>`)
+          .join("")}</div>`
+      : `<p class="waiting-note">Lists appear here as they come in…</p>`;
   } else if (itx.mode === "table") {
     body = agg.tables.length
       ? `<div class="answers">${agg.tables
@@ -589,6 +595,8 @@ function renderGenericSpotlight(s) {
   } else if (s.kind === "board") {
     inner = `${boardSvg(s.items, s.counterKind, "min(640px, 74vw)")}
       <div class="spot-text" style="margin-top:0.6rem">= ${esc(s.answer || "—")}${s.ok === true ? " ✓" : s.ok === false ? " ✗" : ""}</div>`;
+  } else if (s.kind === "list") {
+    inner = `<ul class="dp-proj big">${(s.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
   } else if (s.kind === "table") {
     inner = `<div style="font-size:clamp(1rem,1.9vw,1.5rem)">${projTable(s.columns, s.rows)}</div>`;
   }

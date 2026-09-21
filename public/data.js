@@ -9,7 +9,7 @@ const MODE_META = {
   word_cloud: ["☁️", "Word Cloud"], one_word: ["🗣️", "One Word"], mindmap: ["🕸️", "Mindmap"],
   post_its: ["🗒️", "Post-its"], phonics: ["🔤", "Phonics"], short_answer: ["✏️", "Short Answer"],
   long_response: ["📜", "Long Response"], picture_prompt: ["🖼️", "Picture Prompt"],
-  retrieval_sprint: ["🧠", "Retrieval Sprint"], table: ["📋", "Table"], exit_ticket: ["🎟️", "Exit Ticket"],
+  retrieval_sprint: ["🧠", "Retrieval Sprint"], table: ["📋", "Table"], dot_points: ["📌", "Dot Points"], exit_ticket: ["🎟️", "Exit Ticket"],
   finish_sentence: ["📝", "Finish Sentence"], give_example: ["💡", "Give Example"],
   make_connection: ["🔗", "Connection"], teach_back: ["🧑‍🏫", "Teach Back"], spot_mistake: ["🔎", "Spot Mistake"],
   quick_challenge: ["🚀", "Challenge"], predict: ["🔮", "Predict"], three_two_one: ["3️⃣", "3-2-1"],

@@ -143,6 +143,17 @@
     margin: 0 0.2rem;
   }
   select.cloze-gap { width: auto; min-width: 110px; }
+  /* dot points */
+  .dp-list { list-style: none; padding: 0; margin: 0 0 0.6rem; text-align: left; display: flex; flex-direction: column; gap: 0.35rem; }
+  .dp-list li { display: flex; align-items: flex-start; gap: 0.5rem; background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 0.55rem 0.7rem; animation: rise 0.2s ease both; }
+  .dp-dot { color: var(--accent); font-weight: 800; font-size: 1.2rem; line-height: 1.2; }
+  .dp-txt { flex: 1; overflow-wrap: anywhere; font-weight: 600; }
+  .dp-x { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; color: var(--muted); font-size: 0.85rem; }
+  .dp-x:hover { background: var(--red-soft); color: var(--red); }
+  .dp-add { display: flex; gap: 0.5rem; }
+  .dp-add input { flex: 1; min-width: 0; border: 1.5px solid var(--line); border-radius: 12px; padding: 0.75rem 0.85rem; font-size: 1rem; background: var(--surface); }
+  .dp-add input:focus { outline: none; border-color: var(--accent); }
+  .dp-plus { flex: 0 0 auto; width: 48px; border-radius: 12px; background: var(--accent); color: #fff; font-size: 1.4rem; font-weight: 800; }
   /* picture phonics: the word frame */
   .pw-frame { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.3rem; margin: 0.4rem 0 0.8rem; font-size: 2rem; font-weight: 800; letter-spacing: 0.05em; }
   .pw-fixed { color: var(--ink); }

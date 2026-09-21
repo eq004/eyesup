@@ -529,7 +529,7 @@ const MAX_STEPS = 40;
 const STEP_MODES = new Set([
   "multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley",
   "scale", "example_nonexample", "word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze", "short_answer",
-  "long_response", "picture_prompt", "retrieval_sprint", "table", "exit_ticket", "finish_sentence", "give_example",
+  "long_response", "picture_prompt", "retrieval_sprint", "table", "dot_points", "exit_ticket", "finish_sentence", "give_example",
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
   "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "annotate", "image_drop",
@@ -995,7 +995,7 @@ function isRevealMode(mode) {
     TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] ||
     IMAGE_MODES.has(mode) || mode === "example_nonexample" ||
     mode === "post_its" || mode === "phonics" || mode === "working" || mode === "counters" ||
-    mode === "table" || mode === "plus_minus"
+    mode === "table" || mode === "dot_points" || mode === "plus_minus"
   );
 }
 
@@ -1143,6 +1143,7 @@ function buildSpotlight(itx) {
              ok: itx.expected ? markMatch(r.payload.answer, itx.expected) : null, name, sid: key };
   if (m === "table")
     return { kind: "table", columns: itx.options, rows: r.payload.rows, name, sid: key };
+  if (m === "dot_points") return { kind: "list", points: r.payload.points, name, sid: key };
   if (STRUCTURED_FIELDS[m]) return { kind: "structured", fields: itx.fields, parts: r.payload.parts, name, sid: key };
   if (m === "example_nonexample")
     return { kind: "text", text: `${itx.options[r.payload.choice]}${r.payload.text ? " — " + r.payload.text : ""}`, name, sid: key };
@@ -1332,6 +1333,13 @@ function aggregate(session, itx) {
       });
     }
     return { ...base, plus, minus };
+  }
+
+  if (itx.mode === "dot_points") {
+    const lists = [...itx.responses.entries()]
+      .filter(([, r]) => r.revealed)
+      .map(([sid, r]) => ({ points: r.payload.points, name: nm(r), sid }));
+    return { ...base, lists, revealedCount: lists.length };
   }
 
   if (itx.mode === "table") {
@@ -1610,6 +1618,7 @@ function describePayload(itx, p) {
   }
   if (itx.mode === "plus_minus")
     return (p.items || []).map((it) => `${it.side === 0 ? "＋" : "−"} ${it.text}`).join("  |  ");
+  if (itx.mode === "dot_points") return (p.points || []).map((x) => `• ${x}`).join("   ");
   if (itx.mode === "table")
     return (p.rows || [])
       .map((row) => row.map((c, i) => `${itx.options[i]}: ${c || "—"}`).join("  |  "))
@@ -1713,6 +1722,8 @@ function buildSummary(session, { withImages = false } = {}) {
       item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
     if (TEXT_MODES.has(itx.mode))
       item.answers = [...itx.responses.values()].map((r) => r.payload.text).slice(0, 40);
+    if (itx.mode === "dot_points")
+      item.answers = [...itx.responses.values()].map((r) => (r.payload.points || []).map((x) => `• ${x}`).join("  ")).slice(0, 40);
     return item;
   });
 
@@ -2410,6 +2421,14 @@ function sanitizePayload(itx, payload) {
       })
       .slice(0, itx.multi === false ? 1 : 6);
     return items.length ? { items } : null;
+  }
+
+  if (itx.mode === "dot_points") {
+    const points = (Array.isArray(payload.points) ? payload.points : [])
+      .map((x) => String(x).trim().replace(/\s+/g, " ").slice(0, 160))
+      .filter(Boolean)
+      .slice(0, 12);
+    return points.length ? { points } : null;
   }
 
   if (itx.mode === "table") {
