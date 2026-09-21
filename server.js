@@ -1137,13 +1137,15 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
 
 // The spotlighted response (any card type), enlarged on the projector.
 // spotlightId is a studentId, or "studentId|noteIndex" for post-it notes.
-function buildSpotlight(itx) {
-  if (!itx.spotlightId) return null;
-  const [sid, noteIdx] = String(itx.spotlightId).split("|");
+// `peek` builds the same card for "reveal one random answer": the teacher
+// chose to show it, so it skips the per-answer reveal gate.
+function buildSpotlight(itx, id = itx.spotlightId, peek = false) {
+  if (!id) return null;
+  const [sid, noteIdx] = String(id).split("|");
   const r = itx.responses.get(sid);
-  if (!r || !r.revealed) return null;
+  if (!r || (!r.revealed && !peek)) return null;
   const name = itx.showNames && !ANON_MODES.has(itx.mode) ? r.name : undefined;
-  const key = itx.spotlightId;
+  const key = id;
   const m = itx.mode;
   if (IMAGE_MODES.has(m)) {
     const list = imgsOf(r);
@@ -1153,7 +1155,7 @@ function buildSpotlight(itx) {
   if (m === "post_its") {
     const i = parseInt(noteIdx, 10);
     const note = (r.payload.notes || [])[i];
-    if (note == null || !r.noteRevealed?.[i]) return null;
+    if (note == null || (!r.noteRevealed?.[i] && !peek)) return null;
     return { kind: "text", text: note, name, sid: key };
   }
   if (m === "plus_minus") {
@@ -1176,7 +1178,24 @@ function buildSpotlight(itx) {
   if (m === "example_nonexample")
     return { kind: "text", text: `${itx.options[r.payload.choice]}${r.payload.text ? " — " + r.payload.text : ""}`, name, sid: key };
   if (TEXT_MODES.has(m)) return { kind: "text", text: r.payload.text, name, sid: key };
+  if (peek) {
+    const text = describePayload(itx, r.payload);
+    return text ? { kind: "text", text: String(text), name, sid: key } : null;
+  }
   return null;
+}
+
+// One random answer while the rest stay hidden. Avoids repeating the one
+// already showing; post-its / plus-minus pick a single note.
+function pickRandomPeek(itx) {
+  const ids = [];
+  for (const [sid, r] of itx.responses) {
+    const many = itx.mode === "post_its" ? r.payload.notes : itx.mode === "plus_minus" ? r.payload.items : null;
+    if (many) many.forEach((_, i) => ids.push(`${sid}|${i}`));
+    else ids.push(sid);
+  }
+  const pool = ids.length > 1 ? ids.filter((x) => x !== itx.peekId) : ids;
+  return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
 }
 
 function aggregate(session, itx) {
@@ -1544,6 +1563,7 @@ function projectorState(session) {
           clozeParts: itx.cloze ? itx.cloze.parts : null,
           link: itx.link,
           aggregate: itx.resultsVisible ? aggregate(session, itx) : null,
+          peek: !itx.resultsVisible && itx.peekId ? buildSpotlight(itx, itx.peekId, true) : null,
         }
       : null,
   };
@@ -1993,7 +2013,7 @@ async function handle(ws, msg) {
   /* ---- teacher actions ---- */
 
   // Room tools a teacher can also drive from the board's corner dock.
-  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "show_results", "hide_results"]);
+  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "show_results", "hide_results", "reveal_random", "clear_peek"]);
   if (ws.meta.role !== "teacher" && !(ws.meta.role === "projector" && BOARD_ACTIONS.has(type))) {
     // The projector often runs on an interactive whiteboard: allow
     // tap-to-spotlight and the corner tools straight from the board — and only those.
@@ -2047,7 +2067,16 @@ async function handle(ws, msg) {
       break;
     }
     case "show_results": {
-      if (session.interaction) session.interaction.resultsVisible = true;
+      if (session.interaction) { session.interaction.resultsVisible = true; session.interaction.peekId = null; }
+      break;
+    }
+    case "reveal_random": {
+      const itx = session.interaction;
+      if (itx && !itx.resultsVisible && itx.mode !== "link") itx.peekId = pickRandomPeek(itx);
+      break;
+    }
+    case "clear_peek": {
+      if (session.interaction) session.interaction.peekId = null;
       break;
     }
     case "hide_results": {

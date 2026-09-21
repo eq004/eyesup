@@ -497,14 +497,23 @@ function renderInteraction(itx) {
   const agg = itx.aggregate;
   let body = "";
 
-  if (itx.mode === "phonics_cloze") {
+  if (!agg && itx.peek) {
+    // One random answer on show; everything else is still held back.
+    body = `<p class="waiting-note" style="margin-bottom:0.4rem">🎲 One random answer</p>
+      ${renderGenericSpotlight(itx.peek, "")}
+      <div class="reveal-row">
+        <button class="reveal-small" data-board="reveal_random">🎲 Another random answer</button>
+        <button class="reveal-small" data-board="clear_peek">🙈 Hide it</button>
+      </div>
+      <button class="reveal-big" data-board="show_results">👁 Reveal all answers</button>`;
+  } else if (itx.mode === "phonics_cloze") {
     body = renderPictureWord(itx, agg);
   } else if (itx.mode === "link") {
     body = renderLinkStep(itx);
   } else if (!agg) {
     // Results hidden — build anticipation, show only the count.
     body = `<p class="waiting-note">${itx.open ? "Thinking time… responses are coming in." : "Responses are in. Waiting for the reveal…"}</p>
-      <button class="reveal-big" data-board="show_results">👁 Reveal answers</button>`;
+      ${revealButtons()}`;
   } else if (agg.words) {
     body = itx.mode === "mindmap" ? renderMindmap(itx, agg) : renderCloud(agg);
   } else if (itx.mode === "example_nonexample") {
@@ -597,9 +606,17 @@ function renderInteraction(itx) {
 }
 
 /* Any non-drawing response, blown up big for discussion. */
-function renderGenericSpotlight(s) {
+/* The hold-back buttons: everything, or just one answer picked at random. */
+function revealButtons() {
+  return `<button class="reveal-big" data-board="show_results">👁 Reveal all answers</button>
+    ${state.respondedCount ? `<div class="reveal-row"><button class="reveal-small" data-board="reveal_random">🎲 Reveal one random answer</button></div>` : ""}`;
+}
+
+function renderGenericSpotlight(s, hint = "tap anywhere to go back") {
   let inner = "";
-  if (s.kind === "text") {
+  if (s.kind === "image") {
+    inner = `<img src="${s.image}" alt="a student's answer" style="max-height:52vh;max-width:100%;border-radius:12px" />${s.text ? `<div class="spot-text" style="font-size:clamp(1rem,2vw,1.6rem);margin-top:0.8rem">${esc(s.text)}</div>` : ""}`;
+  } else if (s.kind === "text") {
     inner = `<div class="spot-text">${esc(s.text)}</div>`;
   } else if (s.kind === "structured") {
     inner = `<div class="spot-text" style="text-align:left">${s.fields
@@ -623,7 +640,7 @@ function renderGenericSpotlight(s) {
   }
   return `<div class="spot-stage">
     <div class="spot-card">${inner}${s.name ? `<div class="sketch-name" style="font-size:clamp(1rem,2vw,1.5rem)">${esc(s.name)}</div>` : ""}</div>
-    <p class="tap-hint">tap anywhere to go back</p>
+    ${hint ? `<p class="tap-hint">${hint}</p>` : ""}
   </div>`;
 }
 
@@ -798,7 +815,7 @@ function renderPictureWord(itx, agg) {
   const frame = parts.map((p, i) => `${esc(p)}${i < parts.length - 1 ? `<span class="cloze-fill" style="border-color:var(--glow);min-width:1.6em">&nbsp;</span>` : ""}`).join("");
   return `${img}<div class="cloze-reveal" style="font-size:clamp(2rem,5vw,4rem);letter-spacing:0.06em">${frame}</div>
     <p class="waiting-note" style="margin-top:1rem">${itx.open ? "Build the word on your device — the sounds appear here at the reveal." : "Answers are in. Waiting for the reveal…"}</p>
-    <button class="reveal-big" data-board="show_results">👁 Reveal answers</button>`;
+    ${revealButtons()}`;
 }
 
 /* Working out — answer spread plus the working stacks. */
