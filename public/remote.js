@@ -38,6 +38,7 @@ const MODES = {
   picture_prompt:{ icon: "🖼️", name: "Picture Prompt", imageUpload: true },
   retrieval_sprint:{ icon: "🧠", name: "Sprint", sprintUI: true },
   table:         { icon: "📋", name: "Table", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true },
+  question_set:  { icon: "📝", name: "Question Set", opts: { min: 2, max: 8, labels: "Question", maxLen: 200 }, ph: "Optional heading" },
   dot_points:    { icon: "📌", name: "Dot Points", ph: "e.g. “List everything you know about…”" },
   link:          { icon: "🔗", name: "Website Link", linkUI: true, ph: "Instruction, e.g. “Read the first section”" },
   exit_ticket:   { icon: "🎟️", name: "Exit Ticket" },
@@ -75,7 +76,7 @@ const MODES = {
 const CATEGORIES = [
   { label: "Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
-  { label: "Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
+  { label: "Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
@@ -86,7 +87,7 @@ const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_tic
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "dot_points", "plus_minus"].includes(m);
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["question_set", "sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "dot_points", "plus_minus"].includes(m);
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -218,6 +219,7 @@ function lineFor(itx, p) {
   if (itx.options && Number.isInteger(p.choice)) return itx.options[p.choice];
   if (p.order) return p.order.map((i) => itx.options[i]).join(" → ");
   if (p.matches) return `${p.matches.filter((x, i) => x === i).length}/${itx.pairs.length} correct`;
+  if (m === "question_set") return (itx.fields || []).map((_, i) => `Q${i + 1}: ${(p.parts || [])[i] || "—"}`).join(" | ");
   if (p.parts && itx.fields) return p.parts.filter(Boolean).join(" · ");
   if (m === "spelling") return itx.words.map((w, i) => `${p.answers[i] || "—"}${markMatch(p.answers[i], w) ? "✓" : "✗"}`).join(" ");
   if (m === "cloze") return itx.cloze.answers.map((w, i) => `${p.fills[i] || "—"}${markMatch(p.fills[i], w) ? "✓" : "✗"}`).join(" ");
@@ -397,7 +399,7 @@ function openComposer(key) {
   const m = MODES[key];
   let fields = `<input class="rin" id="cPrompt" maxlength="300" placeholder="${esc(m.ph || "Question — or leave blank and ask aloud")}" />`;
   if (m.opts) fields += Array.from({ length: m.opts.max }, (_, i) =>
-    `<input class="rin" data-copt maxlength="80" placeholder="${esc(m.opts.labels)} ${i + 1}${i < m.opts.min ? "" : " (optional)"}" />`).join("");
+    `<input class="rin" data-copt maxlength="${m.opts.maxLen || 80}" placeholder="${esc(m.opts.labels)} ${i + 1}${i < m.opts.min ? "" : " (optional)"}" />`).join("");
   if (m.hasCorrect) fields += `<select class="rin" id="cCorrect"><option value="">Correct answer: not set</option>${["A", "B", "C", "D", "E"].map((L, i) => `<option value="${i}">Correct: ${L}</option>`).join("")}</select>`;
   if (m.pairs) fields += Array.from({ length: m.pairs.max }, (_, i) =>
     `<div class="pair-row"><input class="rin" data-cleft maxlength="60" placeholder="Term ${i + 1}${i < m.pairs.min ? "" : " (opt)"}" /><span class="pair-eq">↔</span><input class="rin" data-cright maxlength="60" placeholder="Match" /></div>`).join("");

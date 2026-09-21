@@ -35,7 +35,7 @@ const MODE_NAMES = {
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
   phonics: "🔤 Phonics Keyboard",
   spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", phonics_cloze: "🖼️ Picture Phonics", working: "🧮 Working Out",
-  counters: "🟠 Counters", table: "📋 Table", dot_points: "📌 Dot Points", link: "🔗 Website", plus_minus: "➕➖ Plus & Minus",
+  counters: "🟠 Counters", question_set: "📝 Question Set", table: "📋 Table", dot_points: "📌 Dot Points", link: "🔗 Website", plus_minus: "➕➖ Plus & Minus",
   long_response: "📜 Long Response",
 };
 
@@ -315,15 +315,29 @@ function renderInteraction(itx) {
 
   /* --- structured (3-2-1, notice/wonder, before/after) --- */
   if (itx.fields) {
-    show(`${h}${itx.fields
+    const qset = itx.mode === "question_set";
+    const head = qset
+      ? `<span class="mode-tag">📝 Question Set</span><h1 class="q">${itx.prompt ? esc(itx.prompt) : `Answer these ${itx.fields.length} questions`}</h1>`
+      : h;
+    show(`${head}${itx.fields
       .map(
-        (f, i) => `<label class="fld"><span>${esc(f)}</span><textarea data-part="${i}" rows="2" maxlength="400"></textarea></label>`
+        (f, i) => `<label class="fld ${qset ? "qset" : ""}"><span>${qset ? `<b class="qn">${i + 1}</b>` : ""}${esc(f)}</span><textarea data-part="${i}" rows="2" maxlength="400"></textarea></label>`
       )
       .join("")}
-      <button class="btn send" id="sendBtn">Send</button>`, () => {
-      screenEl.querySelector("[data-part]")?.focus();
+      ${qset ? `<p class="hint" id="qsCount" style="margin:0.2rem 0 0"></p>` : ""}
+      <button class="btn send" id="sendBtn">${qset ? "Send my answers" : "Send"}</button>`, () => {
+      const boxes = [...screenEl.querySelectorAll("[data-part]")];
+      boxes[0]?.focus();
+      if (qset) {
+        const count = () => {
+          const n = boxes.filter((t) => t.value.trim()).length;
+          $("qsCount").textContent = `${n} of ${boxes.length} answered${n < boxes.length ? " — you can send with some left blank" : " ✓"}`;
+        };
+        boxes.forEach((t) => (t.oninput = count));
+        count();
+      }
       $("sendBtn").onclick = () => {
-        const parts = [...screenEl.querySelectorAll("[data-part]")].map((t) => t.value.trim());
+        const parts = boxes.map((t) => t.value.trim());
         if (parts.some(Boolean)) submit({ parts });
       };
     });

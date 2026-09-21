@@ -34,6 +34,8 @@ const MODES = {
   retrieval_sprint:{ icon: "🧠", name: "Retrieval Sprint", hint: "1–3 timed minutes — write everything you recall", opts: null, sprintUI: true },
   link:          { icon: "🔗", name: "Website Link",  hint: "Send every student to a website with one tap", opts: null, linkUI: true,
                    ph: "Instruction for students, e.g. “Read the first section, then come back”" },
+  question_set:  { icon: "📝", name: "Question Set",  hint: "Several short-answer questions on one screen, sent together", opts: { min: 2, max: 8, labels: "Question", maxLen: 200 },
+                   ph: "Optional heading, e.g. “Chapter 3 check-in”" },
   dot_points:    { icon: "📌", name: "Dot Points",    hint: "Students build a quick bulleted list, one point at a time", opts: null,
                    ph: "e.g. “List everything you know about volcanoes”" },
   table:         { icon: "📋", name: "Table",         hint: "Students fill a table — compare, sort, KWL", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true,
@@ -93,7 +95,7 @@ const MODES = {
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
-  { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
+  { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
@@ -106,7 +108,7 @@ const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "sketch" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "question_set" || m === "sketch" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
   m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" ||
   m === "counters" || m === "table" || m === "dot_points" || m === "plus_minus";
 
@@ -382,7 +384,7 @@ function openComposer(key, keepImage) {
     for (let i = 0; i < m.opts.max; i++) {
       const inp = document.createElement("input");
       inp.type = "text";
-      inp.maxLength = 80;
+      inp.maxLength = m.opts.maxLen || 80;
       inp.placeholder = `${m.opts.labels} ${i + 1}${i < m.opts.min ? "" : " (optional)"}`;
       inp.dataset.opt = "1";
       opts.appendChild(inp);
@@ -864,7 +866,7 @@ function renderLive() {
         </div>`
       )
       .join("")}</div>`;
-  } else if (STRUCTURED.has(itx.mode)) {
+  } else if (STRUCTURED.has(itx.mode) || itx.mode === "question_set") {
     body = revealCards((r) =>
       itx.fields
         .map((f, i) => (r.payload.parts[i] ? `<b>${esc(f)}</b> ${esc(r.payload.parts[i])}` : ""))

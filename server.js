@@ -529,7 +529,7 @@ const MAX_STEPS = 40;
 const STEP_MODES = new Set([
   "multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley",
   "scale", "example_nonexample", "word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze", "short_answer",
-  "long_response", "picture_prompt", "retrieval_sprint", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example",
+  "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example",
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
   "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "annotate", "image_drop",
@@ -556,7 +556,7 @@ function sanitizeStep(it) {
   return {
     mode: String(it.mode),
     prompt: String(it.prompt || "").slice(0, 300),
-    options: Array.isArray(it.options) ? it.options.slice(0, 10).map((o) => String(o).slice(0, 140)) : null,
+    options: Array.isArray(it.options) ? it.options.slice(0, 10).map((o) => String(o).slice(0, 200)) : null,
     correct: Number.isInteger(it.correct) ? it.correct : null,
     moderated: typeof it.moderated === "boolean" ? it.moderated : undefined,
     multi: typeof it.multi === "boolean" ? it.multi : undefined,
@@ -1010,7 +1010,7 @@ const PHONICS_TOKENS = new Set([
 // Does the teacher gate this response type onto the projector?
 function isRevealMode(mode) {
   return (
-    TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] ||
+    TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] || mode === "question_set" ||
     IMAGE_MODES.has(mode) || mode === "example_nonexample" ||
     mode === "post_its" || mode === "phonics" || mode === "working" || mode === "counters" ||
     mode === "table" || mode === "dot_points" || mode === "plus_minus"
@@ -1037,6 +1037,13 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
   if (mode === "scale") {
     // A continuum needs two ends; sensible defaults keep launch instant.
     opts = [(opts && opts[0]) || "Disagree", (opts && opts[1]) || "Agree"];
+  }
+  // Question set: the teacher's own questions become the answer boxes.
+  let questionFields = null;
+  if (mode === "question_set") {
+    questionFields = (options || []).map((o) => String(o).trim().slice(0, 200)).filter(Boolean).slice(0, 8);
+    if (!questionFields.length) questionFields = ["Your answer"];
+    opts = null;
   }
   // Spelling test: the words live server-side only — students never receive them.
   let words = null;
@@ -1090,7 +1097,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     prompt: String(prompt || "").trim(),
     options: opts,
     pairs,
-    fields: STRUCTURED_FIELDS[mode] || null,
+    fields: STRUCTURED_FIELDS[mode] || questionFields || null,
     timeLimit:
       mode === "retrieval_sprint"
         ? [60, 120, 180].includes(Number(sprintSeconds)) ? Number(sprintSeconds) : 60
@@ -1165,7 +1172,7 @@ function buildSpotlight(itx) {
   if (m === "table")
     return { kind: "table", columns: itx.options, rows: r.payload.rows, name, sid: key };
   if (m === "dot_points") return { kind: "list", points: r.payload.points, name, sid: key };
-  if (STRUCTURED_FIELDS[m]) return { kind: "structured", fields: itx.fields, parts: r.payload.parts, name, sid: key };
+  if (itx.fields) return { kind: "structured", fields: itx.fields, parts: r.payload.parts, name, sid: key };
   if (m === "example_nonexample")
     return { kind: "text", text: `${itx.options[r.payload.choice]}${r.payload.text ? " — " + r.payload.text : ""}`, name, sid: key };
   if (TEXT_MODES.has(m)) return { kind: "text", text: r.payload.text, name, sid: key };
@@ -1293,7 +1300,7 @@ function aggregate(session, itx) {
     return { ...base, options: itx.options, counts, revealed };
   }
 
-  if (STRUCTURED_FIELDS[itx.mode]) {
+  if (itx.fields) {
     const revealed = [...itx.responses.entries()]
       .filter(([, r]) => r.revealed)
       .map(([sid, r]) => ({ parts: r.payload.parts, name: nm(r), sid }));
@@ -1617,7 +1624,9 @@ function describePayload(itx, p) {
     const right = (p.matches || []).filter((m, i) => m === i).length;
     return `${right}/${itx.pairs.length} matched correctly`;
   }
-  if (STRUCTURED_FIELDS[itx.mode])
+  if (itx.mode === "question_set")
+    return itx.fields.map((_, i) => `Q${i + 1}: ${(p.parts || [])[i] || "—"}`).join("   |   ");
+  if (itx.fields)
     return (p.parts || []).filter(Boolean).join("  ·  ");
   if (itx.mode === "image_caption" || itx.mode === "image_long") {
     const n = imgsOf({ payload: p }).length;
@@ -1712,7 +1721,12 @@ function buildSummary(session, { withImages = false } = {}) {
         correctPct: total ? Math.round((agg.matches[i].correct / total) * 100) : 0,
       }));
     }
-    if (STRUCTURED_FIELDS[itx.mode])
+    if (itx.mode === "question_set") {
+      item.questions = itx.fields;
+      item.answers = [...itx.responses.values()]
+        .map((r) => itx.fields.map((_, i) => `Q${i + 1}: ${r.payload.parts[i] || "—"}`).join("  |  "))
+        .slice(0, 40);
+    } else if (itx.fields)
       item.answers = [...itx.responses.values()]
         .map((r) => r.payload.parts.filter(Boolean).join(" · "))
         .slice(0, 40);
@@ -2418,8 +2432,8 @@ function sanitizePayload(itx, payload) {
     return valid ? { matches } : null;
   }
 
-  if (STRUCTURED_FIELDS[itx.mode]) {
-    const fields = STRUCTURED_FIELDS[itx.mode];
+  if (itx.fields) {
+    const fields = itx.fields;
     let parts = Array.isArray(payload.parts) ? payload.parts : [];
     parts = fields.map((_, i) => String(parts[i] || "").trim().slice(0, 400));
     return parts.some(Boolean) ? { parts } : null;

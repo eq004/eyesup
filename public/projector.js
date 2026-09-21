@@ -25,7 +25,7 @@ const MODE_TAGS = {
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
   picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
   spelling: "Spelling Test", cloze: "Fill the Gaps", working: "Show Your Working",
-  counters: "Build It With Counters", table: "Fill the Table", dot_points: "Dot Points", link: "Website", plus_minus: "Plus & Minus",
+  counters: "Build It With Counters", table: "Fill the Table", question_set: "Question Set", dot_points: "Dot Points", link: "Website", plus_minus: "Plus & Minus",
   long_response: "Long Response",
 };
 
@@ -560,6 +560,8 @@ function renderInteraction(itx) {
       : `<p class="waiting-note">Tables appear here as they're filled…</p>`;
   } else if (agg.sketches) {
     body = renderSketches(agg, ["image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode));
+  } else if (itx.mode === "question_set") {
+    body = renderQuestionSet(agg);
   } else if (agg.fields) {
     body = renderStructured(agg);
   } else if (agg.revealed) {
@@ -922,6 +924,25 @@ function renderWhys(agg) {
 }
 
 /* Structured responses (3-2-1, notice/wonder, before/after). */
+/* Question Set — answers grouped under each question, ready to discuss one at a time. */
+function renderQuestionSet(agg) {
+  if (!agg.revealed.length) {
+    return `<p class="waiting-note">${agg.total ? `${agg.total} in…` : "Answers will appear here, question by question…"}</p>`;
+  }
+  return `<div class="qs-board">${agg.fields
+    .map((q, j) => {
+      const got = agg.revealed.filter((r) => r.parts[j]);
+      return `<section class="qs-q">
+        <h3><span class="qs-n">${j + 1}</span>${esc(q)} <small>${got.length} answer${got.length === 1 ? "" : "s"}</small></h3>
+        <div class="answers" style="justify-content:flex-start">${got
+          .map((r, i) => `<div class="answer-card tappable" data-spot="${r.sid}" style="animation-delay:${(i % 8) * 0.04}s;padding:0.7rem 1rem;font-size:clamp(0.95rem,1.7vw,1.3rem)">${esc(r.parts[j])}${nameTag(r.name)}</div>`)
+          .join("") || `<span class="waiting-note" style="font-size:1rem">No answers yet</span>`}</div>
+      </section>`;
+    })
+    .join("")}</div>
+    <p class="tap-hint">👆 tap an answer to see that student's whole set</p>`;
+}
+
 function renderStructured(agg) {
   if (!agg.revealed.length) {
     return `<p class="waiting-note">${agg.total ? `${agg.total} in — your teacher will reveal them.` : "Responses will appear here…"}</p>`;
