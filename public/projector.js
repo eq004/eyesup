@@ -102,6 +102,10 @@ function renderInner() {
   nb.textContent = `🏷 names ${state.showNames ? "ON" : "off"}`;
   nb.classList.toggle("on", !!state.showNames);
   nb.onclick = () => send({ type: "toggle_names" });
+  const hb = document.getElementById("holdBtn");
+  hb.textContent = `🙈 hold answers: ${state.holdAnswers ? "ON" : "off"}`;
+  hb.classList.toggle("on", !!state.holdAnswers);
+  hb.onclick = () => send({ type: "toggle_hold" });
 
   const itx = state.interaction;
 
@@ -156,6 +160,16 @@ function renderInner() {
 
   renderInteraction(itx);
   renderSprintClock(itx);
+  // While "hold answers" is on, revealed answers can be tucked away again from the board.
+  if (state.holdAnswers && itx.aggregate && itx.mode !== "link") {
+    const again = document.createElement("div");
+    again.innerHTML = `<button class="names-btn hide-again" data-board="hide_results">🙈 Hide the answers again</button>`;
+    stage.appendChild(again);
+  }
+  stage.querySelectorAll("[data-board]").forEach((b) => (b.onclick = (e) => {
+    e.stopPropagation();
+    send({ type: b.dataset.board });
+  }));
 }
 
 /* ---------------- retrieval sprint: the countdown on the big screen ---------------- */
@@ -489,7 +503,8 @@ function renderInteraction(itx) {
     body = renderLinkStep(itx);
   } else if (!agg) {
     // Results hidden — build anticipation, show only the count.
-    body = `<p class="waiting-note">${itx.open ? "Thinking time… responses are coming in." : "Responses are in. Waiting for the reveal…"}</p>`;
+    body = `<p class="waiting-note">${itx.open ? "Thinking time… responses are coming in." : "Responses are in. Waiting for the reveal…"}</p>
+      <button class="reveal-big" data-board="show_results">👁 Reveal answers</button>`;
   } else if (agg.words) {
     body = itx.mode === "mindmap" ? renderMindmap(itx, agg) : renderCloud(agg);
   } else if (itx.mode === "example_nonexample") {
@@ -778,7 +793,8 @@ function renderPictureWord(itx, agg) {
   const parts = itx.clozeParts || itx.cloze?.parts || [];
   const frame = parts.map((p, i) => `${esc(p)}${i < parts.length - 1 ? `<span class="cloze-fill" style="border-color:var(--glow);min-width:1.6em">&nbsp;</span>` : ""}`).join("");
   return `${img}<div class="cloze-reveal" style="font-size:clamp(2rem,5vw,4rem);letter-spacing:0.06em">${frame}</div>
-    <p class="waiting-note" style="margin-top:1rem">${itx.open ? "Build the word on your device — the sounds appear here at the reveal." : "Answers are in. Waiting for the reveal…"}</p>`;
+    <p class="waiting-note" style="margin-top:1rem">${itx.open ? "Build the word on your device — the sounds appear here at the reveal." : "Answers are in. Waiting for the reveal…"}</p>
+    <button class="reveal-big" data-board="show_results">👁 Reveal answers</button>`;
 }
 
 /* Working out — answer spread plus the working stacks. */

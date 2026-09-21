@@ -615,6 +615,9 @@ function render() {
   const nb = $("namesBtn");
   nb.textContent = `🏷 Names: ${state.showNames ? "ON" : "off"}`;
   nb.classList.toggle("primary", !!state.showNames);
+  const hb = $("holdBtn");
+  hb.textContent = `🙈 Hold answers: ${state.holdAnswers ? "ON" : "off"}`;
+  hb.classList.toggle("primary", !!state.holdAnswers);
   $("inviteBtn").style.display = teacherToken() && state?.storage ? "" : "none";
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
   $("qrToggle").textContent = state.showJoin ? "🔳 QR is up" : "🔳 QR";
@@ -1213,6 +1216,7 @@ $("timerGo").onclick = () => {
 };
 $("pickBtn").onclick = () => send({ type: "pick_student" });
 $("namesBtn").onclick = () => send({ type: "toggle_names" });
+$("holdBtn").onclick = () => send({ type: "toggle_hold" });
 const diceInputs = () => [...document.querySelectorAll("#diceFaces .dice-in")];
 const sendDiceFaces = () => {
   const faces = diceInputs().map((i) => i.value.trim());

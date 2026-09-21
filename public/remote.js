@@ -253,7 +253,10 @@ function miniBars(labels, counts, marks) {
 
 function renderLive() {
   const itx = state.interaction;
-  let status = `<button class="rbtn ${state.showNames ? "accent" : ""}" data-act="toggle_names" style="margin-bottom:0.6rem">🏷 Names on screen: ${state.showNames ? "ON" : "off"}</button>`;
+  let status = `<div class="timer-row" style="margin-bottom:0.6rem">
+      <button class="rbtn ${state.showNames ? "accent" : ""}" data-act="toggle_names">🏷 Names: ${state.showNames ? "ON" : "off"}</button>
+      <button class="rbtn ${state.holdAnswers ? "accent" : ""}" data-act="toggle_hold">🙈 Hold answers: ${state.holdAnswers ? "ON" : "off"}</button>
+    </div>`;
   if (itx) {
     status += `
       <div class="status">

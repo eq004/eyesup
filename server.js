@@ -953,6 +953,7 @@ function createSession(teacherWs) {
     // Room tools
     showJoin: false, // teacher-toggled: force the big join screen onto the projector
     showNames: false, // room-wide: student names on screen for every activity (anonymous modes excepted)
+    holdAnswers: false, // room-wide: every activity starts with its answers held back until the teacher reveals them
     timer: null, // {seconds, endsAt, paused, remaining}
     focus: null, // {type:'spotlight', name} | {type:'groups', groups:[[names]]}
     picked: new Set(), // student ids already randomly selected (no repeats till all picked)
@@ -1116,7 +1117,8 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     // are revealed by the teacher (gradually or all at once).
     // Quiz/test-style modes hide results until the teacher shows them, so
     // nobody bandwagons — and spellings/answers don't leak mid-test.
-    resultsVisible: !["multi_choice", "spelling", "cloze", "phonics_cloze", "working", "counters"].includes(mode),
+    // Held back when the room's "hold answers" switch is on; otherwise only the test-style modes start hidden.
+    resultsVisible: mode === "link" ? true : !session.holdAnswers && !["multi_choice", "spelling", "cloze", "phonics_cloze", "working", "counters"].includes(mode),
     responses: new Map(), // studentId -> {name, payload, revealed, at}
     startedAt: Date.now(),
   };
@@ -1448,6 +1450,7 @@ function teacherState(session) {
     focus: session.focus,
     showJoin: session.showJoin,
     showNames: session.showNames,
+    holdAnswers: session.holdAnswers,
     dice: session.dice,
     students: [...session.students.values()].map((s) => ({ id: s.id, name: s.name })),
     sequence: session.sequence,
@@ -1506,6 +1509,7 @@ function projectorState(session) {
     focus: session.focus,
     showJoin: session.showJoin,
     showNames: session.showNames,
+    holdAnswers: session.holdAnswers,
     dice: session.dice,
     studentCount: session.students.size,
     respondedCount: itx ? itx.responses.size : 0,
@@ -1967,7 +1971,7 @@ async function handle(ws, msg) {
   /* ---- teacher actions ---- */
 
   // Room tools a teacher can also drive from the board's corner dock.
-  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear"]);
+  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "show_results", "hide_results"]);
   if (ws.meta.role !== "teacher" && !(ws.meta.role === "projector" && BOARD_ACTIONS.has(type))) {
     // The projector often runs on an interactive whiteboard: allow
     // tap-to-spotlight and the corner tools straight from the board — and only those.
@@ -2012,6 +2016,12 @@ async function handle(ws, msg) {
     }
     case "close_responses": {
       if (session.interaction) session.interaction.open = false;
+      break;
+    }
+    case "toggle_hold": {
+      // One switch for the room: while it's on, answers stay off the board until revealed.
+      session.holdAnswers = typeof msg.on === "boolean" ? msg.on : !session.holdAnswers;
+      if (session.interaction && session.interaction.mode !== "link") session.interaction.resultsVisible = !session.holdAnswers;
       break;
     }
     case "show_results": {
@@ -2268,6 +2278,7 @@ async function handle(ws, msg) {
       fresh.planTitle = session.planTitle;
       fresh.title = session.planTitle || ""; // the report is named after the lesson; rename it for the class if you like
       fresh.showNames = session.showNames;
+      fresh.holdAnswers = session.holdAnswers;
       fresh.teachers = new Set(session.teachers);
       fresh.projectors = session.projectors;
       session.teachers = new Set();
