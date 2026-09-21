@@ -150,6 +150,11 @@
   .link-copy:active { background: var(--accent-soft); }
   .fld.qset span { display: flex; gap: 0.5rem; align-items: flex-start; font-weight: 700; text-align: left; }
   .fld.qset .qn { flex: 0 0 auto; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--accent); color: #fff; font-size: 0.8rem; display: inline-flex; align-items: center; justify-content: center; }
+  .tickrow { display: flex; align-items: center; gap: 0.8rem; text-align: left; }
+  .tickrow .tbox { flex: 0 0 auto; width: 1.7rem; height: 1.7rem; border-radius: 7px; border: 2.5px solid var(--accent); background: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; color: #fff; }
+  .tickrow.on { border-color: var(--accent); background: #e6edf9; }
+  .tickrow.on .tbox { background: var(--accent); }
+  .tickrow.on .tbox::after { content: "✓"; }
   /* dot points */
   .dp-list { list-style: none; padding: 0; margin: 0 0 0.6rem; text-align: left; display: flex; flex-direction: column; gap: 0.35rem; }
   .dp-list li { display: flex; align-items: flex-start; gap: 0.5rem; background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 0.55rem 0.7rem; animation: rise 0.2s ease both; }

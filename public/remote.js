@@ -18,6 +18,7 @@ let userSummaryWanted = false;
 
 const MODES = {
   multi_choice:  { icon: "🅰️", name: "Multi Choice", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true },
+  tick_boxes:    { icon: "☑️", name: "Tick the Boxes", opts: { min: 2, max: 10, labels: "Box" } },
   poll:          { icon: "📊", name: "Poll", opts: { min: 2, max: 5, labels: "Option" } },
   picture_vote:  { icon: "🗳️", name: "Picture Vote", opts: { min: 2, max: 5, labels: "Option" }, imageUpload: true },
   agree_disagree:{ icon: "⚖️", name: "Agree/Disagree" },
@@ -74,7 +75,7 @@ const MODES = {
 };
 
 const CATEGORIES = [
-  { label: "Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
+  { label: "Fast votes", modes: ["multi_choice", "poll", "tick_boxes", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
   { label: "Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
@@ -216,6 +217,7 @@ function lineFor(itx, p) {
   if (m === "venn") return (p.items || []).map((it) => `${it.text}→${["A", "both", "B"][it.region]}`).join(", ");
   if (m === "scale") return `${p.value}/100`;
   if (m === "example_nonexample") return `${itx.options[p.choice]}${p.text ? " — " + p.text : ""}`;
+  if (m === "tick_boxes") return (p.picks || []).map((i) => itx.options[i]).join(", ") || "(nothing ticked)";
   if (itx.options && Number.isInteger(p.choice)) return itx.options[p.choice];
   if (p.order) return p.order.map((i) => itx.options[i]).join(" → ");
   if (p.matches) return `${p.matches.filter((x, i) => x === i).length}/${itx.pairs.length} correct`;

@@ -527,7 +527,7 @@ app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
 
 const MAX_STEPS = 40;
 const STEP_MODES = new Set([
-  "multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley",
+  "multi_choice", "poll", "tick_boxes", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley",
   "scale", "example_nonexample", "word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze", "short_answer",
   "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example",
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
@@ -982,7 +982,7 @@ const MAX_UPLOAD_IMAGES = 6; // per student, per activity
 const imgsOf = (r) =>
   Array.isArray(r?.payload?.images) && r.payload.images.length ? r.payload.images : r?.payload?.image ? [r.payload.image] : [];
 // Custom options entered by the teacher at launch.
-const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale", "picture_vote", "table"]);
+const OPTION_MODES = new Set(["poll", "this_or_that", "ranking", "put_in_order", "example_nonexample", "venn", "multi_choice", "scale", "picture_vote", "table", "tick_boxes"]);
 
 const FIXED_OPTIONS = {
   agree_disagree: ["Agree", "Unsure", "Disagree"],
@@ -1198,6 +1198,13 @@ function aggregate(session, itx) {
     }
     const words = [...freq.values()].sort((a, b) => b.count - a.count).slice(0, 60);
     return { ...base, words };
+  }
+
+  // Tick the boxes: every box a student ticked adds one to that option's tally.
+  if (itx.mode === "tick_boxes") {
+    const counts = itx.options.map(() => 0);
+    for (const r of responses) for (const i of r.payload.picks || []) if (i < counts.length) counts[i] += 1;
+    return { ...base, options: itx.options, counts, tally: true };
   }
 
   if (CHOICE_MODES.has(itx.mode)) {
@@ -1618,6 +1625,7 @@ function describePayload(itx, p) {
   if (itx.mode === "scale") return `${p.value} / 100`;
   if (itx.mode === "example_nonexample")
     return `${itx.options[p.choice]}${p.text ? ` — ${p.text}` : ""}`;
+  if (itx.mode === "tick_boxes") return (p.picks || []).map((i) => itx.options[i]).join(", ") || "(nothing ticked)";
   if (CHOICE_MODES.has(itx.mode)) return itx.options[p.choice];
   if (ORDER_MODES.has(itx.mode)) return (p.order || []).map((i) => itx.options[i]).join(" → ");
   if (itx.mode === "match_up") {
@@ -1708,7 +1716,7 @@ function buildSummary(session, { withImages = false } = {}) {
       item.topWords = agg.words.slice(0, 8);
       item.words = agg.words.slice(0, 50); // full set so the export can redraw the cloud
     }
-    if (CHOICE_MODES.has(itx.mode) || itx.mode === "example_nonexample")
+    if (CHOICE_MODES.has(itx.mode) || itx.mode === "example_nonexample" || itx.mode === "tick_boxes")
       item.distribution = itx.options.map((o, i) => ({
         label: o + (itx.correct === i ? " ✓" : ""),
         count: agg.counts[i],
@@ -2363,6 +2371,11 @@ function sanitizePayload(itx, payload) {
       })
       .slice(0, cap);
     return words.length ? { words } : null;
+  }
+
+  if (itx.mode === "tick_boxes") {
+    const picks = [...new Set((Array.isArray(payload.picks) ? payload.picks : []).filter((i) => Number.isInteger(i) && i >= 0 && i < itx.options.length))].sort((a, b) => a - b);
+    return { picks }; // ticking nothing is a real answer ("none of these")
   }
 
   if (CHOICE_MODES.has(itx.mode)) {

@@ -15,7 +15,7 @@ const MODE_META = {
   quick_challenge: ["🚀", "Challenge"], predict: ["🔮", "Predict"], three_two_one: ["3️⃣", "3-2-1"],
   notice_wonder: ["👀", "Notice/Wonder"], before_after: ["🔄", "Before/After"], plus_minus: ["➕", "Plus & Minus"],
   muddiest_point: ["🌫️", "Muddiest Point"], ask_question: ["❓", "Ask a Question"],
-  poll: ["📊", "Poll"], multi_choice: ["🅰️", "Multiple Choice"], picture_vote: ["🗳️", "Picture Vote"],
+  poll: ["📊", "Poll"], tick_boxes: ["☑️", "Tick the Boxes"], multi_choice: ["🅰️", "Multiple Choice"], picture_vote: ["🗳️", "Picture Vote"],
   agree_disagree: ["⚖️", "Agree/Disagree"], true_false: ["✅", "True/False"], this_or_that: ["⚡", "This or That"],
   confidence: ["🎯", "Confidence"], smiley: ["😊", "Smiley Review"], scale: ["🎚️", "Scale"],
   example_nonexample: ["↔️", "Example/Non-ex"], ranking: ["🔢", "Ranking"], put_in_order: ["🪜", "Put in Order"],

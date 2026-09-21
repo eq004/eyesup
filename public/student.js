@@ -18,7 +18,7 @@ let sprintTimer = null;
 let lastRenderKey = null; // skip re-renders that would wipe half-typed input
 
 const MODE_NAMES = {
-  word_cloud: "☁️ Word Cloud", short_answer: "✏️ Short Answer", poll: "📊 Poll",
+  word_cloud: "☁️ Word Cloud", short_answer: "✏️ Short Answer", poll: "📊 Poll", tick_boxes: "☑️ Tick the Boxes",
   agree_disagree: "⚖️ Agree / Disagree", confidence: "🎯 Confidence Check",
   ranking: "🔢 Ranking", predict: "🔮 Predict", this_or_that: "⚡ This or That",
   one_word: "🗣️ One Word", ask_question: "❓ Ask a Question",
@@ -422,6 +422,28 @@ function renderInteraction(itx) {
       screenEl.querySelectorAll("[data-i]").forEach(
         (b) => (b.onclick = () => submit({ choice: +b.dataset.i }))
       );
+    });
+    return;
+  }
+
+  /* --- tick the boxes: any number, then send --- */
+  if (itx.mode === "tick_boxes") {
+    show(`${h}<p class="hint" style="margin-top:0">Tick every one that applies.</p>${itx.options
+      .map((o, i) => `<button class="btn choice tickrow" data-tick="${i}" aria-pressed="false"><span class="tbox"></span><span>${esc(o)}</span></button>`)
+      .join("")}
+      <button class="btn send" id="sendBtn">Send</button>`, () => {
+      const rows = [...screenEl.querySelectorAll("[data-tick]")];
+      const label = () => {
+        const n = rows.filter((b) => b.classList.contains("on")).length;
+        $("sendBtn").textContent = n ? `Send (${n} ticked)` : "Send — none of these";
+      };
+      rows.forEach((b) => (b.onclick = () => {
+        b.classList.toggle("on");
+        b.setAttribute("aria-pressed", b.classList.contains("on"));
+        label();
+      }));
+      label();
+      $("sendBtn").onclick = () => submit({ picks: rows.filter((b) => b.classList.contains("on")).map((b) => +b.dataset.tick) });
     });
     return;
   }

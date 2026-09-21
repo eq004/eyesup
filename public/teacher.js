@@ -3,6 +3,7 @@
 const MODES = {
   /* fast votes */
   multi_choice:  { icon: "🅰️", name: "Multiple Choice", hint: "Quiz question — reveal the answer after voting", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true },
+  tick_boxes:    { icon: "☑️", name: "Tick the Boxes", hint: "Students tick every box that applies — the board keeps a tally", opts: { min: 2, max: 10, labels: "Box" } },
   poll:          { icon: "📊", name: "Poll",          hint: "2–5 options, live results",       opts: { min: 2, max: 5, labels: "Option" } },
   agree_disagree:{ icon: "⚖️", name: "Agree / Disagree", hint: "Agree · Unsure · Disagree",    opts: null },
   true_false:    { icon: "✅", name: "True or False", hint: "Two buttons, instant",            opts: null },
@@ -93,7 +94,7 @@ const MODES = {
 };
 
 const CATEGORIES = [
-  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
+  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "tick_boxes", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
   { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
@@ -856,6 +857,10 @@ function renderLive() {
       itx.options.map((o, i) => (itx.correct === i ? `${o} ✓` : o)),
       agg.counts
     );
+    if (itx.mode === "tick_boxes" && itx.responses.length)
+      body += `<div style="margin-top:0.9rem">${itx.responses
+        .map((r) => `<div class="resp-card"><span class="who">${esc(r.name || "")}</span><span class="what">${(r.payload.picks || []).map((i) => esc(itx.options[i])).join(", ") || "<i style='color:var(--muted)'>nothing ticked</i>"}</span></div>`)
+        .join("")}</div>`;
   } else if (agg && agg.ranked) {
     body = `<div class="agg-bars">${agg.ranked
       .map(

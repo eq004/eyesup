@@ -9,7 +9,7 @@ let state = null;
 let code = (new URLSearchParams(location.search).get("code") || "").toUpperCase();
 
 const MODE_TAGS = {
-  word_cloud: "Word Cloud", short_answer: "Short Answer", poll: "Poll",
+  word_cloud: "Word Cloud", short_answer: "Short Answer", poll: "Poll", tick_boxes: "Tick the Boxes",
   agree_disagree: "Agree / Disagree", confidence: "Confidence Check",
   ranking: "Ranking", predict: "Make a Prediction", this_or_that: "This or That",
   one_word: "One Word", ask_question: "Your Questions",
@@ -524,6 +524,8 @@ function renderInteraction(itx) {
       ? renderSketches(agg)
       : `${itx.imageUrl ? `<img src="${itx.imageUrl}" alt="image to annotate" style="max-height:45vh;max-width:80%;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,0.45)" />` : ""}
          <p class="waiting-note" style="margin-top:1.4rem">${agg.total ? `${agg.total} annotation${agg.total === 1 ? "" : "s"} in — your teacher will reveal them.` : "Mark it up on your device…"}</p>`;
+  } else if (agg.tally) {
+    body = renderTally(itx, agg);
   } else if (agg.counts) {
     body = renderBars(itx, agg);
   } else if (agg.ranked) {
@@ -1059,6 +1061,29 @@ const CHOICE_COLOR_SETS = {
   confidence: ["c-green", "c-amber", "c-red"],
   true_false: ["c-green", "c-red"],
 };
+
+/* Tick the Boxes — a running tally per option, in bundles of five. */
+function tallyMarks(n) {
+  const shown = Math.min(n, 60);
+  let out = "";
+  for (let g = 0; g < Math.floor(shown / 5); g++) out += `<span class="tally-five"><i></i><i></i><i></i><i></i><b></b></span>`;
+  if (shown % 5) out += `<span class="tally-rest">${"<i></i>".repeat(shown % 5)}</span>`;
+  return out + (n > shown ? `<span class="tally-more">+${n - shown}</span>` : "");
+}
+function renderTally(itx, agg) {
+  const max = Math.max(...agg.counts);
+  return `<div class="tally-board">${itx.options
+    .map((o, i) => {
+      const n = agg.counts[i];
+      const pct = agg.total ? Math.round((n / agg.total) * 100) : 0;
+      return `<div class="tally-row ${n > 0 && n === max ? "top" : ""}">
+        <span class="tally-label">${esc(o)}</span>
+        <span class="tally-marks">${tallyMarks(n)}</span>
+        <span class="tally-n">${n}<small>${agg.total ? `${pct}% of the class` : ""}</small></span>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
 
 function renderBars(itx, agg) {
   const total = agg.counts.reduce((a, b) => a + b, 0);
