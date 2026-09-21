@@ -25,7 +25,7 @@ const MODE_TAGS = {
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
   picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
   spelling: "Spelling Test", cloze: "Fill the Gaps", working: "Show Your Working",
-  counters: "Build It With Counters", table: "Fill the Table", dot_points: "Dot Points", plus_minus: "Plus & Minus",
+  counters: "Build It With Counters", table: "Fill the Table", dot_points: "Dot Points", link: "Website", plus_minus: "Plus & Minus",
   long_response: "Long Response",
 };
 
@@ -475,7 +475,7 @@ function progressLine(itx) {
   return `
     <div class="progress-line ${itx.open ? "" : "closed"}">
       <span class="dot"></span>
-      <span><b>${state.respondedCount}</b> of <b>${state.studentCount}</b> responded${itx.open ? "" : " · closed"}</span>
+      <span><b>${state.respondedCount}</b> of <b>${state.studentCount}</b> ${itx.mode === "link" ? "have opened it" : "responded"}${itx.open ? "" : " · closed"}</span>
     </div>`;
 }
 
@@ -485,6 +485,8 @@ function renderInteraction(itx) {
 
   if (itx.mode === "phonics_cloze") {
     body = renderPictureWord(itx, agg);
+  } else if (itx.mode === "link") {
+    body = renderLinkStep(itx);
   } else if (!agg) {
     // Results hidden — build anticipation, show only the count.
     body = `<p class="waiting-note">${itx.open ? "Thinking time… responses are coming in." : "Responses are in. Waiting for the reveal…"}</p>`;
@@ -744,6 +746,27 @@ function renderCloze(agg) {
     ${slips.length ? `<p class="waiting-note" style="margin-top:1.2rem;font-size:clamp(0.9rem,1.6vw,1.2rem)">Common slips: ${slips
       .map((s) => `${esc(s.wrongTop[0].text)} (for ${esc(s.target)})`)
       .join(" · ")}</p>` : ""}`;
+}
+
+/* Website link — the address and a QR on the board, for any device that needs them. */
+function renderLinkStep(itx) {
+  const url = itx.link?.url || "";
+  let qrSvg = "";
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    qrSvg = qr.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+  } catch { /* very long address — the text is still there */ }
+  const pretty = url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+  return `
+    <div class="join-wrap" style="gap:4vw">
+      <div class="join-block" style="max-width:min(60vw,760px)">
+        <div class="lead">Tap the button on your device — or go to</div>
+        <div class="link-url">${esc(pretty.length > 90 ? pretty.slice(0, 90) + "…" : pretty)}</div>
+      </div>
+      ${qrSvg ? `<div class="qr-card">${qrSvg}</div>` : ""}
+    </div>`;
 }
 
 /* Picture Phonics — the picture stays up; the word shows its gaps until the reveal. */

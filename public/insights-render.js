@@ -9,7 +9,7 @@
     word_cloud: ["☁️", "Word Cloud"], one_word: ["🗣️", "One Word"], mindmap: ["🕸️", "Mindmap"],
     post_its: ["🗒️", "Post-its"], phonics: ["🔤", "Phonics"], short_answer: ["✏️", "Short Answer"],
     long_response: ["📜", "Long Response"], picture_prompt: ["🖼️", "Picture Prompt"],
-    retrieval_sprint: ["🧠", "Retrieval Sprint"], table: ["📋", "Table"], dot_points: ["📌", "Dot Points"], exit_ticket: ["🎟️", "Exit Ticket"],
+    retrieval_sprint: ["🧠", "Retrieval Sprint"], table: ["📋", "Table"], dot_points: ["📌", "Dot Points"], link: ["🔗", "Website Link"], exit_ticket: ["🎟️", "Exit Ticket"],
     finish_sentence: ["📝", "Finish the Sentence"], give_example: ["💡", "Give an Example"],
     make_connection: ["🔗", "Make a Connection"], teach_back: ["🧑‍🏫", "Teach It Back"],
     spot_mistake: ["🔎", "Spot the Mistake"], quick_challenge: ["🚀", "Quick Challenge"], predict: ["🔮", "Predict"],

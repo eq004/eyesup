@@ -35,7 +35,7 @@ const MODE_NAMES = {
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
   phonics: "🔤 Phonics Keyboard",
   spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", phonics_cloze: "🖼️ Picture Phonics", working: "🧮 Working Out",
-  counters: "🟠 Counters", table: "📋 Table", dot_points: "📌 Dot Points", plus_minus: "➕➖ Plus & Minus",
+  counters: "🟠 Counters", table: "📋 Table", dot_points: "📌 Dot Points", link: "🔗 Website", plus_minus: "➕➖ Plus & Minus",
   long_response: "📜 Long Response",
 };
 
@@ -178,7 +178,7 @@ function render(force) {
   }
 
   // Venn, Post-its and Plus/Minus keep their input screen — students add more one by one.
-  if (state.submitted && !changingAnswer && !["venn", "post_its", "plus_minus"].includes(itx.mode)) {
+  if (state.submitted && !changingAnswer && !["venn", "post_its", "plus_minus", "link"].includes(itx.mode)) {
     return show(`
       <div class="big-emoji">✓</div>
       <div class="state-title">Response received</div>
@@ -657,6 +657,23 @@ function renderInteraction(itx) {
       $("sendBtn").onclick = () => {
         const fills = [...screenEl.querySelectorAll("[data-cz]")].map((el) => (el.dataset.word !== undefined && !("value" in el) ? el.dataset.word : el.value).trim());
         if (fills.some(Boolean)) submit({ fills });
+      };
+    });
+    return;
+  }
+
+  /* --- link: one big button that opens the teacher's website in a new tab --- */
+  if (itx.mode === "link" && itx.link) {
+    let host = "";
+    try { host = new URL(itx.link.url).hostname.replace(/^www\./, ""); } catch { /* shown without a host */ }
+    show(`<span class="mode-tag">🔗 Website</span>
+      <h1 class="q">${itx.prompt ? esc(itx.prompt) : "Open this website"}</h1>
+      <a class="btn send link-go" id="linkGo" href="${esc(itx.link.url)}" target="_blank" rel="noopener noreferrer">${esc(itx.link.label || "Open the website")} ↗</a>
+      <p class="hint" style="margin-top:0.6rem">${host ? `Goes to <b>${esc(host)}</b>. ` : ""}It opens in a new tab — come back to this tab when your teacher says.</p>
+      ${state.submitted ? `<p class="hint" style="color:var(--green);font-weight:700">✓ Opened — tap again if you closed it.</p>` : ""}`, () => {
+      $("linkGo").onclick = () => {
+        // Tell the teacher this student has opened it (the link itself opens normally).
+        send({ type: "respond", interactionId: itx.id, payload: { opened: true } });
       };
     });
     return;

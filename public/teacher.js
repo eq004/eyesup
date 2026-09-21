@@ -32,6 +32,8 @@ const MODES = {
   picture_prompt:{ icon: "🖼️", name: "Picture Prompt", hint: "Put an image up — students write about it", opts: null, imageUpload: true,
                    ph: "The question about the image — or ask it aloud" },
   retrieval_sprint:{ icon: "🧠", name: "Retrieval Sprint", hint: "1–3 timed minutes — write everything you recall", opts: null, sprintUI: true },
+  link:          { icon: "🔗", name: "Website Link",  hint: "Send every student to a website with one tap", opts: null, linkUI: true,
+                   ph: "Instruction for students, e.g. “Read the first section, then come back”" },
   dot_points:    { icon: "📌", name: "Dot Points",    hint: "Students build a quick bulleted list, one point at a time", opts: null,
                    ph: "e.g. “List everything you know about volcanoes”" },
   table:         { icon: "📋", name: "Table",         hint: "Students fill a table — compare, sort, KWL", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true,
@@ -91,7 +93,7 @@ const MODES = {
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
-  { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "dot_points", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
+  { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
@@ -205,6 +207,10 @@ function connect() {
     if (msg.type === "error" && msg.error === "auth_required") {
       localStorage.removeItem("eyesup_token");
       showAuthOverlay();
+      return;
+    }
+    if (msg.type === "error" && msg.error === "bad_link") {
+      toast("That website address doesn't look right — edit the step and paste the full address");
       return;
     }
     if (msg.type === "error" && msg.error === "db_unavailable") {
@@ -406,6 +412,13 @@ function openComposer(key, keepImage) {
     multiSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(multiSel);
   }
+  if (m.linkUI) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `
+      <input type="text" id="linkUrl" maxlength="600" inputmode="url" autocomplete="off" placeholder="Paste the website address, e.g. https://www.bbc.co.uk/bitesize/…" />
+      <input type="text" id="linkLabel" maxlength="60" autocomplete="off" placeholder="Button wording (optional) — e.g. “Open the volcano video”" style="margin-top:0.45rem" />`;
+    opts.appendChild(wrap);
+  }
   if (m.wordUI) {
     const inp = document.createElement("input");
     inp.type = "text";
@@ -547,6 +560,20 @@ function readComposer() {
     toast("Choose an image first — that's the thing they'll draw on");
     return null;
   }
+  let url, linkLabel;
+  if (m.linkUI) {
+    url = $("linkUrl").value.trim();
+    linkLabel = $("linkLabel").value.trim() || undefined;
+    let ok = false;
+    try {
+      const u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(url) ? url : "https://" + url);
+      ok = (u.protocol === "http:" || u.protocol === "https:") && u.hostname.includes(".");
+    } catch { /* not an address */ }
+    if (!ok) {
+      toast("Paste the website address students should open");
+      return null;
+    }
+  }
   let passage, wordBank;
   if (m.wordUI) {
     passage = $("wordFrame").value.trim();
@@ -569,7 +596,7 @@ function readComposer() {
   const sprintSeconds = m.sprintUI ? parseInt($("durSel").value, 10) : undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel };
 }
 
 /* ---------------- rendering ---------------- */
@@ -901,6 +928,13 @@ function renderLive() {
           .join("") || "<span style='color:var(--muted);font-size:0.8rem'>—</span>"}</div>
       </div>`;
     body = `<div class="venn-cols" style="grid-template-columns:1fr 1fr">${col("＋ Positives", agg.plus, "var(--green)")}${col("− Negatives", agg.minus, "var(--red)")}</div>`;
+  } else if (itx.mode === "link") {
+    const opened = new Set(itx.responses.map((r) => r.studentId));
+    const waiting = state.students.filter((s) => !opened.has(s.id) && s.name !== "👁 Preview");
+    body = `
+      <p style="margin-top:0.8rem"><a href="${esc(itx.link?.url || "#")}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-weight:800;overflow-wrap:anywhere">🔗 ${esc(itx.link?.url || "")}</a></p>
+      <p style="margin-top:0.6rem;font-weight:800">${itx.responses.length} of ${state.students.length} have opened it</p>
+      ${waiting.length ? `<p style="margin-top:0.3rem;font-size:0.85rem;color:var(--muted)">Not yet: ${waiting.map((s) => esc(s.name)).join(", ")}</p>` : state.students.length ? `<p style="margin-top:0.3rem;font-size:0.85rem;color:var(--green);font-weight:700">Everyone has it open ✓</p>` : ""}`;
   } else if (itx.mode === "dot_points") {
     body = revealCards((r) => `<ul style="margin:0;padding-left:1.1rem;text-align:left">${(r.payload.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`);
   } else if (itx.mode === "table") {
@@ -1670,6 +1704,7 @@ function stepDetail(st) {
     bits.push(st.options.map((o, i) => `${esc(o)}${st.correct === i ? " ✓" : ""}`).join(" · "));
   if (st.passage) bits.push(`“${esc(st.passage.slice(0, 110))}${st.passage.length > 110 ? "…" : ""}”`);
   if (st.expected) bits.push(`Answer: <b>${esc(st.expected)}</b>`);
+  if (st.url) bits.push(`🔗 ${esc(st.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 70))}`);
   if (st.sprintSeconds) bits.push(`⏱ ${st.sprintSeconds / 60} min`);
   return bits.join(" &nbsp; ");
 }
@@ -1884,6 +1919,7 @@ function fillComposer(st) {
     $("clozeMode").value = st.wordBank ? "bank" : "type";
   }
   if (m.wordUI && $("wordFrame")) $("wordFrame").value = st.passage || "";
+  if (m.linkUI) { $("linkUrl").value = st.url || ""; $("linkLabel").value = st.linkLabel || ""; }
   if (m.workingUI && $("expectedAns")) $("expectedAns").value = st.expected || "";
   if (m.tableUI && $("rowsSel") && st.tableRows) $("rowsSel").value = String(st.tableRows);
   if (m.sprintUI && $("durSel") && st.sprintSeconds) $("durSel").value = String(st.sprintSeconds);

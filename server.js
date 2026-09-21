@@ -529,12 +529,27 @@ const MAX_STEPS = 40;
 const STEP_MODES = new Set([
   "multi_choice", "poll", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley",
   "scale", "example_nonexample", "word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze", "short_answer",
-  "long_response", "picture_prompt", "retrieval_sprint", "table", "dot_points", "exit_ticket", "finish_sentence", "give_example",
+  "long_response", "picture_prompt", "retrieval_sprint", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example",
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
   "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "annotate", "image_drop",
   "image_caption", "image_long",
 ]);
+
+// A link students will be sent to: web addresses only, never javascript: and friends.
+function cleanUrl(u) {
+  let s = String(u || "").trim().slice(0, 600);
+  if (!s) return null;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = "https://" + s; // "bbc.co.uk/bitesize" → https://…
+  try {
+    const parsed = new URL(s);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    if (!parsed.hostname.includes(".")) return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
 
 function sanitizeStep(it) {
   if (!it || typeof it !== "object" || !STEP_MODES.has(String(it.mode))) return null;
@@ -551,6 +566,8 @@ function sanitizeStep(it) {
     counterKind: it.counterKind === "base10" || it.counterKind === "colors" ? it.counterKind : undefined,
     tableRows: Number.isInteger(it.tableRows) ? it.tableRows : undefined,
     sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
+    url: it.mode === "link" ? cleanUrl(it.url) || undefined : undefined,
+    linkLabel: it.mode === "link" && typeof it.linkLabel === "string" ? it.linkLabel.trim().slice(0, 60) || undefined : undefined,
     image:
       typeof it.image === "string" && it.image.startsWith("data:image/") && it.image.length < 900000
         ? it.image
@@ -1002,7 +1019,7 @@ function isRevealMode(mode) {
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -1078,6 +1095,8 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
         ? [60, 120, 180].includes(Number(sprintSeconds)) ? Number(sprintSeconds) : 60
         : TIME_LIMITS[mode] || null,
     tableRows: mode === "table" ? Math.min(3, Math.max(1, Number(tableRows) || 1)) : null,
+    // Link step: the website students are sent to.
+    link: mode === "link" && cleanUrl(url) ? { url: cleanUrl(url), label: String(linkLabel || "").trim().slice(0, 60) } : null,
     imageUrl,
     correct: correctIdx,
     words, // spelling
@@ -1335,6 +1354,8 @@ function aggregate(session, itx) {
     return { ...base, plus, minus };
   }
 
+  if (itx.mode === "link") return { ...base, opened: responses.length };
+
   if (itx.mode === "dot_points") {
     const lists = [...itx.responses.entries()]
       .filter(([, r]) => r.revealed)
@@ -1445,6 +1466,7 @@ function teacherState(session) {
           fields: itx.fields,
           words: itx.words,
           cloze: itx.cloze,
+          link: itx.link,
           expected: itx.expected,
           counterKind: itx.counterKind,
           tableRows: itx.tableRows,
@@ -1502,6 +1524,7 @@ function projectorState(session) {
           secondsLeft: itx.timeLimit ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000)) : undefined,
           // Picture Phonics: the word frame with its gaps (answers stay hidden).
           clozeParts: itx.cloze ? itx.cloze.parts : null,
+          link: itx.link,
           aggregate: itx.resultsVisible ? aggregate(session, itx) : null,
         }
       : null,
@@ -1533,6 +1556,7 @@ function studentState(session, student) {
             wordCount: itx.words ? itx.words.length : null,
             clozeParts: itx.cloze ? itx.cloze.parts : null,
             clozeBank: itx.bank,
+            link: itx.link,
             hasExpected: !!itx.expected,
             counterKind: itx.counterKind,
             tableRows: itx.tableRows,
@@ -1618,6 +1642,7 @@ function describePayload(itx, p) {
   }
   if (itx.mode === "plus_minus")
     return (p.items || []).map((it) => `${it.side === 0 ? "＋" : "−"} ${it.text}`).join("  |  ");
+  if (itx.mode === "link") return "opened the link";
   if (itx.mode === "dot_points") return (p.points || []).map((x) => `• ${x}`).join("   ");
   if (itx.mode === "table")
     return (p.rows || [])
@@ -1722,6 +1747,7 @@ function buildSummary(session, { withImages = false } = {}) {
       item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
     if (TEXT_MODES.has(itx.mode))
       item.answers = [...itx.responses.values()].map((r) => r.payload.text).slice(0, 40);
+    if (itx.mode === "link" && itx.link) item.link = itx.link.url;
     if (itx.mode === "dot_points")
       item.answers = [...itx.responses.values()].map((r) => (r.payload.points || []).map((x) => `• ${x}`).join("  ")).slice(0, 40);
     return item;
@@ -1970,6 +1996,10 @@ async function handle(ws, msg) {
 
   switch (type) {
     case "launch": {
+      if (msg.mode === "link" && !cleanUrl(msg.url)) {
+        safeSend(ws, { type: "error", error: "bad_link" });
+        return;
+      }
       startInteraction(session, msg);
       break;
     }
@@ -2422,6 +2452,8 @@ function sanitizePayload(itx, payload) {
       .slice(0, itx.multi === false ? 1 : 6);
     return items.length ? { items } : null;
   }
+
+  if (itx.mode === "link") return { opened: true };
 
   if (itx.mode === "dot_points") {
     const points = (Array.isArray(payload.points) ? payload.points : [])
