@@ -195,12 +195,7 @@ function render() {
 function bindActions() {
   main.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => send({ type: b.dataset.act })));
   const sl = $("stopLive");
-  if (sl) sl.onclick = () => {
-    if (confirm("Stop this lesson? The activity on the screen closes and the plan is put away. Answers so far are kept.")) {
-      send({ type: "eyes_up" });
-      send({ type: "set_sequence", items: [], plan: null, reset: true });
-    }
-  };
+  if (sl) sl.onclick = () => send({ type: "eyes_up" }); // next step stays loaded
   main.querySelectorAll("[data-timer]").forEach((b) => (b.onclick = () => send({ type: "timer_start", seconds: +b.dataset.timer, big: remoteTimerBig() })));
   main.querySelectorAll("[data-spot]").forEach((el) => (el.onclick = () => send({ type: "spotlight_response", studentId: el.dataset.spot })));
   main.querySelectorAll("[data-reveal]").forEach((b) => (b.onclick = () => send({ type: "reveal", studentId: b.dataset.reveal })));
@@ -306,7 +301,7 @@ function renderLive() {
     ${nextStep ? `<button class="rbtn accent" data-act="next" style="flex-direction:column;gap:0.2rem">
         <span>▶ ${state.seqIndex < 0 ? "Start the lesson" : `Launch step ${state.seqIndex + 2} of ${seq.length}`}</span>
         <small style="font-weight:600;opacity:0.85">${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(nextStep.prompt.slice(0, 40)) : ""}</small></button>
-      <div class="timer-row"><button class="rbtn" data-act="seq_back" ${state.seqIndex < 0 ? "disabled" : ""}>◀ Back</button><button class="rbtn" data-act="seq_skip">Skip ⏭</button><button class="rbtn warn" id="stopLive">⏹ Stop</button></div>` : ""}
+      <div class="timer-row"><button class="rbtn" data-act="seq_back" ${state.seqIndex < 0 ? "disabled" : ""}>◀ Back</button><button class="rbtn" data-act="seq_skip">Skip ⏭</button><button class="rbtn warn" id="stopLive" ${itx ? "" : "disabled"}>⏹ Stop step</button></div>` : ""}
     ${itx ? renderLiveResponses(itx) : ""}
   `;
 }
@@ -537,7 +532,6 @@ function renderPlan() {
             <small style="font-weight:600;opacity:0.85">${esc(modeName(nextSt.mode, nextSt.counterKind))}${nextSt.prompt ? " — " + esc(nextSt.prompt.slice(0, 40)) : ""}</small></button>`
         : `<div class="status"><div class="q">🎉 All ${seq.length} steps done</div></div>`}
       <div class="timer-row"><button class="rbtn" data-act="seq_back" ${idx < 0 ? "disabled" : ""}>◀ Back</button><button class="rbtn" data-act="seq_skip" ${nextSt ? "" : "disabled"}>Skip ⏭</button></div>
-      <button class="rbtn warn" id="closePlan">⏹ Stop this lesson</button>
       <p style="color:var(--rdim);font-size:0.78rem;margin:0.3rem 0 0.2rem">▶ runs a step now · ▸ makes it the next one · Skip passes over a step without running it</p>
       ${seq.map((st, i) => {
         const wasSkipped = (state.skipped || []).includes(i) && i <= idx;
@@ -549,6 +543,7 @@ function renderPlan() {
           <button data-jump="${i}" title="Run this step now">▶</button>
         </div>`;
       }).join("")}
+      <button class="rbtn warn" id="closePlan">✕ Close this lesson</button>
     ` : `<div class="status"><div class="q">No lesson open. Pick one of your lesson plans below, or ask on the spot from 🚀 Launch.</div></div>`}
 
     <h3 class="sec">📝 Your lesson plans</h3>
@@ -562,10 +557,7 @@ function renderPlan() {
 
   const cp = $("closePlan");
   if (cp) cp.onclick = () => {
-    if (confirm("Stop this lesson? The activity on the screen closes and the plan is put away. Answers so far are kept.")) {
-      send({ type: "eyes_up" });
-      send({ type: "set_sequence", items: [], plan: null, reset: true });
-    }
+    if (confirm("Close this lesson? Responses so far are kept.")) send({ type: "set_sequence", items: [], plan: null, reset: true });
   };
 
   loadRemotePlans();

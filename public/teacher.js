@@ -2067,7 +2067,7 @@ function renderLessonStrip() {
       <div class="ls-nav">
         <button class="btn" data-strip="back" ${idx < 0 ? "disabled" : ""} title="Go back one step (it becomes 'up next' again)">◀ Back</button>
         <button class="btn" data-strip="skip" ${nextSt ? "" : "disabled"} title="Skip this step without running it">Skip ⏭</button>
-        <button class="btn danger-ghost" data-strip="stop" title="Stop running this lesson — the current activity closes and the plan is put away">⏹ Stop lesson</button>
+        <button class="btn danger-ghost" data-strip="stop" ${state.interaction ? "" : "disabled"} title="Close the question that's on the screen now — the next step stays loaded, ready for ▶">⏹ Stop this step</button>
       </div>`;
 
   let nextBlock;
@@ -2135,13 +2135,8 @@ function renderLessonStrip() {
   act("skip", () => send({ type: "seq_skip" }));
   act("back", () => send({ type: "seq_back" }));
   act("finish", () => $("endBtn").click());
-  act("stop", () => {
-    if (!confirm("Stop this lesson?\n\nThe activity on the screen closes and the lesson plan is put away. Answers so far are kept.")) return;
-    planSnapshot = null;
-    launcherOpen = null;
-    send({ type: "eyes_up" });
-    send({ type: "set_sequence", items: [], plan: null, reset: true });
-  });
+  // Closes the live question only — the plan and "up next" stay where they are.
+  act("stop", () => send({ type: "eyes_up" }));
   act("again", () => send({ type: "set_sequence", items: seq, reset: true }));
   act("edit", () => openEditor(state.planId));
   act("close", () => {

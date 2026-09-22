@@ -297,7 +297,7 @@ function renderInteraction(itx) {
     const anon = ["ask_question", "muddiest_point"].includes(itx.mode);
     const long = itx.mode === "long_response";
     show(`${h}
-      ${itx.imageUrl ? `<img class="prompt-img" src="${itx.imageUrl}" alt="look at this image" />` : ""}
+      ${itx.imageUrl ? `<img class="prompt-img ${itx.mode === "picture_prompt" ? "big" : ""}" src="${itx.imageUrl}" alt="look at this image" /><p class="img-hint">🔍 Tap the picture to see it full screen</p>` : ""}
       <textarea id="textInput" rows="${long ? 10 : 4}" maxlength="${long ? 3000 : 500}" placeholder="${WRITTEN_PH[itx.mode]}"></textarea>
       <button class="btn send" id="sendBtn">Send</button>
       ${anon ? `<p class="hint">🕶 Your name is never shown with this.</p>` : ""}`, () => {
@@ -1479,3 +1479,15 @@ if (PREVIEW) {
   renderJoin();
 }
 connect();
+
+
+/* Any prompt picture opens full screen on tap — tap again (or ✕) to close. */
+document.addEventListener("click", (e) => {
+  const img = e.target.closest("img.prompt-img");
+  if (!img) return;
+  const lb = document.createElement("div");
+  lb.className = "lightbox";
+  lb.innerHTML = `<img src="${img.src}" alt="picture, full screen" /><button class="lb-close" type="button">✕ Close</button>`;
+  lb.onclick = () => lb.remove();
+  document.body.appendChild(lb);
+});

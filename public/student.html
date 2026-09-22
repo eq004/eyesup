@@ -393,12 +393,19 @@
   .prompt-img {
     max-width: 100%;
     max-height: 34vh;
+    cursor: zoom-in;
     border-radius: var(--radius);
     border: 1px solid var(--line);
     box-shadow: var(--shadow);
     margin-bottom: 0.9rem;
   }
 
+  /* Picture Prompt: the picture is the point — give it most of the screen. */
+  .prompt-img.big { max-height: 60vh; width: 100%; object-fit: contain; background: #fff; }
+  .img-hint { margin: -0.4rem 0 0.8rem; font-size: 0.8rem; color: var(--muted); }
+  .lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(6, 16, 34, 0.96); display: flex; align-items: center; justify-content: center; padding: 0.6rem; cursor: zoom-out; }
+  .lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+  .lightbox .lb-close { position: absolute; top: 0.8rem; right: 0.8rem; font: inherit; font-weight: 800; padding: 0.5rem 0.9rem; border-radius: 999px; border: 0; background: rgba(255,255,255,0.15); color: #fff; }
   .scale-labels { display: flex; justify-content: space-between; font-weight: 800; font-size: 0.9rem; color: var(--ink-soft); margin-bottom: 0.5rem; }
   input[type="range"] {
     width: 100%;
