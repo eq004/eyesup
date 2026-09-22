@@ -208,6 +208,8 @@ function renderDetail() {
       <div class="dtabs">
         <button class="dtab ${detailTab === "part" ? "on" : ""}" data-dtab="part">👥 Student participation</button>
         <button class="dtab ${detailTab === "ins" ? "on" : ""}" data-dtab="ins">📊 Lesson dashboard</button>
+        <span class="spacer"></span>
+        <button class="dtab viz" id="vizBtn">✨ Visualise this lesson</button>
       </div>
       ${detailTab === "part" ? renderParticipation(x) : renderInsightsTab(x)}
     </div>`;
@@ -300,6 +302,8 @@ function bindDetail() {
   if (insBox && x) renderInsights(insBox, x.summary, { showNames: true });
   const sb = document.getElementById("shareBtn");
   if (sb && x) sb.onclick = () => shareLesson(x);
+  const vb = document.getElementById("vizBtn");
+  if (vb && x) vb.onclick = () => openSnapshot(x);
   const si = document.getElementById("stuSearch");
   if (si) {
     si.oninput = () => {
@@ -320,6 +324,200 @@ function bindDetail() {
       bindDetail();
     };
   });
+}
+
+/* ---------- ✨ Lesson snapshot: the whole lesson on one calm screen ---------- */
+
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const listNames = (arr, max = 6) => {
+  const a = arr.slice(0, max).map(esc);
+  const rest = arr.length - a.length;
+  return a.join(", ") + (rest > 0 ? ` and ${rest} more` : "");
+};
+const itemLabel = (it) => it.prompt ? `“${esc(it.prompt.slice(0, 60))}${it.prompt.length > 60 ? "…" : ""}”` : esc(modeName(it.mode, it.counterKind));
+
+// Turns a stored lesson into short, plain-English takeaways and the
+// handful of visuals worth a glance. No jargon: it's for a busy teacher.
+function snapshotOf(x) {
+  const s = x.summary;
+  const items = (s.items || []).filter((it) => it.mode !== "link");
+  const joined = s.joinedCount || 0;
+  const took = s.participatedCount || 0;
+  const pct = joined ? Math.round((took / joined) * 100) : 0;
+  const responses = items.reduce((a, it) => a + (it.responses || 0), 0);
+  const takeaways = [];
+  const visuals = [];
+
+  // Participation headline
+  if (joined) {
+    const tone = pct >= 85 ? "Nearly everyone took part" : pct >= 65 ? "Most of the room took part" : pct >= 40 ? "About half the room took part" : "Participation was low";
+    takeaways.push({ icon: pct >= 65 ? "🟢" : pct >= 40 ? "🟡" : "🔴", text: `<b>${tone}</b> — ${took} of ${joined} students answered at least once.` });
+  }
+
+  // Energy: peaks and dips
+  const counted = items.filter((it) => (it.responses || 0) > 0 || joined);
+  if (counted.length >= 2) {
+    const hi = [...counted].sort((a, b) => (b.responses || 0) - (a.responses || 0))[0];
+    const lo = [...counted].sort((a, b) => (a.responses || 0) - (b.responses || 0))[0];
+    if (hi !== lo && (hi.responses || 0) > (lo.responses || 0))
+      takeaways.push({ icon: "⚡", text: `Energy peaked at ${itemLabel(hi)} (${plural(hi.responses, "answer")}) and dipped at ${itemLabel(lo)} (${plural(lo.responses || 0, "answer")}).` });
+  }
+
+  // Quiet students
+  const { total, rows } = studentStats(s);
+  if (total >= 2 && rows.length) {
+    const quiet = rows.filter((r) => r.n / total < 0.4).map((r) => r.name).sort();
+    const stars = rows.filter((r) => r.n === total).map((r) => r.name).sort();
+    if (quiet.length) takeaways.push({ icon: "🤫", text: `<b>Quieter students</b> (answered under 40% of activities): ${listNames(quiet)}.` });
+    if (stars.length && stars.length < rows.length) takeaways.push({ icon: "⭐", text: `Answered every single activity: ${listNames(stars)}.` });
+  }
+  const never = joined && took < joined && s.items
+    ? (() => {
+        const answered = new Set();
+        s.items.forEach((it) => (it.students || []).forEach((st) => st.name && answered.add(canonical(st.name))));
+        const all = new Set();
+        s.items.forEach((it) => (it.noResponse || []).forEach((n) => all.add(n)));
+        return [...all].filter((n) => !answered.has(canonical(n))).sort();
+      })()
+    : [];
+  if (never.length) takeaways.push({ icon: "👀", text: `Joined but never answered: ${listNames(never)}.` });
+
+  // Per-activity takeaways (the interesting ones only)
+  for (const it of items) {
+    if (!it.responses) continue;
+    if (it.distribution && !["spelling", "cloze", "phonics_cloze", "working", "counters"].includes(it.mode)) {
+      const tot = it.distribution.reduce((a, d) => a + d.count, 0);
+      if (!tot) continue;
+      const top = [...it.distribution].sort((a, b) => b.count - a.count)[0];
+      const topPct = Math.round((top.count / tot) * 100);
+      const correct = it.distribution.find((d) => /✓$/.test(d.label));
+      if (correct) {
+        const cp = Math.round((correct.count / tot) * 100);
+        takeaways.push({ icon: cp >= 70 ? "✅" : cp >= 40 ? "🟡" : "❗", text: `${itemLabel(it)}: <b>${cp}% got it right</b> (${esc(correct.label.replace(/ ✓$/, ""))}).${cp < 70 ? " Worth revisiting." : ""}` });
+      } else if (it.mode === "tick_boxes") {
+        takeaways.push({ icon: "☑️", text: `${itemLabel(it)}: most ticked <b>${esc(top.label)}</b> (${top.count} of ${it.responses}).` });
+      } else {
+        const split = topPct < 55 && it.distribution.length >= 2 ? " — a real split" : topPct >= 80 ? " — near-unanimous" : "";
+        takeaways.push({ icon: "📊", text: `${itemLabel(it)}: <b>${esc(top.label)}</b> led with ${topPct}%${split}.` });
+      }
+      visuals.push({ kind: "bars", title: `${modeIcon(it.mode)} ${itemLabel(it)}`, rows: it.distribution.map((d) => ({ label: d.label, count: d.count })) });
+    } else if (["spelling", "cloze", "phonics_cloze"].includes(it.mode) && it.distribution) {
+      const hard = [...it.distribution].sort((a, b) => a.count - b.count)[0];
+      const hp = Math.round((hard.count / it.responses) * 100);
+      takeaways.push({ icon: hp < 50 ? "❗" : "🔡", text: `${modeName(it.mode)}: <b>${esc(hard.label.split("  (")[0])}</b> was the hardest — ${hp}% got it.` });
+      visuals.push({ kind: "bars", title: `${modeIcon(it.mode)} ${esc(modeName(it.mode))} — how many got each right (of ${it.responses})`, rows: it.distribution.map((d) => ({ label: d.label, count: d.count })) });
+    } else if (["working", "counters"].includes(it.mode) && it.distribution) {
+      const right = it.distribution.filter((d) => /✓$/.test(d.label)).reduce((a, d) => a + d.count, 0);
+      const marked = it.distribution.some((d) => /[✓✗]$/.test(d.label));
+      if (marked) {
+        const rp = Math.round((right / it.responses) * 100);
+        takeaways.push({ icon: rp >= 70 ? "✅" : "❗", text: `${itemLabel(it)}: <b>${rp}% reached the right answer</b>.` });
+      }
+      visuals.push({ kind: "bars", title: `${modeIcon(it.mode)} ${itemLabel(it)} — answers given`, rows: it.distribution.map((d) => ({ label: d.label, count: d.count })) });
+    } else if (it.topWords?.length) {
+      takeaways.push({ icon: "☁️", text: `${itemLabel(it)}: the room said <b>${it.topWords.slice(0, 3).map((w) => esc(w.word)).join("</b>, <b>")}</b> most.` });
+      visuals.push({ kind: "words", title: `${modeIcon(it.mode)} ${itemLabel(it)}`, words: it.topWords });
+    } else if (it.scale?.avg != null) {
+      const [lo, hi] = it.scale.labels || [];
+      const v = Number(it.scale.avg);
+      takeaways.push({ icon: "🎚️", text: `${itemLabel(it)}: the class averaged <b>${v.toFixed(1)}</b>${lo && hi ? ` (between “${esc(lo)}” and “${esc(hi)}”)` : ""}.` });
+    } else if (it.ranked?.length) {
+      takeaways.push({ icon: "🔢", text: `${itemLabel(it)}: the class put <b>${esc(it.ranked[0].label)}</b> first.` });
+    } else if (it.matchStats?.length) {
+      const weakest = [...it.matchStats].sort((a, b) => a.correctPct - b.correctPct)[0];
+      takeaways.push({ icon: "🧩", text: `Match Up: weakest pair was <b>${esc(weakest.pair)}</b> (${weakest.correctPct}% right).` });
+    } else if (it.sketchCount) {
+      takeaways.push({ icon: "🎨", text: `${itemLabel(it)}: ${plural(it.sketchCount, "picture")} came in.` });
+    }
+  }
+
+  // Energy strip always
+  if (items.length) visuals.unshift({ kind: "energy", title: "Answers per activity, in order", items });
+
+  return { pct, joined, took, responses, nItems: items.length, takeaways: takeaways.slice(0, 12), visuals: visuals.slice(0, 6) };
+}
+
+function renderSnapshotVisual(v) {
+  if (v.kind === "energy") {
+    const max = Math.max(1, ...v.items.map((it) => it.responses || 0));
+    return `<div class="snap-vis"><h4>${v.title}</h4><div class="snap-energy">${v.items
+      .map((it, i) => `<div class="se" title="${i + 1}. ${esc(modeName(it.mode, it.counterKind))}${it.prompt ? " — " + esc(it.prompt) : ""}">
+        <span class="n">${it.responses || 0}</span><span class="b" style="height:${Math.max(4, ((it.responses || 0) / max) * 64)}px"></span><span class="i">${modeIcon(it.mode)}</span></div>`)
+      .join("")}</div></div>`;
+  }
+  if (v.kind === "bars") {
+    const max = Math.max(1, ...v.rows.map((r) => r.count));
+    const tot = v.rows.reduce((a, r) => a + r.count, 0) || 1;
+    return `<div class="snap-vis"><h4>${v.title}</h4>${v.rows
+      .map((r) => `<div class="snap-bar ${/✓$/.test(r.label) ? "good" : ""}"><span class="l">${esc(r.label)}</span><span class="t"><span class="f" style="width:${(r.count / max) * 100}%"></span></span><span class="c">${r.count} · ${Math.round((r.count / tot) * 100)}%</span></div>`)
+      .join("")}</div>`;
+  }
+  if (v.kind === "words") {
+    const max = Math.max(1, ...v.words.map((w) => w.count));
+    return `<div class="snap-vis"><h4>${v.title}</h4><div class="snap-words">${v.words
+      .map((w) => `<span style="font-size:${(0.85 + (w.count / max) * 0.9).toFixed(2)}rem">${esc(w.word)}${w.count > 1 ? `<small>×${w.count}</small>` : ""}</span>`)
+      .join("")}</div></div>`;
+  }
+  return "";
+}
+
+function openSnapshot(x) {
+  const snap = snapshotOf(x);
+  const s = x.summary;
+  const when = new Date(x.meta.created_at).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  const ring = (p) => {
+    const r = 44, c = 2 * Math.PI * r;
+    return `<svg class="snap-ring" viewBox="0 0 110 110"><circle cx="55" cy="55" r="${r}" class="bg"/><circle cx="55" cy="55" r="${r}" class="fg" style="stroke-dasharray:${c};stroke-dashoffset:${c * (1 - p / 100)}"/><text x="55" y="61" text-anchor="middle">${p}%</text></svg>`;
+  };
+  const plain = [
+    `${x.meta.title || "Lesson " + x.meta.code} — ${when}`,
+    `${snap.took} of ${snap.joined} students took part (${snap.pct}%), ${snap.responses} answers across ${plural(snap.nItems, "activity").replace("activitys", "activities")}.`,
+    ...snap.takeaways.map((t) => "• " + t.text.replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&")),
+  ].join("\n");
+
+  const ov = document.createElement("div");
+  ov.className = "snap-overlay";
+  ov.innerHTML = `
+    <div class="snap" role="dialog" aria-label="Lesson snapshot">
+      <div class="snap-head">
+        <div>
+          <div class="snap-kicker">✨ Lesson snapshot</div>
+          <h2>${x.meta.title ? esc(x.meta.title) : `Lesson ${esc(x.meta.code)}`}</h2>
+          <div class="muted">${esc(when)}${s.teacherName ? ` · ${esc(s.teacherName)}` : ""}</div>
+        </div>
+        <div class="snap-actions">
+          <button class="share-btn ghost" id="snapCopy">📋 Copy as text</button>
+          <button class="share-btn ghost" id="snapPrint">🖨 Print</button>
+          <button class="share-btn ghost" id="snapClose">✕ Close</button>
+        </div>
+      </div>
+      <div class="snap-top">
+        ${ring(snap.pct)}
+        <div class="snap-nums">
+          <div><b>${snap.took}</b><span>of ${snap.joined} took part</span></div>
+          <div><b>${snap.nItems}</b><span>activities</span></div>
+          <div><b>${snap.responses}</b><span>answers</span></div>
+        </div>
+      </div>
+      <h3>What stood out</h3>
+      ${snap.takeaways.length
+        ? `<ul class="snap-list">${snap.takeaways.map((t) => `<li><span class="ic">${t.icon}</span><span>${t.text}</span></li>`).join("")}</ul>`
+        : `<p class="muted">Not much to say yet — this lesson didn't collect enough answers.</p>`}
+      ${snap.visuals.length ? `<h3>At a glance</h3><div class="snap-grid">${snap.visuals.map(renderSnapshotVisual).join("")}</div>` : ""}
+      <p class="muted" style="font-size:0.78rem;margin-top:1rem">Want every answer? Use 📊 Lesson dashboard or 📄 Export lesson. This snapshot is the short version.</p>
+    </div>`;
+  document.body.appendChild(ov);
+  document.body.classList.add("snap-open");
+  const close = () => { ov.remove(); document.body.classList.remove("snap-open"); };
+  ov.onclick = (e) => { if (e.target === ov) close(); };
+  ov.querySelector("#snapClose").onclick = close;
+  ov.querySelector("#snapPrint").onclick = () => window.print();
+  ov.querySelector("#snapCopy").onclick = async () => {
+    const b = ov.querySelector("#snapCopy");
+    try { await navigator.clipboard.writeText(plain); b.textContent = "✓ Copied"; } catch { b.textContent = "Couldn't copy"; }
+    setTimeout(() => (b.textContent = "📋 Copy as text"), 1800);
+  };
+  document.addEventListener("keydown", function onKey(e) { if (e.key === "Escape") { close(); document.removeEventListener("keydown", onKey); } });
 }
 
 load();

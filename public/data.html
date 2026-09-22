@@ -130,6 +130,55 @@
   }
   .dtab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   .share-row { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .dtabs .spacer { flex: 1; }
+  .dtab.viz { background: linear-gradient(135deg, var(--accent), #5b7fc7); border-color: transparent; color: #fff; font-weight: 800; }
+  .dtab.viz:hover { filter: brightness(1.08); }
+
+  /* ✨ Lesson snapshot */
+  .snap-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(8, 20, 44, 0.55); backdrop-filter: blur(3px); display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1rem; overflow-y: auto; }
+  .snap { background: var(--surface); color: var(--ink); border-radius: 22px; box-shadow: 0 30px 80px rgba(0,0,0,0.35); width: min(860px, 100%); padding: 1.6rem 1.8rem 1.4rem; }
+  .snap-head { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; margin-bottom: 1rem; }
+  .snap-head h2 { font-size: 1.4rem; font-weight: 800; margin: 0.1rem 0; }
+  .snap-kicker { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+  .snap-actions { margin-left: auto; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .share-btn.ghost { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); }
+  .snap-top { display: flex; align-items: center; gap: 1.6rem; padding: 1rem 1.2rem; border-radius: 16px; background: var(--paper); margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .snap-ring { width: 118px; height: 118px; flex: 0 0 auto; }
+  .snap-ring circle { fill: none; stroke-width: 11; }
+  .snap-ring .bg { stroke: var(--line); }
+  .snap-ring .fg { stroke: var(--accent); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset 0.8s ease; }
+  .snap-ring text { font-size: 1.5rem; font-weight: 800; fill: var(--ink); }
+  .snap-nums { display: flex; gap: 1.6rem; flex-wrap: wrap; }
+  .snap-nums div { display: flex; flex-direction: column; }
+  .snap-nums b { font-size: 1.8rem; font-weight: 800; line-height: 1.1; }
+  .snap-nums span { color: var(--muted); font-size: 0.82rem; }
+  .snap h3 { font-size: 0.95rem; font-weight: 800; margin: 1rem 0 0.5rem; }
+  .snap-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+  .snap-list li { display: flex; gap: 0.7rem; align-items: flex-start; padding: 0.6rem 0.8rem; border-radius: 12px; background: var(--paper); font-size: 0.95rem; line-height: 1.4; }
+  .snap-list .ic { flex: 0 0 auto; font-size: 1.1rem; }
+  .snap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.8rem; }
+  .snap-vis { border: 1px solid var(--line); border-radius: 14px; padding: 0.8rem 0.9rem; }
+  .snap-vis h4 { font-size: 0.82rem; font-weight: 800; margin: 0 0 0.6rem; color: var(--ink-soft, var(--ink)); }
+  .snap-energy { display: flex; gap: 0.5rem; align-items: flex-end; overflow-x: auto; padding-bottom: 0.2rem; }
+  .snap-energy .se { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; min-width: 30px; }
+  .snap-energy .n { font-size: 0.72rem; font-weight: 700; color: var(--muted); }
+  .snap-energy .b { width: 20px; border-radius: 6px 6px 3px 3px; background: var(--accent); display: block; }
+  .snap-energy .i { font-size: 0.9rem; }
+  .snap-bar { display: grid; grid-template-columns: minmax(6rem, 1fr) 2fr auto; gap: 0.6rem; align-items: center; font-size: 0.85rem; margin-bottom: 0.35rem; }
+  .snap-bar .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .snap-bar .t { height: 10px; border-radius: 6px; background: var(--paper); overflow: hidden; display: block; }
+  .snap-bar .f { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+  .snap-bar.good .f { background: #2f9e6a; }
+  .snap-bar .c { color: var(--muted); white-space: nowrap; font-weight: 700; }
+  .snap-words { display: flex; flex-wrap: wrap; gap: 0.4rem 0.7rem; align-items: baseline; }
+  .snap-words span { font-weight: 800; color: var(--accent); }
+  .snap-words small { font-weight: 600; color: var(--muted); margin-left: 0.15rem; font-size: 0.7rem; }
+  @media print {
+    body.snap-open > *:not(.snap-overlay) { display: none !important; }
+    .snap-overlay { position: static; background: none; padding: 0; backdrop-filter: none; }
+    .snap { box-shadow: none; width: 100%; }
+    .snap-actions { display: none; }
+  }
   .share-btn {
     border: none;
     background: var(--accent);
