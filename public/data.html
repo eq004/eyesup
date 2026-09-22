@@ -173,6 +173,50 @@
   .snap-words { display: flex; flex-wrap: wrap; gap: 0.4rem 0.7rem; align-items: baseline; }
   .snap-words span { font-weight: 800; color: var(--accent); }
   .snap-words small { font-weight: 600; color: var(--muted); margin-left: 0.15rem; font-size: 0.7rem; }
+  .snap-vis.wide { grid-column: 1 / -1; }
+  .snap-donut { display: flex; gap: 1rem; align-items: center; }
+  .snap-donut svg { width: 120px; height: 120px; flex: 0 0 auto; }
+  .snap-donut .big { font-size: 1.15rem; font-weight: 800; fill: var(--ink); }
+  .snap-donut .small { font-size: 0.5rem; fill: var(--muted); font-weight: 700; }
+  .snap-donut .legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; }
+  .snap-donut .legend li { display: flex; align-items: center; gap: 0.5rem; }
+  .snap-donut .legend i { width: 12px; height: 12px; border-radius: 4px; flex: 0 0 auto; }
+  .snap-donut .legend span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .snap-donut .legend b { color: var(--muted); font-weight: 700; white-space: nowrap; }
+  .snap-faces { display: flex; justify-content: space-around; align-items: flex-end; gap: 0.4rem; padding: 0.3rem 0; }
+  .snap-faces .face { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; padding: 0.4rem 0.5rem; border-radius: 12px; }
+  .snap-faces .face.lead { background: var(--paper); }
+  .snap-faces .face b { font-size: 1rem; }
+  .snap-faces .face small { color: var(--muted); font-size: 0.72rem; }
+  .snap-gauge svg { width: 100%; max-width: 220px; display: block; margin: 0 auto; }
+  .snap-gauge .big { font-size: 0.95rem; font-weight: 800; fill: var(--ink); }
+  .snap-gauge .ends { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--muted); max-width: 220px; margin: -0.2rem auto 0.2rem; }
+  .snap-podium { display: flex; align-items: flex-end; justify-content: center; gap: 0.6rem; padding-top: 0.4rem; }
+  .snap-podium .step { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; flex: 1; max-width: 140px; }
+  .snap-podium .lbl { font-size: 0.8rem; font-weight: 700; text-align: center; line-height: 1.2; }
+  .snap-podium .block { width: 100%; border-radius: 10px 10px 4px 4px; display: flex; align-items: flex-start; justify-content: center; padding-top: 0.3rem; font-size: 1.3rem; }
+  .snap-podium .p1 { background: var(--accent); }
+  .snap-podium .p2 { background: #5b7fc7; }
+  .snap-podium .p3 { background: #9db3dd; }
+  .snap-bar.bad .f { background: #c95c5c; }
+  .snap-acc { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .snap-acc .chip { display: flex; flex-direction: column; align-items: center; padding: 0.4rem 0.7rem; border-radius: 10px; font-size: 0.85rem; min-width: 4rem; }
+  .snap-acc .chip span { font-size: 0.75rem; font-weight: 700; }
+  .snap-acc .good { background: #e3f4ea; color: #1f6b46; }
+  .snap-acc .mid { background: #fbf0d9; color: #8a5a10; }
+  .snap-acc .bad { background: #f9e3e3; color: #8f2f2f; }
+  .snap-heat { overflow-x: auto; }
+  .snap-heat table { border-collapse: collapse; font-size: 0.8rem; }
+  .snap-heat th { font-weight: 600; padding: 0.2rem 0.3rem; text-align: center; }
+  .snap-heat td { padding: 0.15rem 0.3rem; white-space: nowrap; }
+  .snap-heat td:first-child { font-weight: 700; padding-right: 0.7rem; }
+  .snap-heat i { display: block; width: 14px; height: 14px; border-radius: 4px; background: var(--paper); border: 1px solid var(--line); margin: 0 auto; }
+  .snap-heat i.on { background: var(--accent); border-color: var(--accent); }
+  .snap-ai { border: 1.5px solid var(--line); border-radius: 14px; padding: 0.9rem 1rem; background: linear-gradient(180deg, #f7f9fe, #fff); }
+  .snap-ai.off { background: var(--paper); }
+  .snap-ai p { margin: 0 0 0.5rem; font-size: 0.92rem; line-height: 1.45; }
+  .snap-ai .ai-text ul { margin: 0.2rem 0 0.6rem 1.2rem; padding: 0; font-size: 0.92rem; line-height: 1.45; }
+  .snap-ai .ai-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; font-size: 0.78rem; margin-top: 0.4rem; flex-wrap: wrap; }
   @media print {
     body.snap-open > *:not(.snap-overlay) { display: none !important; }
     .snap-overlay { position: static; background: none; padding: 0; backdrop-filter: none; }

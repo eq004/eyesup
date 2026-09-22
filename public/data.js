@@ -30,6 +30,7 @@ const authQ = token ? `t=${encodeURIComponent(token)}` : "";
 const canonical = (n) => String(n || "").trim().toLowerCase();
 
 let lessons = []; // [{meta, summary}]
+let aiOn = false; // server has an AI key → written answers can be summarised
 let selectedId = null;
 let sortBy = { key: "pct", dir: 1 };
 let search = "";
@@ -55,6 +56,7 @@ async function load(attempt = 0) {
       return;
     }
     list = data.lessons;
+    aiOn = !!data.ai;
   } catch {
     if (attempt < 18) {
       wrap.innerHTML = `<div class="gate muted">⏳ Waking the server up — the first visit of the day can take up to a minute.<br/>Retrying automatically (${attempt + 1})…</div>`;
@@ -400,12 +402,15 @@ function snapshotOf(x) {
         const split = topPct < 55 && it.distribution.length >= 2 ? " — a real split" : topPct >= 80 ? " — near-unanimous" : "";
         takeaways.push({ icon: "📊", text: `${itemLabel(it)}: <b>${esc(top.label)}</b> led with ${topPct}%${split}.` });
       }
-      visuals.push({ kind: "bars", title: `${modeIcon(it.mode)} ${itemLabel(it)}`, rows: it.distribution.map((d) => ({ label: d.label, count: d.count })) });
+      const rows = it.distribution.map((d) => ({ label: d.label, count: d.count }));
+      if (it.mode === "smiley") visuals.push({ kind: "faces", title: `${modeIcon(it.mode)} ${itemLabel(it)}`, rows });
+      else if (rows.length <= 4 && !correct) visuals.push({ kind: "donut", title: `${modeIcon(it.mode)} ${itemLabel(it)}`, rows });
+      else visuals.push({ kind: "bars", title: `${modeIcon(it.mode)} ${itemLabel(it)}`, rows });
     } else if (["spelling", "cloze", "phonics_cloze"].includes(it.mode) && it.distribution) {
       const hard = [...it.distribution].sort((a, b) => a.count - b.count)[0];
       const hp = Math.round((hard.count / it.responses) * 100);
       takeaways.push({ icon: hp < 50 ? "❗" : "🔡", text: `${modeName(it.mode)}: <b>${esc(hard.label.split("  (")[0])}</b> was the hardest — ${hp}% got it.` });
-      visuals.push({ kind: "bars", title: `${modeIcon(it.mode)} ${esc(modeName(it.mode))} — how many got each right (of ${it.responses})`, rows: it.distribution.map((d) => ({ label: d.label, count: d.count })) });
+      visuals.push({ kind: "accuracy", title: `${modeIcon(it.mode)} ${esc(modeName(it.mode))} — who got each one right`, total: it.responses, rows: it.distribution.map((d) => ({ label: d.label.split("  (")[0], count: d.count })) });
     } else if (["working", "counters"].includes(it.mode) && it.distribution) {
       const right = it.distribution.filter((d) => /✓$/.test(d.label)).reduce((a, d) => a + d.count, 0);
       const marked = it.distribution.some((d) => /[✓✗]$/.test(d.label));
@@ -420,24 +425,126 @@ function snapshotOf(x) {
     } else if (it.scale?.avg != null) {
       const [lo, hi] = it.scale.labels || [];
       const v = Number(it.scale.avg);
-      takeaways.push({ icon: "🎚️", text: `${itemLabel(it)}: the class averaged <b>${v.toFixed(1)}</b>${lo && hi ? ` (between “${esc(lo)}” and “${esc(hi)}”)` : ""}.` });
+      takeaways.push({ icon: "🎚️", text: `${itemLabel(it)}: the class averaged <b>${Math.round(v)} out of 100</b>${lo && hi ? ` (between “${esc(lo)}” and “${esc(hi)}”)` : ""}.` });
+      visuals.push({ kind: "gauge", title: `${modeIcon(it.mode)} ${itemLabel(it)}`, avg: v, labels: it.scale.labels || [], n: it.responses });
     } else if (it.ranked?.length) {
       takeaways.push({ icon: "🔢", text: `${itemLabel(it)}: the class put <b>${esc(it.ranked[0].label)}</b> first.` });
+      visuals.push({ kind: "podium", title: `${modeIcon(it.mode)} ${itemLabel(it)}`, ranked: it.ranked });
     } else if (it.matchStats?.length) {
       const weakest = [...it.matchStats].sort((a, b) => a.correctPct - b.correctPct)[0];
       takeaways.push({ icon: "🧩", text: `Match Up: weakest pair was <b>${esc(weakest.pair)}</b> (${weakest.correctPct}% right).` });
+      visuals.push({ kind: "pairs", title: `🧩 Match Up — % who paired each correctly`, rows: it.matchStats });
     } else if (it.sketchCount) {
       takeaways.push({ icon: "🎨", text: `${itemLabel(it)}: ${plural(it.sketchCount, "picture")} came in.` });
+    } else if ((it.answers || []).length >= 3) {
+      // Written answers: the words the class leaned on, and how much they wrote.
+      const kw = keywords(it.answers);
+      const avgWords = Math.round(it.answers.reduce((a, t) => a + String(t).split(/\s+/).filter(Boolean).length, 0) / it.answers.length);
+      if (kw.length) {
+        if (visuals.filter((q) => q.kind === "words").length < 4)
+          visuals.push({ kind: "words", title: `${modeIcon(it.mode)} ${itemLabel(it)} — words the class used most`, words: kw });
+        takeaways.push({ icon: "✏️", text: `${itemLabel(it)}: ${plural(it.answers.length, "written answer")}, about ${plural(avgWords, "word")} each — the class kept coming back to <b>${kw.slice(0, 3).map((w) => esc(w.word)).join("</b>, <b>")}</b>.` });
+      }
     }
+  }
+
+  // Who answered what: one dot per student per activity.
+  if (total >= 2 && rows.length >= 3) {
+    const named = items.filter((it) => (it.responses || 0) > 0 && !it.anonymous);
+    visuals.push({
+      kind: "heat", title: "👥 Who answered what — one dot per activity", cols: named,
+      rows: [...rows].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 40).map((r) => ({
+        name: r.name,
+        cells: named.map((it) => (it.students || []).some((st) => st.name && canonical(st.name) === canonical(r.name))),
+      })),
+    });
   }
 
   // Energy strip always
   if (items.length) visuals.unshift({ kind: "energy", title: "Answers per activity, in order", items });
 
-  return { pct, joined, took, responses, nItems: items.length, takeaways: takeaways.slice(0, 12), visuals: visuals.slice(0, 6) };
+  const written = items.filter((it) => (it.answers || []).length >= 3 && !it.distribution && !it.topWords);
+  // Keep it scannable: a dozen visuals at most, but the who-answered-what grid always makes the cut.
+  const heat = visuals.find((v) => v.kind === "heat");
+  const rest = visuals.filter((v) => v.kind !== "heat").slice(0, 12);
+  return { pct, joined, took, responses, nItems: items.length, takeaways: takeaways.slice(0, 12), visuals: heat ? [...rest, heat] : rest, written };
 }
 
+const STOP = new Set("a an the and or but so if of to in on at for with from by as is are was were be been being it its this that these those i we you he she they them our your their my me us him her his not no yes do does did have has had can could would should will just very really also than then there here what which who when where why how about into over under more most some any all each other such only own same too s t ll ve re d m don didn isn wasn aren because like get got make made one two lot lots thing things".split(" "));
+function keywords(answers, n = 12) {
+  const freq = new Map();
+  for (const a of answers) {
+    const seen = new Set();
+    for (const raw of String(a).toLowerCase().match(/[a-z][a-z'’-]{2,}/g) || []) {
+      const w = raw.replace(/^['’-]+|['’-]+$/g, "");
+      if (STOP.has(w) || seen.has(w)) continue;
+      seen.add(w);
+      freq.set(w, (freq.get(w) || 0) + 1);
+    }
+  }
+  return [...freq.entries()].filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, n).map(([word, count]) => ({ word, count }));
+}
+
+const PALETTE = ["#1d3f78", "#5b7fc7", "#2f9e6a", "#e0a63a", "#c95c5c", "#8b6bc7"];
 function renderSnapshotVisual(v) {
+  if (v.kind === "donut") {
+    const tot = v.rows.reduce((a, r) => a + r.count, 0) || 1;
+    let acc = 0;
+    const r = 40, c = 2 * Math.PI * r;
+    const arcs = v.rows.map((row, i) => {
+      const frac = row.count / tot;
+      const el = `<circle cx="55" cy="55" r="${r}" fill="none" stroke="${PALETTE[i % PALETTE.length]}" stroke-width="18" stroke-dasharray="${(frac * c).toFixed(2)} ${c}" stroke-dashoffset="${(-acc * c).toFixed(2)}" transform="rotate(-90 55 55)"/>`;
+      acc += frac;
+      return el;
+    });
+    const top = [...v.rows].sort((a, b) => b.count - a.count)[0];
+    return `<div class="snap-vis"><h4>${v.title}</h4><div class="snap-donut">
+      <svg viewBox="0 0 110 110">${arcs.join("")}<text x="55" y="52" text-anchor="middle" class="big">${Math.round((top.count / tot) * 100)}%</text><text x="55" y="66" text-anchor="middle" class="small">${esc(String(top.label).slice(0, 12))}</text></svg>
+      <ul class="legend">${v.rows.map((row, i) => `<li><i style="background:${PALETTE[i % PALETTE.length]}"></i><span>${esc(row.label)}</span><b>${row.count} · ${Math.round((row.count / tot) * 100)}%</b></li>`).join("")}</ul>
+    </div></div>`;
+  }
+  if (v.kind === "faces") {
+    const tot = v.rows.reduce((a, r) => a + r.count, 0) || 1;
+    const max = Math.max(1, ...v.rows.map((r) => r.count));
+    return `<div class="snap-vis"><h4>${v.title}</h4><div class="snap-faces">${v.rows
+      .map((r) => `<div class="face ${r.count === max && r.count ? "lead" : ""}"><span style="font-size:${(1.3 + (r.count / max) * 1.4).toFixed(2)}rem">${esc(r.label)}</span><b>${r.count}</b><small>${Math.round((r.count / tot) * 100)}%</small></div>`)
+      .join("")}</div></div>`;
+  }
+  if (v.kind === "gauge") {
+    const pct = Math.max(0, Math.min(1, v.avg / 100)); // scale markers run 0–100
+    const ang = -90 + pct * 180;
+    return `<div class="snap-vis"><h4>${v.title}</h4><div class="snap-gauge">
+      <svg viewBox="0 0 120 70"><path d="M10 60 A50 50 0 0 1 110 60" fill="none" stroke="var(--line)" stroke-width="12" stroke-linecap="round"/>
+        <path d="M10 60 A50 50 0 0 1 110 60" fill="none" stroke="var(--accent)" stroke-width="12" stroke-linecap="round" stroke-dasharray="${(pct * 157).toFixed(1)} 157"/>
+        <g transform="rotate(${ang.toFixed(1)} 60 60)"><line x1="60" y1="60" x2="60" y2="18" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/></g><circle cx="60" cy="60" r="5" fill="var(--ink)"/>
+        <text x="60" y="48" text-anchor="middle" class="big">${Math.round(v.avg)}</text></svg>
+      <div class="ends"><span>${esc(v.labels[0] || "0")}</span><span>${esc(v.labels[1] || "100")}</span></div>
+      <div class="muted" style="font-size:0.78rem;text-align:center">class average · ${plural(v.n, "answer")}</div></div></div>`;
+  }
+  if (v.kind === "podium") {
+    const top3 = v.ranked.slice(0, 3);
+    const order = [top3[1], top3[0], top3[2]].filter(Boolean);
+    const h = { 1: 84, 2: 60, 3: 44 };
+    return `<div class="snap-vis"><h4>${v.title}</h4><div class="snap-podium">${order
+      .map((r) => `<div class="step"><div class="lbl">${esc(r.label)}</div><div class="block p${r.position}" style="height:${h[r.position] || 40}px">${r.position === 1 ? "🥇" : r.position === 2 ? "🥈" : "🥉"}</div></div>`)
+      .join("")}</div>${v.ranked.length > 3 ? `<div class="muted" style="font-size:0.78rem;margin-top:0.4rem">then ${v.ranked.slice(3).map((r) => esc(r.label)).join(", ")}</div>` : ""}</div>`;
+  }
+  if (v.kind === "pairs") {
+    return `<div class="snap-vis"><h4>${v.title}</h4>${v.rows
+      .map((p) => `<div class="snap-bar ${p.correctPct >= 70 ? "good" : p.correctPct < 40 ? "bad" : ""}"><span class="l">${esc(p.pair)}</span><span class="t"><span class="f" style="width:${p.correctPct}%"></span></span><span class="c">${p.correctPct}%</span></div>`)
+      .join("")}</div>`;
+  }
+  if (v.kind === "accuracy") {
+    return `<div class="snap-vis"><h4>${v.title}</h4><div class="snap-acc">${v.rows
+      .map((r) => { const p = v.total ? Math.round((r.count / v.total) * 100) : 0; return `<div class="chip ${p >= 70 ? "good" : p >= 40 ? "mid" : "bad"}"><b>${esc(r.label)}</b><span>${p}%</span></div>`; })
+      .join("")}</div></div>`;
+  }
+  if (v.kind === "heat") {
+    return `<div class="snap-vis wide"><h4>${v.title}</h4><div class="snap-heat"><table>
+      <thead><tr><th></th>${v.cols.map((it, i) => `<th title="${esc(modeName(it.mode, it.counterKind))}${it.prompt ? " — " + esc(it.prompt) : ""}">${modeIcon(it.mode)}</th>`).join("")}</tr></thead>
+      <tbody>${v.rows.map((r) => `<tr><td>${esc(r.name)}</td>${r.cells.map((on) => `<td><i class="${on ? "on" : ""}"></i></td>`).join("")}</tr>`).join("")}</tbody>
+    </table></div></div>`;
+  }
   if (v.kind === "energy") {
     const max = Math.max(1, ...v.items.map((it) => it.responses || 0));
     return `<div class="snap-vis"><h4>${v.title}</h4><div class="snap-energy">${v.items
@@ -459,6 +566,52 @@ function renderSnapshotVisual(v) {
       .join("")}</div></div>`;
   }
   return "";
+}
+
+/* ---- AI summary of the written answers (only when the server has a key) ---- */
+function mdLite(t) {
+  return esc(t)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .split(/\n/)
+    .map((l) => (/^\s*[-•*]\s+/.test(l) ? `<li>${l.replace(/^\s*[-•*]\s+/, "")}</li>` : l.trim() ? `<p>${l}</p>` : ""))
+    .join("")
+    .replace(/(<li>.*?<\/li>)+/g, (m) => `<ul>${m}</ul>`);
+}
+function renderAiSection(x, snap) {
+  const cached = x.summary.ai?.all;
+  if (!aiOn) {
+    return `<h3>🤖 AI summary of written answers</h3>
+      <div class="snap-ai off"><p>This lesson has ${plural(snap.written.length, "activity").replace("activitys", "activities")} with written answers (${snap.written.map((it) => itemLabel(it)).join(", ")}). An AI summary can read them all and tell you the common threads, misconceptions and what to follow up.</p>
+      <p class="muted">Not switched on yet — it needs an Anthropic API key added to the server. Names are never sent, only the answers.</p></div>`;
+  }
+  return `<h3>🤖 AI summary of written answers</h3>
+    <div class="snap-ai" id="aiBox">${cached
+      ? `<div class="ai-text">${mdLite(cached.text)}</div><div class="ai-foot"><span class="muted">Summarised ${new Date(cached.at).toLocaleDateString()} · names never sent</span><button class="share-btn ghost" id="aiRedo">↻ Redo</button></div>`
+      : `<p>${plural(snap.written.length, "activity").replace("activitys", "activities")} with written answers: ${snap.written.map((it) => itemLabel(it)).join(", ")}.</p>
+         <button class="share-btn" id="aiGo">✨ Summarise the written answers</button> <span class="muted" style="font-size:0.78rem">Takes about 10 seconds · names are never sent</span>`}</div>`;
+}
+function bindAi(ov, x) {
+  const box = ov.querySelector("#aiBox");
+  if (!box) return;
+  const run = async (force) => {
+    box.innerHTML = `<p class="muted">⏳ Reading the answers…</p>`;
+    try {
+      const res = await fetch(`/api/lessons/${x.meta.id}/ai-summary`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: token, item: "all", force }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error);
+      x.summary.ai = x.summary.ai || {};
+      x.summary.ai.all = data.summary;
+      box.innerHTML = `<div class="ai-text">${mdLite(data.summary.text)}</div><div class="ai-foot"><span class="muted">Summarised just now · names never sent</span><button class="share-btn ghost" id="aiRedo">↻ Redo</button></div>`;
+    } catch (e) {
+      box.innerHTML = `<p style="color:#c95c5c">Couldn't summarise right now (${esc(e.message)}). <button class="share-btn ghost" id="aiGo">Try again</button></p>`;
+    }
+    wire();
+  };
+  const wire = () => {
+    const go = box.querySelector("#aiGo"); if (go) go.onclick = () => run(false);
+    const redo = box.querySelector("#aiRedo"); if (redo) redo.onclick = () => run(true);
+  };
+  wire();
 }
 
 function openSnapshot(x) {
@@ -503,6 +656,7 @@ function openSnapshot(x) {
       ${snap.takeaways.length
         ? `<ul class="snap-list">${snap.takeaways.map((t) => `<li><span class="ic">${t.icon}</span><span>${t.text}</span></li>`).join("")}</ul>`
         : `<p class="muted">Not much to say yet — this lesson didn't collect enough answers.</p>`}
+      ${snap.written.length ? renderAiSection(x, snap) : ""}
       ${snap.visuals.length ? `<h3>At a glance</h3><div class="snap-grid">${snap.visuals.map(renderSnapshotVisual).join("")}</div>` : ""}
       <p class="muted" style="font-size:0.78rem;margin-top:1rem">Want every answer? Use 📊 Lesson dashboard or 📄 Export lesson. This snapshot is the short version.</p>
     </div>`;
@@ -511,6 +665,7 @@ function openSnapshot(x) {
   const close = () => { ov.remove(); document.body.classList.remove("snap-open"); };
   ov.onclick = (e) => { if (e.target === ov) close(); };
   ov.querySelector("#snapClose").onclick = close;
+  bindAi(ov, x);
   ov.querySelector("#snapPrint").onclick = () => window.print();
   ov.querySelector("#snapCopy").onclick = async () => {
     const b = ov.querySelector("#snapCopy");

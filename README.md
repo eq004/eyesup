@@ -100,6 +100,8 @@ Signed-in teachers click **➕ Invite a colleague** (dashboard header, or the re
 
 Pictures students submit (Drop an Image, Image + Writing, Sketch, Annotate) are saved to the database **the moment they arrive**, so nothing depends on downloading during class. Afterwards they appear in the archived lesson report, the Data dashboard's Lesson dashboard tab, and as ZIP downloads (whole lesson, or one activity) — files named per student, with a `captions.txt` for Image + Writing. Only the lesson's owner can view or download them; shared links never include pictures.
 
+**AI summaries (optional)**: set `ANTHROPIC_API_KEY` on Render and the data section's ✨ *Visualise this lesson* snapshot gains a **Summarise the written answers** button — common threads, misconceptions and follow-ups across every short/long answer in the lesson. Only the answer texts are sent (never student names); the result is saved with the lesson so it's free to re-open. `AI_MODEL` overrides the model (default `claude-sonnet-5`). Without the key the feature stays hidden.
+
 Images are kept for **60 days** by default (`IMAGE_KEEP_DAYS` on Render changes this) and then pruned, to keep the free database within its limits. Everything else about the lesson stays forever.
 
 ## Lesson plans (plan ahead, teach again and again)

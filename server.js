@@ -29,6 +29,10 @@ const PORT = process.env.PORT || 4630;
 // When set: gates the teacher dashboard (password mode without a database,
 // signup invite code in account mode). Students never need it.
 const TEACHER_PASSWORD = process.env.TEACHER_PASSWORD || "";
+// Optional: an Anthropic API key switches on AI summaries of written answers
+// in the data section. Without it the feature simply stays hidden.
+const AI_KEY = process.env.ANTHROPIC_API_KEY || "";
+const AI_MODEL = process.env.AI_MODEL || "claude-sonnet-5";
 
 /* ------------------------------------------------------------------ */
 /* Optional persistent storage (Supabase/Postgres via DATABASE_URL).  */
@@ -273,11 +277,71 @@ app.get("/data", (_req, res) => res.sendFile(path.join(__dirname, "public/data.h
 
 // Health check — also what an uptime pinger should hit: touching the
 // database keeps both the free web service and Supabase from going idle.
+// AI summary of the written answers in one activity (or the whole lesson).
+// Student names are never sent — only the answer texts.
+const AI_EXTRA_MODES = new Set(["question_set", "dot_points", "post_its", "image_caption", "image_long", "maths_board", "example_nonexample", "three_two_one", "notice_wonder", "before_after", "plus_minus", "table"]);
+function aiTextOf(it) {
+  if (!TEXT_MODES.has(it.mode) && !AI_EXTRA_MODES.has(it.mode)) return []; // TEXT_MODES is defined further down; only read at call time
+  const fromAnswers = (it.answers || []).map((a) => String(a || "").trim()).filter(Boolean);
+  if (fromAnswers.length) return fromAnswers;
+  return (it.students || []).map((s) => String(s.response || "").trim()).filter(Boolean);
+}
+app.post("/api/lessons/:id/ai-summary", async (req, res) => {
+  if (!db) return res.status(404).json({ error: "storage_off" });
+  if (!AI_KEY) return res.status(404).json({ error: "ai_off" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(`SELECT id, summary FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`, [req.params.id, t.id]);
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const summary = rows[0].summary;
+    const items = summary.items || [];
+    const which = req.body?.item; // an item id, or "all"
+    const targets = which === "all" ? items.filter((it) => aiTextOf(it).length) : items.filter((it) => it.id === which);
+    if (!targets.length) return res.status(400).json({ error: "nothing_to_summarise" });
+    const cacheKey = which === "all" ? "all" : String(which);
+    summary.ai = summary.ai || {};
+    if (summary.ai[cacheKey] && !req.body?.force) return res.json({ summary: summary.ai[cacheKey], cached: true });
+
+    const blocks = targets.map((it) => {
+      const lines = aiTextOf(it).slice(0, 80).map((a) => "- " + a.slice(0, 600));
+      return `### ${it.mode.replace(/_/g, " ")}${it.prompt ? ` — "${it.prompt}"` : ""}${it.questions ? `\nQuestions: ${it.questions.map((q, i) => `Q${i + 1}: ${q}`).join("; ")}` : ""}\n${lines.join("\n")}`;
+    });
+    const prompt = `You are helping a school teacher read their class's written answers quickly. Below are the answers${which === "all" ? " from several activities in one lesson" : " from one activity"}. Students are anonymous.
+
+Write a short, warm, useful summary for the teacher in plain English (no jargon, no praise of the teacher). Use this shape, in Markdown:
+**In a nutshell** — 1–2 sentences on what the class as a whole said.
+**Common threads** — 3–5 bullet points, each one idea the class shared, with a rough count or share ("about half", "6 of 24").
+**Misconceptions or gaps** — bullets of anything wrong, confused, or missing (say "none spotted" if none).
+**Worth a follow-up** — 1–3 bullets: what to reteach, ask next, or a standout answer worth reading aloud (quote it briefly).
+Keep the whole thing under 220 words. Never invent names.
+
+${blocks.join("\n\n")}`;
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": AI_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: AI_MODEL, max_tokens: 700, messages: [{ role: "user", content: prompt }] }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      console.error("AI summary failed:", data?.error?.message || r.status);
+      return res.status(502).json({ error: "ai_failed", detail: data?.error?.message || String(r.status) });
+    }
+    const text = (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
+    summary.ai[cacheKey] = { text, model: AI_MODEL, at: new Date().toISOString() };
+    await db.query(`UPDATE lessons SET summary = $1 WHERE id = $2`, [JSON.stringify(summary), rows[0].id]);
+    res.json({ summary: summary.ai[cacheKey] });
+  } catch (e) {
+    console.error("AI summary error:", e.message);
+    res.status(500).json({ error: "ai_failed", detail: e.message });
+  }
+});
+
 app.get("/api/health", async (_req, res) => {
-  if (!db) return res.json({ ok: true, storage: false });
+  if (!db) return res.json({ ok: true, storage: false, ai: !!AI_KEY });
   try {
     await db.query("SELECT 1");
-    res.json({ ok: true, storage: true, db: "ok", schemaReady: storageReady });
+    res.json({ ok: true, storage: true, db: "ok", schemaReady: storageReady, ai: !!AI_KEY });
   } catch (e) {
     res.status(503).json({ ok: false, storage: true, db: "error", schemaReady: storageReady, detail: e.code || e.message });
   }
@@ -416,7 +480,7 @@ app.get("/api/lessons", async (req, res) => {
        ORDER BY created_at DESC LIMIT 200`,
       [t.id]
     );
-    res.json({ storage: true, lessons: rows });
+    res.json({ storage: true, ai: !!AI_KEY, lessons: rows });
   } catch (e) {
     res.status(500).json({ error: "db_error" });
   }
