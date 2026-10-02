@@ -100,6 +100,23 @@ Signed-in teachers click **➕ Invite a colleague** (dashboard header, or the re
 
 Pictures students submit (Drop an Image, Image + Writing, Sketch, Annotate) are saved to the database **the moment they arrive**, so nothing depends on downloading during class. Afterwards they appear in the archived lesson report, the Data dashboard's Lesson dashboard tab, and as ZIP downloads (whole lesson, or one activity) — files named per student, with a `captions.txt` for Image + Writing. Only the lesson's owner can view or download them; shared links never include pictures.
 
+**Owner admin**: the owner's account (`is_admin` on the `teachers` table) gets **☰ Menu → 🛠 Owner admin** (`/admin`): every teacher account with lessons taught, students reached and last activity; a CSV download; and per-account *Manage* — change plan (free / trial / school licence / subscriber, with an end date), add an email and a private note, give a new password (shown once), or switch the account off and on. Every teacher also has **☰ Menu → 👤 My account** to set their email and change their own password.
+
+**Subscriptions for individual teachers (optional, Stripe)**: dormant until these are set on Render — until then every account has full access and nobody is charged.
+
+| Variable | What it is |
+| --- | --- |
+| `STRIPE_SECRET_KEY` | Stripe secret key (`sk_test_…` while testing, `sk_live_…` to sell) |
+| `STRIPE_PRICE_MONTHLY` | Price ID (`price_…`) of the monthly subscription created in Stripe |
+| `STRIPE_PRICE_YEARLY` | *(optional)* Price ID of a yearly option |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret (`whsec_…`) of a Stripe webhook pointing at `https://<site>/api/stripe/webhook`, sending `checkout.session.completed` and `customer.subscription.created/updated/deleted` |
+| `TRIAL_DAYS` | *(optional)* free-trial length for new accounts, default 30 |
+| `OPEN_SIGNUP` | *(optional)* `1`/`0` to force sign-up open or invite-only; by default it opens when billing is on |
+| `AUTH_SECRET` | *(recommended before selling)* a long random string that signs sign-ins, so the invite code is no longer also the signing key. Setting it signs everyone out once. |
+| `PUBLIC_URL` | *(optional)* site address used for Stripe return links |
+
+With billing on: new accounts start a trial; accounts that existed before stay on **free access** until the owner changes them; when a trial or subscription lapses the teacher can still sign in and open/export their data but cannot start a new class (a class already running is never interrupted); a late card gets 3 days' grace. Prices are read from Stripe, so they are changed there. Card details never touch this server — checkout and "manage subscription" are Stripe-hosted pages. School licences are recorded by the owner in the admin page (plan *School licence* + end date) and invoiced outside the app.
+
 **AI summaries (optional)**: set `ANTHROPIC_API_KEY` on Render and the data section's ✨ *Visualise this lesson* snapshot gains a **Summarise the written answers** button — common threads, misconceptions and follow-ups across every short/long answer in the lesson. Only the answer texts are sent (never student names); the result is saved with the lesson so it's free to re-open. `AI_MODEL` overrides the model (default `claude-sonnet-5`). Without the key the feature stays hidden.
 
 Images are kept for **60 days** by default (`IMAGE_KEEP_DAYS` on Render changes this) and then pruned, to keep the free database within its limits. Everything else about the lesson stays forever.

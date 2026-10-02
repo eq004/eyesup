@@ -33,6 +33,17 @@ const TEACHER_PASSWORD = process.env.TEACHER_PASSWORD || "";
 // in the data section. Without it the feature simply stays hidden.
 const AI_KEY = process.env.ANTHROPIC_API_KEY || "";
 const AI_MODEL = process.env.AI_MODEL || "claude-sonnet-5";
+// Optional: Stripe keys switch on paid subscriptions for individual teachers.
+// Until they are set, billing is OFF and every account has full access.
+const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || "";
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const STRIPE_PRICE_MONTHLY = process.env.STRIPE_PRICE_MONTHLY || "";
+const STRIPE_PRICE_YEARLY = process.env.STRIPE_PRICE_YEARLY || "";
+const BILLING_ON = !!(STRIPE_KEY && STRIPE_PRICE_MONTHLY);
+const TRIAL_DAYS = Math.max(1, parseInt(process.env.TRIAL_DAYS || "30", 10) || 30);
+const GRACE_DAYS = 3; // a late payment doesn't lock a teacher out mid-week
+// Once Eyes Up is on sale anyone can start a trial; before that, sign-up needs an invite.
+const OPEN_SIGNUP = process.env.OPEN_SIGNUP ? process.env.OPEN_SIGNUP === "1" : BILLING_ON;
 
 /* ------------------------------------------------------------------ */
 /* Optional persistent storage (Supabase/Postgres via DATABASE_URL).  */
@@ -95,6 +106,20 @@ if (process.env.DATABASE_URL) {
     `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_name text`,
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS favs text`,
     `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS share_key text`,
+    // Accounts as a business: an owner, a status, and a plan.
+    //   plan: free (complimentary, no end) · trial · paid (own subscription) · school (covered by a licence)
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS email text`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active'`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS plan text`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS trial_ends_at timestamptz`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS paid_until timestamptz`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS stripe_customer text`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS stripe_sub text`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS last_seen_at timestamptz`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS note text`,
+    // Everyone who joined before plans existed keeps full access.
+    `UPDATE teachers SET plan = 'free' WHERE plan IS NULL`,
     // Student pictures, saved the moment they arrive so nothing depends on
     // the teacher remembering to download during the lesson.
     `CREATE TABLE IF NOT EXISTS lesson_images (
@@ -165,7 +190,31 @@ if (process.env.DATABASE_URL) {
    Tokens are stateless: HMAC over the account's password hash, so they
    survive server restarts and die if the password changes. */
 
-const AUTH_SECRET = TEACHER_PASSWORD || "eyesup-local-secret";
+// AUTH_SECRET signs sign-ins. Set it separately on the host so the invite
+// code (TEACHER_PASSWORD) can be shared without also being the signing key.
+const AUTH_SECRET = process.env.AUTH_SECRET || TEACHER_PASSWORD || "eyesup-local-secret";
+const TEACHER_COLS = `id, username, display_name, pass_hash, favs, email, is_admin, status, plan, trial_ends_at, paid_until, stripe_customer, stripe_sub`;
+
+// Can this account start a class right now? Past lessons and data stay
+// readable whatever the answer — a lapsed teacher never loses their work.
+function accessOf(t) {
+  if (!t) return { ok: false, reason: "signed_out" };
+  if (t.status === "disabled") return { ok: false, reason: "disabled" };
+  const plan = t.plan || "free";
+  if (t.is_admin) return { ok: true, plan: "owner" };
+  if (!BILLING_ON || plan === "free") return { ok: true, plan };
+  const now = Date.now();
+  if (plan === "trial") {
+    const end = t.trial_ends_at ? +new Date(t.trial_ends_at) : 0;
+    return end > now
+      ? { ok: true, plan, until: t.trial_ends_at, daysLeft: Math.ceil((end - now) / 86400000) }
+      : { ok: false, reason: "trial_ended", plan, until: t.trial_ends_at };
+  }
+  const end = t.paid_until ? +new Date(t.paid_until) + GRACE_DAYS * 86400000 : 0;
+  return end > now
+    ? { ok: true, plan, until: t.paid_until }
+    : { ok: false, reason: plan === "school" ? "licence_ended" : "subscription_ended", plan, until: t.paid_until };
+}
 
 function signToken(id, passHash) {
   const mac = crypto.createHmac("sha256", AUTH_SECRET).update(`${id}:${passHash}`).digest("hex");
@@ -178,9 +227,9 @@ async function teacherFromToken(token) {
   if (!Number.isInteger(id)) return null;
   try {
     const { rows } = await db.query(
-      `SELECT id, username, display_name, pass_hash, favs FROM teachers WHERE id = $1`, [id]
+      `SELECT ${TEACHER_COLS} FROM teachers WHERE id = $1`, [id]
     );
-    if (!rows[0]) return null;
+    if (!rows[0] || rows[0].status === "disabled") return null; // a switched-off account is signed out everywhere
     return token === signToken(rows[0].id, rows[0].pass_hash) ? rows[0] : null;
   } catch (e) {
     // Distinct from a bad token: callers must not treat an outage as
@@ -200,6 +249,39 @@ async function authHttp(res, token) {
     return null;
   }
 }
+
+// Owner-only routes.
+async function adminHttp(res, token) {
+  const t = await authHttp(res, token);
+  if (!t) return null;
+  if (!t.is_admin) {
+    res.status(403).json({ error: "not_admin" });
+    return null;
+  }
+  return t;
+}
+
+// Tiny in-memory rate limit for the public sign-in / sign-up doors.
+const hits = new Map(); // key -> [timestamps]
+function limited(req, res, bucket, max, windowMs) {
+  const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+  const key = `${bucket}:${ip}`;
+  const now = Date.now();
+  const list = (hits.get(key) || []).filter((ts) => now - ts < windowMs);
+  list.push(now);
+  hits.set(key, list);
+  if (hits.size > 5000) for (const [k, v] of hits) if (!v.some((ts) => now - ts < 3600000)) hits.delete(k);
+  if (list.length > max) {
+    res.status(429).json({ error: "slow_down" });
+    return true;
+  }
+  return false;
+}
+const cleanEmail = (e) => {
+  const v = String(e || "").trim().toLowerCase().slice(0, 120);
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? v : "";
+};
+const baseUrl = (req) => process.env.PUBLIC_URL || `${String(req.headers["x-forwarded-proto"] || req.protocol).split(",")[0]}://${req.get("host")}`;
 
 // Write the session's full summary to the database right now.
 async function persistNow(session) {
@@ -264,7 +346,8 @@ function persistSession(session) {
 const app = express();
 const smallJson = express.json({ limit: "16kb" });
 const planJson = express.json({ limit: "12mb" }); // saved lessons can include pictures
-app.use((req, res, next) => (req.path.startsWith("/api/plans") ? planJson : smallJson)(req, res, next));
+// Stripe signs the exact bytes it sends, so its webhook must stay unparsed.
+app.use((req, res, next) => (req.path === "/api/stripe/webhook" ? next() : (req.path.startsWith("/api/plans") ? planJson : smallJson)(req, res, next)));
 app.use(express.static(path.join(__dirname, "public")));
 
 // Friendly routes
@@ -378,9 +461,15 @@ function slugName(s) {
 
 app.post("/api/signup", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
+  if (limited(req, res, "signup", 60, 3600000)) return; // generous: a whole staff room can share one school address
   const { invite, username, password, name } = req.body || {};
-  if (TEACHER_PASSWORD && String(invite || "").trim() !== TEACHER_PASSWORD)
+  if (!OPEN_SIGNUP && TEACHER_PASSWORD && String(invite || "").trim() !== TEACHER_PASSWORD)
     return res.status(403).json({ error: "bad_invite" });
+  const email = cleanEmail(req.body?.email);
+  if (req.body?.email && !email) return res.status(400).json({ error: "bad_email" });
+  // On sale: new accounts start a free trial. Before that: full access.
+  const plan = BILLING_ON ? "trial" : "free";
+  const trialEnds = BILLING_ON ? new Date(Date.now() + TRIAL_DAYS * 86400000) : null;
   const displayName = String(name || "").trim().slice(0, 40);
   let base = slugName(username || displayName);
   if (!displayName && !base) return res.status(400).json({ error: "bad_name" });
@@ -392,9 +481,9 @@ app.post("/api/signup", async (req, res) => {
     const u = n === 0 ? base : `${base.slice(0, 22)}${n + 1}`;
     try {
       const { rows } = await db.query(
-        `INSERT INTO teachers (username, display_name, pass_hash)
-         VALUES ($1, $2, $3) RETURNING id, username, display_name, pass_hash`,
-        [u, displayName || u, hash]
+        `INSERT INTO teachers (username, display_name, pass_hash, email, plan, trial_ends_at, last_seen_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now()) RETURNING id, username, display_name, pass_hash`,
+        [u, displayName || u, hash, email || null, plan, trialEnds]
       );
       return res.json({ token: signToken(rows[0].id, rows[0].pass_hash), name: rows[0].display_name, username: u });
     } catch (e) {
@@ -413,20 +502,316 @@ app.get("/api/invite", async (req, res) => {
 
 app.post("/api/login", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
+  if (limited(req, res, "login", 80, 900000)) return; // a school shares one address at 9am
   try {
-    // Accept the plain name too ("Sarah Jones" finds sarah.jones), and a
-    // display name match as a fallback.
+    // Accept the plain name too ("Sarah Jones" finds sarah.jones), a
+    // display name match, or the email on the account.
     const raw = String(req.body?.username || "").trim();
     const { rows } = await db.query(
-      `SELECT * FROM teachers WHERE username = $1 OR username = $2 OR lower(display_name) = $3 ORDER BY id LIMIT 1`,
+      `SELECT * FROM teachers WHERE username = $1 OR username = $2 OR lower(display_name) = $3 OR (email IS NOT NULL AND email = $1) ORDER BY id LIMIT 1`,
       [raw.toLowerCase(), slugName(raw), raw.toLowerCase()]
     );
     const t = rows[0];
     if (!t || !bcrypt.compareSync(String(req.body?.password || ""), t.pass_hash))
       return res.status(403).json({ error: "bad_login" });
-    res.json({ token: signToken(t.id, t.pass_hash), name: t.display_name, username: t.username });
+    if (t.status === "disabled") return res.status(403).json({ error: "account_disabled" });
+    res.json({ token: signToken(t.id, t.pass_hash), name: t.display_name, username: t.username, admin: !!t.is_admin });
   } catch {
     res.status(500).json({ error: "db_error" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* My account · owner admin · subscriptions                           */
+/* ------------------------------------------------------------------ */
+
+// What the sign-up screen needs to know before anyone is signed in.
+app.get("/api/config", (_req, res) => {
+  res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS });
+});
+
+const mePayload = (t) => ({
+  id: t.id, name: t.display_name, username: t.username, email: t.email || "", admin: !!t.is_admin,
+  billing: BILLING_ON, trialDays: TRIAL_DAYS, hasSubscription: !!t.stripe_sub, canManageBilling: !!t.stripe_customer,
+  access: accessOf(t),
+});
+
+app.get("/api/me", async (req, res) => {
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  res.json(mePayload(t));
+});
+
+// A teacher can add or change their own email.
+app.post("/api/me", async (req, res) => {
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  const email = cleanEmail(req.body?.email);
+  if (req.body?.email && !email) return res.status(400).json({ error: "bad_email" });
+  try {
+    await db.query(`UPDATE teachers SET email = $1 WHERE id = $2`, [email || null, t.id]);
+    res.json(mePayload({ ...t, email }));
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+// …and their own password. The old sign-in dies everywhere; this device gets a fresh one.
+app.post("/api/me/password", async (req, res) => {
+  if (limited(req, res, "pw", 10, 900000)) return;
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  if (!bcrypt.compareSync(String(req.body?.current || ""), t.pass_hash)) return res.status(403).json({ error: "bad_login" });
+  if (String(req.body?.next || "").length < 6) return res.status(400).json({ error: "bad_pass" });
+  try {
+    const hash = bcrypt.hashSync(String(req.body.next), 10);
+    await db.query(`UPDATE teachers SET pass_hash = $1 WHERE id = $2`, [hash, t.id]);
+    res.json({ token: signToken(t.id, hash) });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+/* ---- owner admin ---- */
+
+app.get("/admin", (_req, res) => res.sendFile(path.join(__dirname, "public/admin.html")));
+
+app.get("/api/admin/overview", async (req, res) => {
+  const me = await adminHttp(res, req.query.t);
+  if (!me) return;
+  try {
+    const { rows } = await db.query(
+      `SELECT t.id, t.username, t.display_name, t.email, t.is_admin, t.status, t.plan, t.trial_ends_at, t.paid_until,
+              t.created_at, t.last_seen_at, t.note, t.stripe_sub, t.stripe_customer,
+              count(l.id)::int AS lessons,
+              count(l.id) FILTER (WHERE l.saved_at > now() - interval '30 days')::int AS lessons_30d,
+              max(l.saved_at) AS last_lesson,
+              coalesce(sum(CASE WHEN (l.summary->>'joinedCount') ~ '^[0-9]+$' THEN (l.summary->>'joinedCount')::int ELSE 0 END), 0)::int AS students,
+              (SELECT count(*)::int FROM lesson_plans p WHERE p.teacher_id = t.id) AS plans
+         FROM teachers t LEFT JOIN lessons l ON l.teacher_id = t.id
+        GROUP BY t.id ORDER BY t.created_at DESC`
+    );
+    const live = [...sessions.values()].filter((s) => s.phase !== "ended" && s.students.size > 0);
+    res.json({
+      me: me.id,
+      billing: { on: BILLING_ON, trialDays: TRIAL_DAYS, openSignup: OPEN_SIGNUP, yearly: !!STRIPE_PRICE_YEARLY, webhook: !!STRIPE_WEBHOOK_SECRET },
+      ai: !!AI_KEY,
+      separateSecret: !!process.env.AUTH_SECRET,
+      live: { classes: live.length, students: live.reduce((a, s) => a + s.students.size, 0) },
+      teachers: rows.map((r) => ({
+        id: r.id, username: r.username, name: r.display_name, email: r.email || "", admin: !!r.is_admin, status: r.status,
+        plan: r.plan || "free", trialEndsAt: r.trial_ends_at, paidUntil: r.paid_until, joined: r.created_at,
+        lastSeen: r.last_seen_at, lastLesson: r.last_lesson, lessons: r.lessons, lessons30: r.lessons_30d,
+        students: r.students, plans: r.plans, note: r.note || "", hasSubscription: !!r.stripe_sub,
+        access: accessOf(r),
+      })),
+    });
+  } catch (e) {
+    console.error("admin overview failed:", e.message);
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+// A password a person can read out over the phone.
+function tempPassword() {
+  const words = ["river", "maple", "comet", "pebble", "lantern", "meadow", "harbor", "falcon", "ember", "willow", "summit", "coral"];
+  const pick = () => words[crypto.randomInt(words.length)];
+  return `${pick()}-${pick()}-${crypto.randomInt(100, 1000)}`;
+}
+
+app.post("/api/admin/teacher/:id", async (req, res) => {
+  const me = await adminHttp(res, req.body?.t);
+  if (!me) return;
+  const id = parseInt(req.params.id, 10);
+  const action = String(req.body?.action || "");
+  try {
+    const { rows } = await db.query(`SELECT id, is_admin FROM teachers WHERE id = $1`, [id]);
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const self = id === me.id;
+    if (action === "disable" || action === "enable") {
+      if (self) return res.status(400).json({ error: "not_yourself" });
+      await db.query(`UPDATE teachers SET status = $1 WHERE id = $2`, [action === "disable" ? "disabled" : "active", id]);
+      return res.json({ ok: true });
+    }
+    if (action === "reset_password") {
+      // Shown once to the owner, who passes it on; the teacher then changes it under My account.
+      const pw = tempPassword();
+      await db.query(`UPDATE teachers SET pass_hash = $1 WHERE id = $2`, [bcrypt.hashSync(pw, 10), id]);
+      return res.json({ ok: true, password: pw, self });
+    }
+    if (action === "set_plan") {
+      const plan = String(req.body?.plan || "");
+      if (!["free", "trial", "paid", "school"].includes(plan)) return res.status(400).json({ error: "bad_plan" });
+      const until = req.body?.until ? new Date(req.body.until) : null;
+      if (plan !== "free" && (!until || isNaN(until))) return res.status(400).json({ error: "bad_date" });
+      await db.query(
+        `UPDATE teachers SET plan = $1, trial_ends_at = $2, paid_until = $3 WHERE id = $4`,
+        [plan, plan === "trial" ? until : null, plan === "paid" || plan === "school" ? until : null, id]
+      );
+      return res.json({ ok: true });
+    }
+    if (action === "set_admin") {
+      if (self) return res.status(400).json({ error: "not_yourself" });
+      await db.query(`UPDATE teachers SET is_admin = $1 WHERE id = $2`, [!!req.body?.admin, id]);
+      return res.json({ ok: true });
+    }
+    if (action === "set_details") {
+      const email = cleanEmail(req.body?.email);
+      if (req.body?.email && !email) return res.status(400).json({ error: "bad_email" });
+      await db.query(`UPDATE teachers SET email = $1, note = $2 WHERE id = $3`, [email || null, String(req.body?.note || "").slice(0, 300) || null, id]);
+      return res.json({ ok: true });
+    }
+    res.status(400).json({ error: "bad_action" });
+  } catch (e) {
+    console.error("admin action failed:", e.message);
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+/* ---- subscriptions for individual teachers (Stripe) ----
+   Dormant until STRIPE_SECRET_KEY + STRIPE_PRICE_MONTHLY are set. Card
+   details never touch this server: Stripe hosts the checkout and the
+   "manage my subscription" pages, and tells us what happened by webhook. */
+
+function stripeForm(obj, prefix = "", out = new URLSearchParams()) {
+  for (const [k, v] of Object.entries(obj)) {
+    if (v == null) continue;
+    const key = prefix ? `${prefix}[${k}]` : k;
+    if (typeof v === "object") stripeForm(v, key, out);
+    else out.append(key, String(v));
+  }
+  return out;
+}
+async function stripeApi(method, route, params) {
+  const r = await fetch(`https://api.stripe.com/v1/${route}`, {
+    method,
+    headers: { Authorization: `Bearer ${STRIPE_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: params ? stripeForm(params).toString() : undefined,
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data?.error?.message || `stripe_${r.status}`);
+  return data;
+}
+
+// Prices live in Stripe (so they can be changed there); we just show them.
+let priceCache = { at: 0, prices: [] };
+async function billingPrices() {
+  if (!BILLING_ON) return [];
+  if (Date.now() - priceCache.at < 600000 && priceCache.prices.length) return priceCache.prices;
+  const out = [];
+  for (const [interval, id] of [["month", STRIPE_PRICE_MONTHLY], ["year", STRIPE_PRICE_YEARLY]]) {
+    if (!id) continue;
+    try {
+      const p = await stripeApi("GET", `prices/${id}`);
+      out.push({ interval, amount: p.unit_amount, currency: p.currency });
+    } catch (e) {
+      console.error("price lookup failed:", e.message);
+    }
+  }
+  if (out.length) priceCache = { at: Date.now(), prices: out };
+  return out;
+}
+
+app.get("/api/billing/info", async (_req, res) => {
+  res.json({ on: BILLING_ON, trialDays: TRIAL_DAYS, prices: await billingPrices() });
+});
+
+app.post("/api/billing/checkout", async (req, res) => {
+  if (!BILLING_ON) return res.status(404).json({ error: "billing_off" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  const price = req.body?.interval === "year" && STRIPE_PRICE_YEARLY ? STRIPE_PRICE_YEARLY : STRIPE_PRICE_MONTHLY;
+  try {
+    const base = baseUrl(req);
+    const session = await stripeApi("POST", "checkout/sessions", {
+      mode: "subscription",
+      line_items: { 0: { price, quantity: 1 } },
+      client_reference_id: t.id,
+      metadata: { teacher_id: t.id },
+      subscription_data: { metadata: { teacher_id: t.id } },
+      allow_promotion_codes: true,
+      success_url: `${base}/teacher?billing=success`,
+      cancel_url: `${base}/teacher?billing=cancelled`,
+      ...(t.stripe_customer ? { customer: t.stripe_customer } : t.email ? { customer_email: t.email } : {}),
+    });
+    res.json({ url: session.url });
+  } catch (e) {
+    console.error("checkout failed:", e.message);
+    res.status(502).json({ error: "billing_failed" });
+  }
+});
+
+// Stripe's own page for changing the card, switching plan or cancelling.
+app.post("/api/billing/portal", async (req, res) => {
+  if (!BILLING_ON) return res.status(404).json({ error: "billing_off" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  if (!t.stripe_customer) return res.status(400).json({ error: "no_subscription" });
+  try {
+    const session = await stripeApi("POST", "billing_portal/sessions", { customer: t.stripe_customer, return_url: `${baseUrl(req)}/teacher` });
+    res.json({ url: session.url });
+  } catch (e) {
+    console.error("portal failed:", e.message);
+    res.status(502).json({ error: "billing_failed" });
+  }
+});
+
+function stripeSignatureOk(raw, header) {
+  if (!STRIPE_WEBHOOK_SECRET || !header) return false;
+  const parts = Object.fromEntries(String(header).split(",").map((kv) => kv.split("=").map((x) => x.trim())));
+  const stamp = parseInt(parts.t, 10);
+  if (!stamp || Math.abs(Date.now() / 1000 - stamp) > 300 || !parts.v1) return false;
+  const expected = crypto.createHmac("sha256", STRIPE_WEBHOOK_SECRET).update(`${stamp}.${raw}`).digest("hex");
+  const a = Buffer.from(expected), b = Buffer.from(String(parts.v1));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Apply what Stripe says about one subscription to the teacher it belongs to.
+async function applySubscription(sub, teacherIdHint) {
+  const end = sub.current_period_end ?? sub.items?.data?.[0]?.current_period_end;
+  const live = ["active", "trialing", "past_due"].includes(sub.status);
+  const hint = parseInt(teacherIdHint ?? sub.metadata?.teacher_id, 10);
+  const { rows } = await db.query(
+    `SELECT id FROM teachers WHERE id = $1 OR stripe_sub = $2 OR stripe_customer = $3 ORDER BY (id = $1) DESC, (stripe_sub = $2) DESC LIMIT 1`,
+    [Number.isInteger(hint) ? hint : -1, sub.id, sub.customer ? String(sub.customer) : null]
+  );
+  if (!rows[0]) return console.error("stripe: no teacher for subscription", sub.id);
+  if (live && end) {
+    await db.query(
+      `UPDATE teachers SET plan = 'paid', paid_until = to_timestamp($1), stripe_sub = $2, stripe_customer = $3 WHERE id = $4`,
+      [end, sub.id, sub.customer ? String(sub.customer) : null, rows[0].id]
+    );
+  } else {
+    // Ended or never completed: access stops now, but only if this was the plan in force.
+    await db.query(`UPDATE teachers SET paid_until = least(coalesce(paid_until, now()), now()) WHERE id = $1 AND plan = 'paid' AND stripe_sub = $2`, [rows[0].id, sub.id]);
+  }
+}
+
+app.post("/api/stripe/webhook", express.raw({ type: "*/*", limit: "1mb" }), async (req, res) => {
+  if (!db || !STRIPE_WEBHOOK_SECRET) return res.status(404).end();
+  const raw = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : "";
+  if (!stripeSignatureOk(raw, req.headers["stripe-signature"])) return res.status(400).json({ error: "bad_signature" });
+  let event;
+  try { event = JSON.parse(raw); } catch { return res.status(400).json({ error: "bad_json" }); }
+  try {
+    const obj = event.data?.object || {};
+    if (event.type === "checkout.session.completed" && obj.mode === "subscription") {
+      const teacherId = parseInt(obj.client_reference_id ?? obj.metadata?.teacher_id, 10);
+      if (Number.isInteger(teacherId)) {
+        await db.query(
+          `UPDATE teachers SET stripe_customer = $1, stripe_sub = $2, email = coalesce(email, $3) WHERE id = $4`,
+          [obj.customer ? String(obj.customer) : null, obj.subscription ? String(obj.subscription) : null, cleanEmail(obj.customer_details?.email) || null, teacherId]
+        );
+        // The session doesn't carry the renewal date — ask for the subscription itself.
+        if (obj.subscription && STRIPE_KEY) await applySubscription(await stripeApi("GET", `subscriptions/${obj.subscription}`), teacherId);
+      }
+    } else if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
+      await applySubscription(event.type.endsWith("deleted") ? { ...obj, status: "canceled" } : obj);
+    }
+    res.json({ received: true });
+  } catch (e) {
+    console.error("stripe webhook failed:", event.type, e.message);
+    res.status(500).json({ error: "webhook_failed" }); // Stripe retries
   }
 });
 
@@ -1967,6 +2352,12 @@ async function handle(ws, msg) {
   if (type === "teacher_create") {
     const auth = await authTeacher(msg);
     if (!auth.ok) return safeSend(ws, { type: "error", error: auth.error });
+    if (auth.teacher) {
+      // A lapsed plan can't open a new room (a class already running is never interrupted).
+      const access = accessOf(auth.teacher);
+      if (!access.ok) return safeSend(ws, { type: "error", error: "subscription_required", reason: access.reason });
+      db.query(`UPDATE teachers SET last_seen_at = now() WHERE id = $1`, [auth.teacher.id]).catch(() => {});
+    }
     const session = createSession(ws);
     if (auth.teacher) {
       session.teacherId = auth.teacher.id;

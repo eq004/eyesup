@@ -212,6 +212,10 @@ function connect() {
       showAuthOverlay();
       return;
     }
+    if (msg.type === "error" && msg.error === "subscription_required") {
+      showSubscribe(msg.reason);
+      return;
+    }
     if (msg.type === "error" && msg.error === "bad_link") {
       toast("That website address doesn't look right — edit the step and paste the full address");
       return;
@@ -1396,6 +1400,12 @@ document.addEventListener("drop", (e) => {
 /* ---------------- teacher account gate ---------------- */
 
 let authMode = "login";
+// What the server allows before anyone is signed in (open sign-up? payments on?).
+let siteConfig = { openSignup: false, billing: false, trialDays: 30 };
+fetch("/api/config").then((r) => r.json()).then((c) => {
+  siteConfig = c;
+  if ($("authOverlay").classList.contains("show") && authMode === "signup") showAuthOverlay("signup");
+}).catch(() => {});
 
 // An invite link (/teacher?invite=CODE) carries the code so a new teacher
 // never has to type it.
@@ -1416,9 +1426,12 @@ function showAuthOverlay(mode) {
          <input id="aPass" type="password" placeholder="Password" autocomplete="current-password" />`
       : `<input id="aName" placeholder="Your name (e.g. Sarah Jones)" maxlength="40" autocomplete="name" />
          <input id="aPass" type="password" placeholder="Choose a password (6+ characters)" autocomplete="new-password" />
-         ${inviteCode()
-           ? `<p style="color:var(--muted);font-size:0.78rem;margin:0.2rem 0 0">✓ Invite code applied — that's all you need.</p>`
-           : `<input id="aInvite" placeholder="Invite code (ask a colleague who uses Eyes Up)" />`}`;
+         <input id="aEmail" type="email" placeholder="Email (optional)" title="Optional — it helps if you ever forget your password" maxlength="120" autocomplete="email" />
+         ${siteConfig.openSignup
+           ? siteConfig.billing ? `<p style="color:var(--muted);font-size:0.78rem;margin:0.2rem 0 0">✓ ${siteConfig.trialDays}-day free trial — no card needed to start.</p>` : ""
+           : inviteCode()
+             ? `<p style="color:var(--muted);font-size:0.78rem;margin:0.2rem 0 0">✓ Invite code applied — that's all you need.</p>`
+             : `<input id="aInvite" placeholder="Invite code (ask a colleague who uses Eyes Up)" />`}`;
   fields.querySelectorAll("input").forEach((i) => {
     i.style.cssText = "border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font-size:0.95rem";
     i.onkeydown = (e) => { if (e.key === "Enter") $("authGo").click(); };
@@ -1435,6 +1448,9 @@ const AUTH_ERRORS = {
   taken: "That name is already in use — add a surname or initial.",
   bad_name: "Please enter your name.",
   bad_pass: "Password needs at least 6 characters.",
+  bad_email: "That email address doesn't look right — check it, or leave it blank.",
+  account_disabled: "This account has been switched off. Please contact Eyes Up to have it turned back on.",
+  slow_down: "Too many tries — wait a few minutes and try again.",
 };
 
 $("tabLogin").onclick = () => showAuthOverlay("login");
@@ -1443,7 +1459,7 @@ $("authGo").onclick = async () => {
   const body =
     authMode === "login"
       ? { username: $("aUser").value, password: $("aPass").value }
-      : { invite: ($("aInvite")?.value || inviteCode()).trim(), name: $("aName").value, password: $("aPass").value };
+      : { invite: ($("aInvite")?.value || inviteCode()).trim(), name: $("aName").value, password: $("aPass").value, email: $("aEmail")?.value.trim() || "" };
   try {
     const res = await fetch(authMode === "login" ? "/api/login" : "/api/signup", {
       method: "POST",
@@ -1462,6 +1478,7 @@ $("authGo").onclick = async () => {
     $("authOverlay").classList.remove("show");
     if (authMode === "signup") toast(`Welcome, ${data.name}! Sign in next time with your name or "${data.username}".`);
     if (ws && ws.readyState === 1) attach();
+    loadMe();
   } catch {
     $("authError").textContent = "Couldn't reach the server — try again.";
     $("authError").style.display = "block";
@@ -1480,6 +1497,150 @@ $("inviteBtn").onclick = async () => {
     toast("Couldn't fetch the invite link — are you signed in?");
   }
 };
+
+/* ---------------- my account · plan · subscribe ---------------- */
+
+let me = null; // {name, username, email, admin, billing, access:{ok, plan, until, daysLeft, reason}, ...}
+const fmtDay = (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+
+async function loadMe() {
+  if (!teacherToken()) return;
+  try {
+    const res = await fetch(`/api/me?${authQuery()}`);
+    if (!res.ok) return;
+    me = await res.json();
+    $("accountBtn").style.display = "";
+    $("adminLink").style.display = me.admin ? "" : "none";
+    renderPlanBanner();
+  } catch { /* offline — the dashboard still works */ }
+}
+
+// A quiet reminder in the last days of a trial. Never shown mid-lesson noise: one line, dismissible.
+function renderPlanBanner() {
+  const el = $("planBanner");
+  const a = me?.access;
+  const show = me?.billing && a?.ok && a.plan === "trial" && a.daysLeft <= 7 && sessionStorage.getItem("eyesup_banner_off") !== "1";
+  el.style.display = show ? "flex" : "none";
+  if (!show) return;
+  el.innerHTML = `<span>Free trial: ${a.daysLeft} day${a.daysLeft === 1 ? "" : "s"} left</span><button id="bannerSub">Subscribe</button><button class="x" id="bannerX" aria-label="Hide">✕</button>`;
+  $("bannerSub").onclick = () => showSubscribe("trial_ending");
+  $("bannerX").onclick = () => { sessionStorage.setItem("eyesup_banner_off", "1"); el.style.display = "none"; };
+}
+
+function planLine() {
+  const a = me.access;
+  if (me.admin) return "<b>Owner</b> — full access.";
+  if (!me.billing || a.plan === "free") return "<b>Full access</b> — nothing to pay.";
+  if (a.plan === "trial") return a.ok ? `<b>Free trial</b> — ${a.daysLeft} day${a.daysLeft === 1 ? "" : "s"} left (ends ${fmtDay(a.until)}).` : `<b>Your free trial ended</b> on ${fmtDay(a.until)}.`;
+  if (a.plan === "school") return a.ok ? `<b>School licence</b> — covered until ${fmtDay(a.until)}.` : `<b>Your school's licence ended</b> on ${fmtDay(a.until)}.`;
+  return a.ok ? `<b>Subscriber</b> — ${me.hasSubscription ? "renews" : "paid until"} ${fmtDay(a.until)}.` : `<b>Your subscription ended</b> on ${fmtDay(a.until)}.`;
+}
+
+async function goBilling(route, body) {
+  try {
+    const res = await fetch(`/api/billing/${route}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), ...body }) });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error();
+    location.href = data.url; // Stripe's own secure page
+  } catch {
+    toast("Couldn't open the payment page — try again in a moment");
+  }
+}
+
+const money = (p) => new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency.toUpperCase(), minimumFractionDigits: p.amount % 100 ? 2 : 0 }).format(p.amount / 100);
+
+async function showSubscribe(reason) {
+  const head = {
+    trial_ended: ["Your free trial has ended", "Subscribe to keep running classes."],
+    subscription_ended: ["Your subscription has ended", "Subscribe again to keep running classes."],
+    licence_ended: ["Your school's licence has ended", "Ask your school to renew, or subscribe yourself."],
+    trial_ending: ["Keep Eyes Up after your trial", "Subscribe now and nothing changes when the trial ends."],
+  }[reason] || ["Subscribe to Eyes Up", ""];
+  const locked = reason !== "trial_ending";
+  $("subSheet").innerHTML = `
+    <div style="font-size:2.2rem">👀</div>
+    <h2 style="font-family:var(--font-display);margin-top:0.3rem">${head[0]}</h2>
+    <p style="color:var(--ink-soft);margin-top:0.4rem">${head[1]}</p>
+    <div class="price-row" id="priceRow"><p style="color:var(--muted)">Loading prices…</p></div>
+    <p style="color:var(--muted);font-size:0.8rem;margin-top:0.9rem">Paid securely through Stripe. Cancel any time.${locked ? "<br/>Your lesson plans and past lessons are safe — you can still open and export your data." : ""}</p>
+    <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:1rem;flex-wrap:wrap">
+      ${locked ? `<a class="btn" href="/data" style="text-decoration:none;color:var(--ink)">📈 Open my data</a><button class="btn" id="subSignOut">↪ Sign out</button>` : `<button class="btn" id="subLater">Not now</button>`}
+    </div>`;
+  $("subOverlay").classList.add("show");
+  if ($("subLater")) $("subLater").onclick = () => $("subOverlay").classList.remove("show");
+  if ($("subSignOut")) $("subSignOut").onclick = () => $("signOutBtn").click();
+  try {
+    const info = await (await fetch("/api/billing/info")).json();
+    const names = { month: "Monthly", year: "Yearly" };
+    $("priceRow").innerHTML = info.prices.length
+      ? info.prices.map((p) => `<button class="price-card ${p.interval === "year" ? "best" : ""}" data-interval="${p.interval}"><small>${names[p.interval]}</small><b>${money(p)}</b><small>per ${p.interval}</small></button>`).join("")
+      : `<button class="btn primary big" data-interval="month">Subscribe</button>`;
+    $("priceRow").querySelectorAll("[data-interval]").forEach((b) => (b.onclick = () => goBilling("checkout", { interval: b.dataset.interval })));
+  } catch {
+    $("priceRow").innerHTML = `<button class="btn primary big" data-interval="month">Subscribe</button>`;
+    $("priceRow").querySelector("button").onclick = () => goBilling("checkout", { interval: "month" });
+  }
+}
+
+function showAccount() {
+  if (!me) return;
+  const a = me.access;
+  const canSubscribe = me.billing && !me.admin && (a.plan === "trial" || !a.ok);
+  $("accountSheet").innerHTML = `
+    <h2 style="font-family:var(--font-display)">👤 My account</h2>
+    <p style="color:var(--ink-soft);margin-top:0.3rem"><b>${esc(me.name)}</b> · sign-in name <b>${esc(me.username)}</b></p>
+    <div class="acct-plan">${planLine()}
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:${canSubscribe || me.canManageBilling ? "0.7rem" : "0"}">
+        ${canSubscribe ? `<button class="btn primary" id="acctSub">Subscribe</button>` : ""}
+        ${me.billing && me.canManageBilling ? `<button class="btn" id="acctPortal">💳 Manage subscription</button>` : ""}
+      </div>
+    </div>
+    <div class="acct-row"><label for="acctEmail">Email</label><input id="acctEmail" type="email" maxlength="120" placeholder="you@school.edu" value="${esc(me.email)}" /></div>
+    <button class="btn" id="acctSaveEmail" style="margin-top:0.6rem">Save email</button>
+    <div class="acct-msg" id="acctEmailMsg"></div>
+    <div class="acct-row"><label for="acctCur">Change password</label>
+      <input id="acctCur" type="password" placeholder="Current password" autocomplete="current-password" />
+      <input id="acctNew" type="password" placeholder="New password (6+ characters)" autocomplete="new-password" /></div>
+    <button class="btn" id="acctSavePw" style="margin-top:0.6rem">Change password</button>
+    <div class="acct-msg" id="acctPwMsg"></div>
+    <div style="text-align:right;margin-top:0.6rem"><button class="btn" id="acctClose">Close</button></div>`;
+  $("accountOverlay").classList.add("show");
+  $("acctClose").onclick = () => $("accountOverlay").classList.remove("show");
+  if ($("acctSub")) $("acctSub").onclick = () => { $("accountOverlay").classList.remove("show"); showSubscribe(a.ok ? "trial_ending" : a.reason); };
+  if ($("acctPortal")) $("acctPortal").onclick = () => goBilling("portal", {});
+  const say = (id, text, ok) => { $(id).textContent = text; $(id).style.color = ok ? "var(--green)" : "var(--red)"; };
+  $("acctSaveEmail").onclick = async () => {
+    try {
+      const res = await fetch("/api/me", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), email: $("acctEmail").value.trim() }) });
+      const data = await res.json();
+      if (!res.ok) return say("acctEmailMsg", AUTH_ERRORS[data.error] || "Couldn't save — try again.", false);
+      me = data;
+      say("acctEmailMsg", "Saved ✓", true);
+    } catch { say("acctEmailMsg", "Couldn't reach the server — try again.", false); }
+  };
+  $("acctSavePw").onclick = async () => {
+    try {
+      const res = await fetch("/api/me/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), current: $("acctCur").value, next: $("acctNew").value }) });
+      const data = await res.json();
+      if (!res.ok) return say("acctPwMsg", data.error === "bad_login" ? "The current password isn't right." : AUTH_ERRORS[data.error] || "Couldn't change it — try again.", false);
+      localStorage.setItem("eyesup_token", data.token); // this device stays signed in; others are signed out
+      $("acctCur").value = $("acctNew").value = "";
+      say("acctPwMsg", "Password changed ✓", true);
+    } catch { say("acctPwMsg", "Couldn't reach the server — try again.", false); }
+  };
+}
+$("accountBtn").onclick = showAccount;
+$("accountOverlay").addEventListener("click", (e) => { if (e.target === $("accountOverlay")) $("accountOverlay").classList.remove("show"); });
+
+// Back from Stripe's checkout page.
+(() => {
+  const b = new URLSearchParams(location.search).get("billing");
+  if (!b) return;
+  history.replaceState(null, "", location.pathname);
+  setTimeout(() => toast(b === "success" ? "🎉 You're subscribed — thank you! Your account is all set." : "No payment taken — you can subscribe any time from ☰ Menu → My account."), 600);
+  if (b === "success") setTimeout(loadMe, 4000); // give Stripe's confirmation a moment to land
+})();
+loadMe();
 
 $("signOutBtn").onclick = () => {
   localStorage.removeItem("eyesup_token");

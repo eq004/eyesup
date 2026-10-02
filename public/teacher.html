@@ -661,6 +661,22 @@
     overflow-y: auto;
   }
   .overlay.show { display: flex; }
+  .menu a { display: block; padding: 0.6rem 0.8rem; text-decoration: none; color: var(--ink); font-weight: 700; font-size: 0.9rem; border-radius: 8px; }
+  .menu a:hover { background: var(--paper); }
+  .plan-banner { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%); z-index: 30; background: var(--navy); color: #fff; padding: 0.6rem 0.7rem 0.6rem 1.1rem; border-radius: 999px; box-shadow: var(--shadow-lift); font-size: 0.88rem; font-weight: 700; align-items: center; gap: 0.7rem; max-width: calc(100vw - 2rem); }
+  .plan-banner button { font: inherit; font-weight: 800; border: 0; border-radius: 999px; padding: 0.4rem 0.9rem; cursor: pointer; background: #fff; color: var(--navy); }
+  .plan-banner .x { background: transparent; color: #b9c8de; padding: 0.3rem 0.5rem; }
+  .acct-row { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.9rem; text-align: left; }
+  .acct-row label { font-size: 0.78rem; font-weight: 800; color: var(--ink-soft); }
+  .acct-row input { border: 1.5px solid var(--line); border-radius: 10px; padding: 0.65rem 0.9rem; font-size: 0.95rem; font: inherit; }
+  .acct-plan { margin-top: 1rem; padding: 0.9rem 1rem; border-radius: 14px; background: var(--paper); text-align: left; font-size: 0.92rem; line-height: 1.5; }
+  .acct-msg { font-size: 0.84rem; margin-top: 0.5rem; min-height: 1.1em; }
+  .price-row { display: flex; gap: 0.7rem; justify-content: center; flex-wrap: wrap; margin-top: 1.1rem; }
+  .price-card { flex: 1; min-width: 150px; border: 1.5px solid var(--line); border-radius: 16px; padding: 1rem; cursor: pointer; background: var(--surface); font: inherit; color: var(--ink); }
+  .price-card:hover { border-color: var(--accent); }
+  .price-card b { display: block; font-size: 1.5rem; font-weight: 800; }
+  .price-card small { color: var(--muted); }
+  .price-card.best { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .sheet {
     background: var(--surface);
     border-radius: var(--radius-lg);
@@ -712,6 +728,8 @@
       <div class="menu-wrap">
         <button class="btn" id="menuBtn" aria-haspopup="true">☰ Menu</button>
         <div class="menu" id="menu">
+          <button id="accountBtn" style="display:none">👤 My account</button>
+          <a id="adminLink" href="/admin" style="display:none">🛠 Owner admin</a>
           <button id="inviteBtn">➕ Invite a colleague</button>
           <button id="signOutBtn" style="display:none">↪ Sign out</button>
         </div>
@@ -924,6 +942,19 @@
       <p style="color:var(--muted);font-size:0.78rem;margin-top:0.4rem">Your dashboard stays connected — both control the same session.</p>
       <button class="btn primary" id="closeRemote" style="margin-top:1rem">Done</button>
     </div>
+  </div>
+
+  <!-- Trial / subscription notice (only once payments are switched on) -->
+  <div id="planBanner" class="plan-banner" style="display:none"></div>
+
+  <!-- My account: email, password, plan -->
+  <div class="overlay" id="accountOverlay">
+    <div class="sheet" id="accountSheet" style="max-width:460px"></div>
+  </div>
+
+  <!-- Shown instead of a new class when a trial or subscription has ended -->
+  <div class="overlay" id="subOverlay">
+    <div class="sheet" id="subSheet" style="max-width:480px;text-align:center"></div>
   </div>
 
   <!-- Teacher account gate (database mode) -->
