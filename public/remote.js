@@ -108,6 +108,26 @@ function modeName(m, counterKind) {
 }
 
 let toastTimer = null;
+// Trim long text at a word, never mid-word ("…in last l").
+function cut(str, n) {
+  const t = String(str || "");
+  if (t.length <= n) return t;
+  const head = t.slice(0, n);
+  return (head.lastIndexOf(" ") > n * 0.6 ? head.slice(0, head.lastIndexOf(" ")) : head) + "…";
+}
+
+// Phones lock mid-lesson and the remote vanishes with them. Ask the phone
+// to stay awake while we're connected to a class (browsers that can't, won't).
+let wakeLock = null;
+async function keepAwake() {
+  try {
+    if (!("wakeLock" in navigator) || document.visibilityState !== "visible" || wakeLock) return;
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = null; });
+  } catch { /* not allowed here — fine */ }
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && state) keepAwake(); });
+
 function toast(t) {
   $("rtoast").textContent = t;
   $("rtoast").classList.add("show");
@@ -164,6 +184,7 @@ function connect() {
       state = msg;
       sessionStorage.setItem("eyesup_remote_code", state.code); // follows "new lesson" switches
       $("tabbar").style.display = "";
+      keepAwake();
       render();
     }
   };
@@ -193,7 +214,11 @@ function render() {
 }
 
 function bindActions() {
-  main.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => send({ type: b.dataset.act })));
+  main.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => {
+    if (b.dataset.act === "clear" && !confirm("Clear everyone's answers to this question? They can answer again.")) return;
+    send({ type: b.dataset.act });
+  }));
+  main.querySelectorAll("[data-goto]").forEach((b) => (b.onclick = () => { tab = b.dataset.goto; render(); }));
   const sl = $("stopLive");
   if (sl) sl.onclick = () => send({ type: "eyes_up" }); // next step stays loaded
   main.querySelectorAll("[data-timer]").forEach((b) => (b.onclick = () => send({ type: "timer_start", seconds: +b.dataset.timer, big: remoteTimerBig() })));
@@ -259,50 +284,71 @@ function miniBars(labels, counts, marks) {
 
 function renderLive() {
   const itx = state.interaction;
-  let status = `<div class="timer-row" style="margin-bottom:0.6rem">
-      <button class="rbtn ${state.showNames ? "accent" : ""}" data-act="toggle_names">🏷 Names: ${state.showNames ? "ON" : "off"}</button>
-      <button class="rbtn ${state.holdAnswers ? "accent" : ""}" data-act="toggle_hold">🙈 Hold answers: ${state.holdAnswers ? "ON" : "off"}</button>
-    </div>`;
+  const seq = state.sequence || [];
+  const nextI = state.seqIndex + 1;
+  const nextStep = nextI < seq.length ? seq[nextI] : null;
+  const inPlan = seq.length > 0;
+  const n = state.students.length;
+
+  // --- what's on the screen right now
+  let status;
   if (itx) {
-    status += `
+    status = `
       <div class="status">
-        <div class="mode">${modeName(itx.mode, itx.counterKind)}</div>
+        <div class="mode">${modeName(itx.mode, itx.counterKind)}${inPlan && state.seqIndex >= 0 ? ` · step ${state.seqIndex + 1} of ${seq.length}` : ""}</div>
         <div class="q">${itx.prompt ? esc(itx.prompt) : "🎤 asked aloud"}</div>
         <div class="meta">
-          <span><b>${itx.responses.length}</b>/${state.students.length} responded</span>
-          <span class="${itx.open ? "open-tag" : "closed-tag"}">${itx.open ? "● open" : "■ closed"}</span>
-          ${itx.resultsVisible ? "" : `<span>🙈 results hidden</span>`}
-          ${itx.showNames ? `<span>🏷 names on</span>` : ""}
+          <span><b>${itx.responses.length}</b>/${n} answered</span>
+          <span class="${itx.open ? "open-tag" : "closed-tag"}">${itx.open ? "● taking answers" : "■ closed"}</span>
+          ${itx.resultsVisible ? "" : `<span>🙈 board hidden</span>`}
         </div>
       </div>`;
   } else {
-    status += `<div class="status"><div class="q">${state.phase === "eyesup" ? "👀 Eyes up — the room is talking" : "🎤 Nothing live — the room is yours"}</div></div>`;
+    status = `<div class="status"><div class="q">${state.phase === "eyesup" ? "👀 Eyes up — the room is talking" : "🎤 Nothing on the board"}</div>
+      ${n ? `<div class="meta"><span>${n} student${n === 1 ? "" : "s"} in</span></div>` : `<div class="meta"><span>Waiting for students to join · code <b>${esc(state.code)}</b></span></div>`}</div>`;
   }
 
-  const seq = state.sequence || [];
-  const nextStep = state.seqIndex + 1 < seq.length ? seq[state.seqIndex + 1] : null;
+  // --- the one button for this moment
+  const nextBtn = nextStep
+    ? `<button class="rbtn primary-act" data-act="next">▶ ${state.seqIndex < 0 ? "Start the lesson" : `Next: step ${nextI + 1} of ${seq.length}`}<small>${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(cut(nextStep.prompt, 44)) : ""}</small></button>`
+    : `<button class="rbtn primary-act" data-goto="launch">🚀 Ask something<small>pick an activity</small></button>`;
+  let primary, primaryAct = null;
+  if (!itx) primary = nextBtn;
+  else if (itx.open) { primaryAct = "close_responses"; primary = `<button class="rbtn primary-act" data-act="close_responses">⏸ Close answers<small>${itx.responses.length} of ${n} in — stops new answers</small></button>`; }
+  else if (!itx.resultsVisible) { primaryAct = "show_results"; primary = `<button class="rbtn primary-act" data-act="show_results">👁 Reveal on the board<small>answers are in, board still hidden</small></button>`; }
+  else if (revealMode(itx.mode) && itx.responses.some((r) => !r.revealed)) { primaryAct = "reveal_all"; primary = `<button class="rbtn primary-act" data-act="reveal_all">✨ Put every answer up<small>${itx.responses.filter((r) => r.revealed).length} of ${itx.responses.length} on the board so far</small></button>`; }
+  else primary = nextBtn;
 
+  // --- everything else about this question, in plain words (minus whatever the big button already says)
   let controls = "";
   if (itx) {
     controls = `<div class="btn-row">
-      ${itx.open ? `<button class="rbtn" data-act="close_responses">⏸ Close</button>` : `<button class="rbtn" data-act="open_responses">▶ Open</button>`}
-      ${itx.resultsVisible ? `<button class="rbtn" data-act="hide_results">🙈 Hide</button>` : `<button class="rbtn" data-act="show_results">📊 Show</button>`}
-      ${revealMode(itx.mode) ? `<button class="rbtn" data-act="reveal_all">✨ All up</button>` : ""}
-
-      ${itx.mode === "multi_choice" && itx.correct != null && !itx.answerRevealed ? `<button class="rbtn" data-act="reveal_answer">🎯 Answer</button>` : ""}
-      <button class="rbtn warn" data-act="clear">Clear</button>
+      ${itx.open ? (primaryAct === "close_responses" ? "" : `<button class="rbtn" data-act="close_responses">⏸ Close answers</button>`) : `<button class="rbtn" data-act="open_responses">▶ Reopen answers</button>`}
+      ${itx.resultsVisible ? `<button class="rbtn" data-act="hide_results">🙈 Hide board</button>` : primaryAct === "show_results" ? "" : `<button class="rbtn" data-act="show_results">👁 Show board</button>`}
+      ${revealMode(itx.mode) && primaryAct !== "reveal_all" ? `<button class="rbtn" data-act="reveal_all">✨ All up</button>` : ""}
+      ${itx.mode === "multi_choice" && itx.correct != null && !itx.answerRevealed ? `<button class="rbtn" data-act="reveal_answer">🎯 Show correct answer</button>` : ""}
     </div>`;
   }
 
+  const planNav = inPlan ? `<div class="step-nav" style="margin-top:0.5rem">
+      <button class="rbtn" data-act="seq_back" ${state.seqIndex < 0 ? "disabled" : ""}>◀ Back</button>
+      <button class="rbtn" data-act="seq_skip" ${nextStep ? "" : "disabled"}>Skip ⏭</button>
+      <button class="rbtn warn" id="stopLive" ${itx ? "" : "disabled"}>⏹ Stop step</button>
+    </div>` : "";
+
   main.innerHTML = `
     ${status}
-    <button class="rbtn eyes" data-act="eyes_up">👀 EYES UP</button>
+    ${primary}
+    <button class="rbtn ${itx ? "eyes-sm" : "eyes"}" data-act="eyes_up">👀 EYES UP${itx ? `<small>clears the board — all eyes on you</small>` : ""}</button>
     ${controls}
-    ${nextStep ? `<button class="rbtn accent" data-act="next" style="flex-direction:column;gap:0.2rem">
-        <span>▶ ${state.seqIndex < 0 ? "Start the lesson" : `Launch step ${state.seqIndex + 2} of ${seq.length}`}</span>
-        <small style="font-weight:600;opacity:0.85">${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(nextStep.prompt.slice(0, 40)) : ""}</small></button>
-      <div class="timer-row"><button class="rbtn" data-act="seq_back" ${state.seqIndex < 0 ? "disabled" : ""}>◀ Back</button><button class="rbtn" data-act="seq_skip">Skip ⏭</button><button class="rbtn warn" id="stopLive" ${itx ? "" : "disabled"}>⏹ Stop step</button></div>` : ""}
+    ${itx && nextStep && primary !== nextBtn ? `<button class="rbtn" data-act="next">▶ Next: step ${nextI + 1} — ${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " · " + esc(cut(nextStep.prompt, 30)) : ""}</button>` : ""}
+    ${planNav}
     ${itx ? renderLiveResponses(itx) : ""}
+    <div class="chip-row">
+      <button class="rbtn ${state.showNames ? "accent" : ""}" data-act="toggle_names">🏷 Names ${state.showNames ? "on" : "off"}</button>
+      <button class="rbtn ${state.holdAnswers ? "accent" : ""}" data-act="toggle_hold">🙈 Hold answers ${state.holdAnswers ? "on" : "off"}</button>
+    </div>
+    ${itx && itx.responses.length ? `<div class="quiet-row"><button class="rbtn" data-act="clear">🗑 Clear everyone's answers</button></div>` : ""}
   `;
 }
 
@@ -371,13 +417,46 @@ function renderLiveResponses(itx) {
 
 /* ---------------- LAUNCH tab + composer ---------------- */
 
+// Words a teacher might type that aren't in the activity's name.
+const SEARCH_WORDS = {
+  sketch: "draw drawing picture pad", annotate: "draw drawing mark up image photo", image_drop: "photo picture upload drag drop", image_caption: "photo picture upload writing", image_long: "photo picture upload essay",
+  maths_board: "draw drawing maths working number", counters_draw: "draw drawing counters maths", counters: "maths number", tens_ones: "maths place value number", working: "maths working show",
+  multi_choice: "quiz mcq abcd test", poll: "vote survey", tick_boxes: "tick checkbox select many vote", picture_vote: "vote image photo", agree_disagree: "vote opinion", true_false: "quiz vote", this_or_that: "vote either", confidence: "check in feeling", smiley: "feelings mood review", scale: "slider rating",
+  word_cloud: "brainstorm words", one_word: "brainstorm", mindmap: "brainstorm map", post_its: "sticky notes brainstorm", phonics: "sounds spelling letters", phonics_cloze: "sounds spelling picture word",
+  short_answer: "write text question", long_response: "essay paragraph write", picture_prompt: "image photo write", retrieval_sprint: "timed quick fire recall", table: "grid columns", question_set: "several many questions quiz", dot_points: "list bullet points", link: "website url open page", exit_ticket: "reflection end of lesson",
+  finish_sentence: "stem complete", give_example: "write", make_connection: "link ideas", teach_back: "explain", spot_mistake: "error find wrong", quick_challenge: "task", predict: "guess what next",
+  three_two_one: "321 reflection recall", notice_wonder: "reflection see think", before_after: "reflection compare", plus_minus: "pros cons", muddiest_point: "confused unsure anonymous", ask_question: "anonymous questions",
+  ranking: "order rank sort", put_in_order: "sequence sort steps", match_up: "pairs matching connect", venn: "compare diagram sort", spelling: "test words dictation", cloze: "gap fill missing words passage",
+};
+let launchQuery = "";
 function renderLaunch() {
   const favs = (state?.favs || []).filter((f) => MODES[f]);
-  const tile = (m) => `<button class="rbtn" data-open="${m}"><span class="ic">${MODES[m].icon}</span>${esc(MODES[m].name)}</button>`;
-  main.innerHTML = `<div class="launch-grid">
-    ${favs.length ? `<div class="cat-label">⭐ Favourites</div>` + favs.map(tile).join("") : ""}
-    ${CATEGORIES.map((cat) => `<div class="cat-label">${esc(cat.label)}</div>` + cat.modes.map(tile).join("")).join("")}
-  </div>`;
+  const recent = (state?.recentModes || []).filter((m) => MODES[m] && !favs.includes(m)).slice(0, 3);
+  const q = launchQuery.trim().toLowerCase();
+  const matches = (m) => !q || `${MODES[m].name} ${m.replace(/_/g, " ")} ${SEARCH_WORDS[m] || ""}`.toLowerCase().includes(q);
+  const tile = (m) => `<button class="rbtn ${q && matches(m) ? "hit" : ""}" data-open="${m}"><span class="ic">${MODES[m].icon}</span>${esc(MODES[m].name)}</button>`;
+  const group = (label, modes) => {
+    const shown = modes.filter(matches);
+    return shown.length ? `<div class="cat-label">${label}</div>` + shown.map(tile).join("") : "";
+  };
+  main.innerHTML = `
+    <input class="rin" id="launchSearch" placeholder="🔍 Find an activity… e.g. poll, draw, spelling" value="${esc(launchQuery)}" autocomplete="off" />
+    <div class="launch-grid">
+      ${!q && favs.length ? group("⭐ Favourites", favs) : ""}
+      ${!q && recent.length ? group("🕘 Used this lesson", recent) : ""}
+      ${CATEGORIES.map((cat) => group(esc(cat.label), cat.modes)).join("")}
+      ${q && !Object.keys(MODES).some(matches) ? `<p style="grid-column:1/-1;color:var(--rdim)">Nothing called “${esc(launchQuery)}” — try another word.</p>` : ""}
+    </div>
+    ${!favs.length && !q ? `<p style="color:var(--rdim);font-size:0.78rem;margin-top:0.8rem">Tip: star ☆ an activity on the computer dashboard and it appears at the top here.</p>` : ""}`;
+  const si = $("launchSearch");
+  si.oninput = () => {
+    launchQuery = si.value;
+    renderLaunch();
+    bindActions();
+    const again = $("launchSearch");
+    again.focus();
+    again.setSelectionRange(again.value.length, again.value.length);
+  };
 }
 
 function loadComposerImage(file, cb) {
@@ -529,18 +608,18 @@ function renderPlan() {
       ${nextSt
         ? `<button class="rbtn accent" data-act="next" style="flex-direction:column;gap:0.2rem">
             <span>▶ ${idx < 0 ? "Start the lesson" : `Launch step ${nextI + 1}`}</span>
-            <small style="font-weight:600;opacity:0.85">${esc(modeName(nextSt.mode, nextSt.counterKind))}${nextSt.prompt ? " — " + esc(nextSt.prompt.slice(0, 40)) : ""}</small></button>`
+            <small style="font-weight:600;opacity:0.85">${esc(modeName(nextSt.mode, nextSt.counterKind))}${nextSt.prompt ? " — " + esc(cut(nextSt.prompt, 44)) : ""}</small></button>`
         : `<div class="status"><div class="q">🎉 All ${seq.length} steps done</div></div>`}
       <div class="timer-row"><button class="rbtn" data-act="seq_back" ${idx < 0 ? "disabled" : ""}>◀ Back</button><button class="rbtn" data-act="seq_skip" ${nextSt ? "" : "disabled"}>Skip ⏭</button></div>
-      <p style="color:var(--rdim);font-size:0.78rem;margin:0.3rem 0 0.2rem">▶ runs a step now · ▸ makes it the next one · Skip passes over a step without running it</p>
+      <p style="color:var(--rdim);font-size:0.78rem;margin:0.3rem 0 0.2rem">Tap <b>Run</b> on any step to jump straight to it. <b>Next</b> lines a step up without running it.</p>
       ${seq.map((st, i) => {
         const wasSkipped = (state.skipped || []).includes(i) && i <= idx;
         return `
         <div class="seq-item ${wasSkipped ? "skipped" : i < idx ? "done" : ""} ${i === idx ? "current" : ""}">
           <span class="sq-n">${wasSkipped ? "⏭" : i < idx ? "✓" : i + 1}</span>
-          <span class="sq-t">${modeName(st.mode, st.counterKind)}${st.prompt ? " — " + esc(st.prompt) : ""}</span>
-          ${i !== idx + 1 ? `<button data-point="${i}" title="Make this the next step">▸</button>` : ""}
-          <button data-jump="${i}" title="Run this step now">▶</button>
+          <span class="sq-t" title="${esc(st.prompt || "")}">${modeName(st.mode, st.counterKind)}${st.prompt ? " — " + esc(st.prompt) : ""}</span>
+          ${i === idx + 1 ? `<span style="font-size:0.7rem;color:#8ab2f0;font-weight:800;white-space:nowrap">up next</span>` : i === idx ? `<span style="font-size:0.7rem;color:#8ab2f0;font-weight:800;white-space:nowrap">now</span>` : `<button class="ghost" data-point="${i}" title="Make this the next step">Next</button>`}
+          <button data-jump="${i}" title="Run this step now">▶ Run</button>
         </div>`;
       }).join("")}
       <button class="rbtn warn" id="closePlan">✕ Close this lesson</button>
@@ -561,6 +640,8 @@ function renderPlan() {
   };
 
   loadRemotePlans();
+  // Long plans: land on where the class is, not the top of the list.
+  if (idx >= 0) setTimeout(() => main.querySelector(".seq-item.current")?.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
 
   $("quizPaste").oninput = () => {
     parsedQuiz = parseQuiz($("quizPaste").value);
@@ -655,15 +736,16 @@ function renderTools() {
     <button class="rbtn" data-act="pick_student">Pick someone</button>
     ${state.focus?.type === "spotlight" ? `<div class="status"><div class="q">🎲 ${esc(state.focus.name)}</div></div>` : ""}
 
-    <h3 class="sec">👥 Random groups</h3>
+    <details class="acc"><summary>👥 Random groups</summary><div class="acc-body">
     <div class="timer-row">
       <select class="rin" id="groupBy" style="margin:0;flex:1"><option value="size">groups of</option><option value="count">split into</option></select>
       <input class="rin" id="groupN" type="number" min="2" max="15" value="2" style="margin:0;flex:0 0 26%" />
       <button class="rbtn" id="groupsGo" style="flex:0 0 30%">Make</button>
     </div>
-    ${state.focus?.type === "groups" ? `<div class="status">${state.focus.groups.map((g, i) => `<div><b>Group ${i + 1}:</b> ${g.map(esc).join(", ")}</div>`).join("")}</div>` : ""}
+    ${state.focus?.type === "groups" ? `<div class="status" style="margin-top:0.6rem">${state.focus.groups.map((g, i) => `<div><b>Group ${i + 1}:</b> ${g.map(esc).join(", ")}</div>`).join("")}</div>` : ""}
+    </div></details>
 
-    <h3 class="sec">🎲 Question dice</h3>
+    <details class="acc" ${dres || faces.some(Boolean) ? "open" : ""}><summary>🎲 Question dice</summary><div class="acc-body">
     <div id="diceFaces" style="display:flex;flex-direction:column;gap:0.4rem">${faces
       .map((f, i) => `<label style="display:flex;align-items:center;gap:0.5rem">
         <span style="font-size:1.6rem;line-height:1;width:1.4rem;text-align:center">${DICE_GLYPHS[i]}</span>
@@ -671,7 +753,8 @@ function renderTools() {
         <input class="rin dice-in" data-face="${i}" maxlength="200" value="${esc(f)}" placeholder="Question for face ${i + 1}" style="margin:0;flex:1;min-width:0" /></label>`)
       .join("")}</div>
     <div class="timer-row" style="margin-top:0.6rem"><button class="rbtn accent" id="diceRoll">🎲 Roll the dice</button></div>
-    ${dres ? `<div class="status"><div class="q">🎲 Landed on ${dres} — ${esc(state.dice.faces[dres - 1] || "blank face")}</div></div>` : ""}
+    ${dres ? `<div class="status" style="margin-top:0.6rem"><div class="q">🎲 Landed on ${dres} — ${esc(state.dice.faces[dres - 1] || "blank face")}</div></div>` : ""}
+    </div></details>
 
     <h3 class="sec">📽 Big screen</h3>
     <button class="rbtn ${state.showNames ? "accent" : ""}" data-act="toggle_names">🏷 Names on screen: ${state.showNames ? "ON" : "off"}</button>
@@ -712,7 +795,7 @@ setInterval(() => {
 /* ---------------- MORE tab ---------------- */
 
 function renderMore() {
-  const name = localStorage.getItem("eyesup_teacher_name");
+  const name = localStorage.getItem("eyesup_teacher_name") || state.teacherName || "";
   main.innerHTML = `
     <h3 class="sec">Lesson</h3>
     <input class="rin" id="titleIn" maxlength="80" placeholder="Class / lesson title…" value="${esc(state.title || "")}" />
@@ -728,7 +811,7 @@ function renderMore() {
       <button class="rbtn" id="lessonsBtn">📚 Past lessons</button><div id="lessonsList"></div>` : ""}
 
     <h3 class="sec">Account</h3>
-    <div class="status"><div class="q">${name ? `Signed in as ${esc(name)}` : "Local mode"}</div></div>
+    <div class="status"><div class="q">${name ? `Signed in as ${esc(name)}` : creds().token ? "Signed in" : "Local mode (no account)"}</div></div>
     ${creds().token ? `<button class="rbtn" id="inviteBtn">➕ Invite a colleague (copy link)</button><button class="rbtn warn" id="signOut">↪ Sign out</button>` : ""}`;
   const ib = $("inviteBtn");
   if (ib) ib.onclick = async () => {
@@ -796,15 +879,38 @@ function renderSummarySheet(s) {
 
 /* ---------------- connect gate ---------------- */
 
+let myLive = null; // {code, students} — the class this teacher has running, if any
+async function findMyClass() {
+  if (!creds().token) return null;
+  try {
+    const res = await fetch(`/api/my-session?${authQuery()}`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    return d.code ? d : null;
+  } catch { return null; }
+}
+
 function renderGate(err) {
   $("topInfo").textContent = "";
   const preset = (new URLSearchParams(location.search).get("code") || creds().code || "").toUpperCase();
   const hasToken = !!creds().token;
+  // Signed in and a class is running? Offer it — and if no code was typed, just join it.
+  if (hasToken && !err && myLive === null && !preset) {
+    myLive = false; // asked once
+    findMyClass().then((d) => {
+      if (!d) return;
+      myLive = d;
+      if (!$("codeIn") || $("codeIn").value) return;
+      sessionStorage.setItem("eyesup_remote_code", d.code);
+      send({ type: "teacher_resume", code: d.code, ...creds() });
+    });
+  }
   main.innerHTML = `
     <div class="gate">
       <div style="font-size:2.5rem">📱</div>
       <h2 style="font-family:var(--font-display);margin-top:0.5rem">Teacher remote</h2>
       <p style="color:var(--rdim);font-size:0.9rem;margin-top:0.3rem">Everything the dashboard does, from your pocket.</p>
+      ${myLive && myLive.code ? `<button class="rbtn big-connect" id="joinMine">▶ Back into class ${esc(myLive.code)}<small>${myLive.students} student${myLive.students === 1 ? "" : "s"} in the room</small></button><p class="or">or connect with a code</p>` : ""}
       <input id="codeIn" maxlength="4" placeholder="SESSION CODE" value="${esc(preset)}" autocomplete="off" />
       ${hasToken && err !== "auth_required" ? "" : `
         <input id="userIn" placeholder="Your name" autocomplete="username" />
@@ -841,6 +947,8 @@ function renderGate(err) {
     send({ type: "teacher_resume", code, password, token });
   };
   $("goBtn").onclick = go;
+  const jm = $("joinMine");
+  if (jm) jm.onclick = () => { $("codeIn").value = myLive.code; go(); };
   main.querySelectorAll("input").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter") go(); }));
 }
 

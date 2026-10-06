@@ -525,6 +525,17 @@ app.post("/api/login", async (req, res) => {
 /* My account · owner admin · subscriptions                           */
 /* ------------------------------------------------------------------ */
 
+// The phone remote asks: "is my class running right now?" — one tap instead of typing a code.
+app.get("/api/my-session", async (req, res) => {
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  const mine = [...sessions.values()]
+    .filter((s) => s.teacherId === t.id && s.phase !== "ended")
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const s = mine[0];
+  res.json(s ? { code: s.code, students: s.students.size, title: s.title || "", live: !!s.interaction } : { code: null });
+});
+
 // What the sign-up screen needs to know before anyone is signed in.
 app.get("/api/config", (_req, res) => {
   res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS });
@@ -1941,6 +1952,8 @@ function teacherState(session) {
     planId: session.planId || null,
     planTitle: session.planTitle || "",
     historyCount: session.history.length,
+    // The last few activity types this room has run — the remote shows them as "recent".
+    recentModes: [...new Set([...session.history.slice(-12).reverse(), ...(itx ? [itx] : [])].map((i) => (i.mode === "counters" && i.counterKind === "base10" ? "tens_ones" : i.mode)))].slice(0, 6),
     interaction: itx
       ? {
           id: itx.id,
