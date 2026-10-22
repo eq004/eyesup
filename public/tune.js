@@ -12,7 +12,12 @@
   const STEP_NAMES = ["C", "D", "E", "F", "G", "A", "B"];
   const SEMIS = [0, 2, 4, 5, 7, 9, 11];
   const BPM = 96;
-  const UNIT = 60 / BPM / 4; // one semiquaver, in seconds
+  const unitFor = (bpm) => 60 / (bpm || BPM) / 4; // one semiquaver, in seconds
+  // Key signatures: sharps in the order F C G D A E B, flats B E A D G C F. key = +n sharps / -n flats.
+  const SHARP_ORDER = [3, 0, 4, 1, 5, 2, 6], FLAT_ORDER = [6, 2, 5, 1, 4, 0, 3]; // letter indexes (C=0)
+  const KEY_NAMES = { 0: "C major / A minor", 1: "G major / E minor", 2: "D major / B minor", 3: "A major / F♯ minor", "-1": "F major / D minor", "-2": "B♭ major / G minor", "-3": "E♭ major / C minor" };
+  const keyAccidental = (key, letter) => (key > 0 && SHARP_ORDER.slice(0, key).includes(letter) ? 1 : key < 0 && FLAT_ORDER.slice(0, -key).includes(letter) ? -1 : 0);
+  const DYNAMICS = { pp: 0.22, p: 0.4, mp: 0.6, mf: 0.8, f: 1, ff: 1.25 };
   const mod = (n, m) => ((n % m) + m) % m;
 
   // Note values in semiquavers.
@@ -48,18 +53,24 @@
   const totalSlots = (t) => slotsPerBar(t.sig) * (t.bars || 2);
 
   function normalize(payload) {
-    if (!payload) return { sig: "4/4", bars: 2, level: "standard", staff: "treble", unit: 16, events: [] };
+    if (!payload) return { sig: "4/4", bars: 2, level: "standard", staff: "treble", key: 0, bpm: BPM, unit: 16, events: [] };
     if (Array.isArray(payload.notes)) {
       const notes = payload.notes; // very first format: one crotchet per beat
       return { sig: "4/4", bars: Math.max(1, Math.ceil(notes.length / 4)), level: "beginner", staff: "treble", unit: 16, events: notes.map((n, i) => (n == null ? null : { s: i * 4, d: 4, p: n, a: 0, st: 0 })).filter(Boolean) };
     }
     const k = payload.unit === 16 ? 1 : 2; // quaver-unit tunes → semiquavers
     const staff = ["treble", "bass", "grand"].includes(payload.staff) ? payload.staff : "treble";
-    return { sig: payload.sig || "4/4", bars: payload.bars || 2, level: payload.level || "standard", staff, chords: payload.chords === true, inst: INSTRUMENTS[payload.inst] ? payload.inst : "piano", unit: 16,
-      events: (payload.events || []).map((e) => ({ s: e.s * k, d: e.d * k, p: e.p, a: e.a || 0, st: staff === "bass" ? 1 : staff === "grand" && e.st === 1 ? 1 : 0 })).sort((x, y) => x.s - y.s || x.st - y.st) };
+    const key = Math.max(-3, Math.min(3, parseInt(payload.key, 10) || 0));
+    const bpm = Math.max(40, Math.min(200, parseInt(payload.bpm, 10) || BPM));
+    return { sig: payload.sig || "4/4", bars: payload.bars || 2, level: payload.level || "standard", staff, chords: payload.chords === true, key, bpm, inst: INSTRUMENTS[payload.inst] ? payload.inst : "piano", unit: 16,
+      events: (payload.events || []).map((e) => ({ s: e.s * k, d: e.d * k, p: e.p, a: [-1, 0, 1, 2].includes(e.a) ? e.a : 0, st: staff === "bass" ? 1 : staff === "grand" && e.st === 1 ? 1 : 0, tie: e.tie === true, dyn: DYNAMICS[e.dyn] ? e.dyn : undefined })).sort((x, y) => x.s - y.s || x.st - y.st) };
   }
 
-  const pitchName = (p, a) => `${STEP_NAMES[mod(p, 7)]}${a === 1 ? "♯" : a === -1 ? "♭" : ""}${p >= 7 ? "′" : p < 0 ? "," : ""}`;
+  const pitchName = (p, a) => `${STEP_NAMES[mod(p, 7)]}${a === 1 ? "♯" : a === -1 ? "♭" : a === 2 ? "♮" : ""}${p >= 7 ? "′" : p < 0 ? "," : ""}`;
+  // The semitone shift a note actually sounds with: its own accidental, or the key signature's.
+  const soundAcc = (e, key) => (e.a === 2 ? 0 : e.a ? e.a : keyAccidental(key || 0, mod(e.p, 7)));
+  // The note a tie joins to: next note on the same stave, same pitch, starting when this one ends.
+  const tieTarget = (tune, e) => (e.tie && e.p != null ? tune.events.find((o) => o !== e && (o.st || 0) === (e.st || 0) && o.p === e.p && o.a === e.a && o.s === e.s + e.d) : null);
   const letters = (tune) => {
     const t = normalize(tune), out = [];
     t.events.forEach((e, i) => {
@@ -103,12 +114,12 @@
     return osc;
   }
 
-  function tone(freq, when, dur, inst = instrument) {
+  function tone(freq, when, dur, inst = instrument, vol = 0.9) {
     const ac = audio();
     if (!ac || !freq) return;
     const t = when ?? ac.currentTime;
     const out = ac.createGain();
-    out.gain.value = 0.9;
+    out.gain.value = Math.min(1.2, vol);
     out.connect(ac.destination);
     if (inst === "bells") {
       const len = Math.max(dur, 1.2);
@@ -154,11 +165,19 @@
     stop();
     const tune = normalize(tuneLike);
     const voice = inst || tune.inst || instrument;
+    const UNIT = unitFor(tune.bpm);
     const ac = audio();
     const start = ac ? ac.currentTime + 0.05 : 0;
     const timers = [];
+    const tiedInto = new Set(); // notes that continue a tie don't restrike
+    const level = {}; // current dynamic per stave
     tune.events.forEach((e, k) => {
-      if (ac && e.p != null) tone(freqOf(e.p, e.a), start + e.s * UNIT, e.d * UNIT, voice);
+      if (e.dyn) level[e.st || 0] = DYNAMICS[e.dyn];
+      if (ac && e.p != null && !tiedInto.has(e)) {
+        let len = e.d, cur = e, next;
+        while ((next = tieTarget(tune, cur))) { tiedInto.add(next); len += next.d; cur = next; }
+        tone(freqOf(e.p, soundAcc(e, tune.key)), start + e.s * UNIT, len * UNIT, voice, level[e.st || 0] || 0.8);
+      }
       timers.push(setTimeout(() => onBeat && onBeat(k), 50 + e.s * UNIT * 1000));
     });
     const total = totalSlots(tune) * UNIT * 1000;
@@ -216,7 +235,10 @@
     const staves = stavesOf(tune.staff);
     const spb = slotsPerBar(tune.sig), slots = totalSlots(tune);
     const col = opts.compact ? 8 : 12; // per semiquaver
-    const left = 90, right = 18;
+    const nKey = Math.abs(tune.key || 0);
+    const left0 = 90; // clef and brace stay put; the key signature pushes the time signature and notes right
+    const KW = 13; // width of one key-signature accidental
+    const left = left0 + (nKey ? nKey * KW + 12 : 0), right = 18;
     const w = left + slots * col + right;
     const base0 = 100;
     staves.forEach((sv, i) => { sv.base = base0 + i * STAVE_GAP; sv.top = sv.base - 4 * LINE; });
@@ -225,12 +247,24 @@
     const out = [];
     const [num, den] = sigParts(tune.sig);
     for (const sv of staves) {
-      for (let k = 0; k < 5; k++) out.push(`<line x1="${left - 78}" y1="${sv.base - k * LINE}" x2="${w - right + 4}" y2="${sv.base - k * LINE}" stroke="currentColor" stroke-width="1.3"/>`);
+      for (let k = 0; k < 5; k++) out.push(`<line x1="${left0 - 78}" y1="${sv.base - k * LINE}" x2="${w - right + 4}" y2="${sv.base - k * LINE}" stroke="currentColor" stroke-width="1.3"/>`);
       // clef: baseline on the bottom line, one em tall — the treble curls round the G line, the bass dots sit either side of the F line
-      out.push(glyph(sv.clef === "bass" ? "𝄢" : "𝄞", left - 76, sv.base, EM));
+      out.push(glyph(sv.clef === "bass" ? "𝄢" : "𝄞", left0 - 76, sv.base, EM));
+      // key signature between the clef and the time signature
+      if (nKey) {
+        const order = tune.key > 0 ? SHARP_ORDER : FLAT_ORDER;
+        const trebleSteps = tune.key > 0 ? [10, 7, 11, 8, 5, 9, 6] : [6, 9, 5, 8, 4, 7, 3];
+        for (let i = 0; i < nKey; i++) {
+          const step = trebleSteps[i] - (sv.st === 1 ? 14 : 0);
+          const y = yOn(step, sv.base, sv.bottom);
+          const kx = left - 36 - (nKey - i) * KW; // between the clef and the time signature, in order
+          out.push(tune.key > 0 ? glyph("♯", kx, y + 0.135 * EM * 0.78, EM * 0.78) : glyph("♭", kx + 1, y, EM * 0.78));
+        }
+      }
       out.push(`<text x="${left - 20}" y="${sv.base - LINE * 2 - 1}" font-size="30" font-weight="800" text-anchor="middle" fill="currentColor" font-family="'Noto Music',serif">${num}</text><text x="${left - 20}" y="${sv.base - 1}" font-size="30" font-weight="800" text-anchor="middle" fill="currentColor" font-family="'Noto Music',serif">${den}</text>`);
     }
-    if (staves.length > 1) out.push(`<line x1="${left - 78}" y1="${firstTop}" x2="${left - 78}" y2="${lastBase}" stroke="currentColor" stroke-width="1.6"/><path d="M${left - 84} ${firstTop} q -8 ${(lastBase - firstTop) / 4} 0 ${(lastBase - firstTop) / 2} q -8 ${(lastBase - firstTop) / 4} 0 ${(lastBase - firstTop) / 2}" fill="none" stroke="currentColor" stroke-width="2.4"/>`);
+    if (tune.bpm && tune.bpm !== BPM && !opts.compact) out.push(`<text x="${left}" y="${firstTop - 7 * SP + 10}" font-size="13" font-weight="700" fill="currentColor" font-family="sans-serif">♩ = ${tune.bpm}</text>`);
+    if (staves.length > 1) out.push(`<line x1="${left0 - 78}" y1="${firstTop}" x2="${left0 - 78}" y2="${lastBase}" stroke="currentColor" stroke-width="1.6"/><path d="M${left0 - 84} ${firstTop} q -8 ${(lastBase - firstTop) / 4} 0 ${(lastBase - firstTop) / 2} q -8 ${(lastBase - firstTop) / 4} 0 ${(lastBase - firstTop) / 2}" fill="none" stroke="currentColor" stroke-width="2.4"/>`);
     for (let b = 1; b < tune.bars; b++) out.push(`<line x1="${left + b * spb * col}" y1="${firstTop}" x2="${left + b * spb * col}" y2="${lastBase}" stroke="currentColor" stroke-width="1.3"/>`);
     out.push(`<line x1="${w - right}" y1="${firstTop}" x2="${w - right}" y2="${lastBase}" stroke="currentColor" stroke-width="1.3"/><line x1="${w - right + 4}" y1="${firstTop}" x2="${w - right + 4}" y2="${lastBase}" stroke="currentColor" stroke-width="3.5"/>`);
     if (opts.editor) {
@@ -273,7 +307,8 @@
       const x0 = xOf(e.s);
       let x = x0;
       const active = opts.active === i;
-      const colr = ghost ? (ghost.ok ? "#1d3f78" : "#c92a2a") : active ? "#1d6fd8" : "currentColor";
+      const sel = opts.selected === i;
+      const colr = ghost ? (ghost.ok ? "#1d3f78" : "#c92a2a") : active || sel ? "#1d6fd8" : "currentColor";
       let g = `<g class="score-ev ${active ? "active" : ""}" data-ev="${i}" opacity="${ghost ? 0.55 : 1}" style="color:${colr}">`;
       if (active && !ghost) g += `<rect x="${x - 2 * col - 2}" y="${sv.top - 6 * SP}" width="${e.d * col + 4}" height="${sv.base - sv.top + 12 * SP}" rx="5" fill="#1d6fd8" opacity="0.1"/>`;
       if (e.p == null) { out.push(g + restGlyph(e.d, x, sv.base) + "</g>"); return; }
@@ -290,7 +325,12 @@
       }
       for (let k = sv.bottom - 2; k >= e.p; k -= 2) g += `<line x1="${x - 12}" y1="${yOn(k, sv.base, sv.bottom)}" x2="${x + 12}" y2="${yOn(k, sv.base, sv.bottom)}" stroke="currentColor" stroke-width="1.4"/>`;
       for (let k = sv.bottom + 10; k <= e.p; k += 2) g += `<line x1="${x - 12}" y1="${yOn(k, sv.base, sv.bottom)}" x2="${x + 12}" y2="${yOn(k, sv.base, sv.bottom)}" stroke="currentColor" stroke-width="1.4"/>`;
-      if (e.a) g += e.a === 1 ? glyph("♯", x - 23, y + 0.135 * EM * 0.78, EM * 0.78) : glyph("♭", x - 21, y, EM * 0.78);
+      if (e.a) g += e.a === 1 ? glyph("♯", x - 23, y + 0.135 * EM * 0.78, EM * 0.78) : e.a === 2 ? glyph("♮", x - 21, y + 0.1 * EM * 0.78, EM * 0.78) : glyph("♭", x - 21, y, EM * 0.78);
+      if (e.dyn && !ghost) g += `<text x="${x0}" y="${sv.base + 2.4 * LINE}" font-size="15" font-style="italic" font-weight="800" text-anchor="middle" fill="currentColor" font-family="serif">${e.dyn}</text>`;
+      if (e.tie && !ghost) {
+        const to = tieTarget(tune, e);
+        if (to) { const x2 = xOf(to.s); const dir = up ? 1 : -1; g += `<path d="M${x + 6} ${y + 7 * dir} q ${(x2 - x - 12) / 2} ${12 * dir} ${x2 - x - 12} 0" fill="none" stroke="currentColor" stroke-width="2"/>`; }
+      }
       if (v.stem) {
         const tipNote = up ? sorted[sorted.length - 1] : sorted[0];
         const tipY = yOn(tipNote.p, sv.base, sv.bottom);
@@ -401,5 +441,5 @@
     return -1;
   }
   const STEP_SEMIS = SEMIS;
-  window.TUNE = { VALUES, LEVELS, levelOf, rangeFor, stavesOf, BPM, INSTRUMENTS, setInstrument, valueFor, slotsPerBar, totalSlots, normalize, letters, pitchName, play, stop, ping, scoreSvg, valueGlyph, hitTest, fits, settle, whyNot, nextFree, beatsText, unlock: audio, STEP_NAMES, STEP_SEMIS };
+  window.TUNE = { VALUES, LEVELS, levelOf, rangeFor, stavesOf, BPM, KEY_NAMES, DYNAMICS, tieTarget, INSTRUMENTS, setInstrument, valueFor, slotsPerBar, totalSlots, normalize, letters, pitchName, play, stop, ping, scoreSvg, valueGlyph, hitTest, fits, settle, whyNot, nextFree, beatsText, unlock: audio, STEP_NAMES, STEP_SEMIS };
 })();

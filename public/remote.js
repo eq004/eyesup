@@ -517,7 +517,8 @@ function openComposer(key) {
     fields += `<select class="rin" id="cBars">${lvl.bars.map((b) => `<option value="${b}" ${b === 2 ? "selected" : ""}>${b} bar${b === 1 ? "" : "s"}</option>`).join("")}</select>
       <select class="rin" id="cStaff"><option value="treble" selected>Staves: treble only</option><option value="bass">Staves: bass only</option><option value="grand">Staves: treble + bass</option></select>
       <select class="rin" id="cKeys"><option value="1" selected>On-screen piano: on</option><option value="0">On-screen piano: off</option></select>`;
-    if (m.forceLevel === "advanced") fields += `<select class="rin" id="cChords"><option value="1" selected>Chords: allowed</option><option value="0">Chords: off</option></select>`;
+    if (m.forceLevel === "advanced") fields += `<select class="rin" id="cChords"><option value="1" selected>Chords: allowed</option><option value="0">Chords: off</option></select>
+      <select class="rin" id="cKey">${[["0","C major / A minor (no sharps or flats)"],["1","G major / E minor (1 sharp)"],["2","D major / B minor (2 sharps)"],["3","A major / F♯ minor (3 sharps)"],["-1","F major / D minor (1 flat)"],["-2","B♭ major / G minor (2 flats)"],["-3","E♭ major / C minor (3 flats)"]].map(([v, l]) => `<option value="${v}">Key: ${l}</option>`).join("")}</select>`;
   }
   if (m.sprintUI) fields += `<select class="rin" id="cDur"><option value="60">⏱ 1 minute</option><option value="120">⏱ 2 minutes</option><option value="180">⏱ 3 minutes</option></select>`;
   if (m.workingUI) fields += `<input class="rin" id="cExpected" maxlength="30" placeholder="Correct answer (optional, auto-checks)" />`;
@@ -584,13 +585,14 @@ function readComposer() {
   const staff = m.tuneUI ? $("cStaff").value : undefined;
   const keys = m.tuneUI ? $("cKeys").value !== "0" : undefined;
   const chords = m.tuneUI ? ($("cChords") ? $("cChords").value !== "0" : false) : undefined;
+  const key = m.tuneUI ? ($("cKey") ? parseInt($("cKey").value, 10) : 0) : undefined;
   let url, linkLabel;
   if (m.linkUI) {
     url = $("cUrl").value.trim();
     linkLabel = $("cLinkLabel").value.trim() || undefined;
     if (!/\.[a-z]{2,}/i.test(url)) { toast("Paste the website address"); return null; }
   }
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key };
 }
 
 /* ---------------- PLAN tab ---------------- */

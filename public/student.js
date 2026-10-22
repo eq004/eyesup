@@ -737,7 +737,9 @@ function renderInteraction(itx) {
   if (itx.mode === "compose") {
     const lvl = TUNE.levelOf(itx.level);
     const staff = itx.staff || "treble";
-    const tune = { sig: itx.sig || "4/4", bars: itx.bars || 2, level: itx.level || "standard", staff, chords: itx.chords === true, inst: "piano", unit: 16, events: [] };
+    const tune = { sig: itx.sig || "4/4", bars: itx.bars || 2, level: itx.level || "standard", staff, chords: itx.chords === true, key: itx.key || 0, bpm: 96, inst: "piano", unit: 16, events: [] };
+    const advanced = tune.level === "advanced"; // tapping a note selects it (tie, accidentals, dynamics) instead of removing it
+    let selected = null;
     let chordMode = false; // piano keys stack onto the last note instead of adding the next one
     let lastAdded = null;
     const staves = TUNE.stavesOf(staff);
@@ -762,6 +764,7 @@ function renderInteraction(itx) {
         <div class="nv-row">${lvl.rests.map((d) => palItem(d, true)).join("")}${lvl.accidentals ? `<span class="nv-gap"></span><button type="button" class="nv acc" data-acc="1">♯<small>sharp</small></button><button type="button" class="nv acc" data-acc="-1">♭<small>flat</small></button>` : ""}</div>
       </div>
       <div class="score-wrap" id="scoreWrap"></div>
+      ${advanced ? `<div class="note-tools" id="noteTools"><span class="nt-label">Tap a note to edit it</span></div>` : ""}
       <p class="hint" id="scoreMsg" style="margin:0.3rem 0 0;min-height:1.2em"></p>
       ${itx.keys === false
         ? `<p class="hint" style="margin:0.5rem 0 0.2rem">Pick a note value above, then <b>tap the stave</b> where it goes — or drag it on. Tap a note on the stave to remove it.</p>`
@@ -770,14 +773,39 @@ function renderInteraction(itx) {
         ${tune.chords ? `<button type="button" class="btn" id="chordMode" title="Keys stack notes onto the last note to make a chord">♩♩ Chord</button>` : ""}
         <button type="button" class="btn" id="tunePlay">▶ Play</button>
         <select id="tuneInst" class="tune-inst" aria-label="instrument">${Object.entries(TUNE.INSTRUMENTS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
+        ${advanced ? `<select id="tuneBpm" class="tune-inst" aria-label="tempo">${[60, 72, 84, 96, 108, 120, 140].map((b) => `<option value="${b}" ${b === 96 ? "selected" : ""}>♩ = ${b}</option>`).join("")}</select>` : ""}
         <button type="button" class="btn" id="tuneUndo">↶ Undo</button>
         <button type="button" class="btn" id="tuneClear">Clear</button>
       </div>
       <button class="btn send" id="sendBtn" disabled>Send my tune</button>`, () => {
       const wrap = $("scoreWrap"), pal = $("nvPal"), msg = $("scoreMsg"), piano = $("piano") || document.createElement("div");
       const hasNotes = () => tune.events.some((e) => e.p != null);
+      const paintTools = () => {
+        const box = $("noteTools"); if (!box) return;
+        const e = selected;
+        if (!e || !tune.events.includes(e)) { selected = null; box.innerHTML = `<span class="nt-label">Tap a note to edit it</span>`; return; }
+        const canTie = e.p != null && !!tune.events.find((o) => o !== e && (o.st || 0) === (e.st || 0) && o.p === e.p && o.a === e.a && o.s === e.s + e.d);
+        box.innerHTML = `<span class="nt-label">${e.p == null ? "Rest" : TUNE.pitchName(e.p, e.a)} ${TUNE.valueFor(e.d).label}</span>
+          ${e.p != null ? `<button type="button" class="nt ${e.tie ? "on" : ""}" data-nt="tie" ${canTie || e.tie ? "" : "disabled"} title="Join to the next note of the same pitch">⌒ Tie</button>
+          <button type="button" class="nt ${e.a === 1 ? "on" : ""}" data-nt="sharp">♯</button><button type="button" class="nt ${e.a === -1 ? "on" : ""}" data-nt="flat">♭</button><button type="button" class="nt ${e.a === 2 ? "on" : ""}" data-nt="natural">♮</button>
+          <span class="nt-sep"></span>${Object.keys(TUNE.DYNAMICS).map((d) => `<button type="button" class="nt dyn ${e.dyn === d ? "on" : ""}" data-nt="dyn" data-dyn="${d}"><i>${d}</i></button>`).join("")}` : ""}
+          <button type="button" class="nt danger" data-nt="remove">✕ Remove</button>`;
+        box.querySelectorAll("[data-nt]").forEach((b) => (b.onclick = () => {
+          const k = b.dataset.nt;
+          history.push(tune.events.map((o) => ({ ...o })));
+          if (k === "remove") { tune.events = tune.events.filter((o) => o !== e); selected = null; }
+          else if (k === "tie") { e.tie = !e.tie; if (e.tie && !canTie) { e.tie = false; say("A tie joins to the next note of the same pitch — add that note first"); } }
+          else if (k === "sharp") e.a = e.a === 1 ? 0 : 1;
+          else if (k === "flat") e.a = e.a === -1 ? 0 : -1;
+          else if (k === "natural") e.a = e.a === 2 ? 0 : 2;
+          else if (k === "dyn") e.dyn = e.dyn === b.dataset.dyn ? undefined : b.dataset.dyn;
+          if (e.p != null && k !== "remove" && k !== "dyn" && k !== "tie") TUNE.ping(e.p, e.a === 2 ? 0 : e.a, tune.inst);
+          paint();
+        }));
+      };
       const paint = () => {
-        wrap.innerHTML = TUNE.scoreSvg(tune, { editor: true, ghost, active });
+        wrap.innerHTML = TUNE.scoreSvg(tune, { editor: true, ghost, active, selected: selected ? tune.events.indexOf(selected) : -1 });
+        paintTools();
         $("sendBtn").disabled = !hasNotes();
         $("tunePlay").disabled = !hasNotes();
         $("tuneUndo").disabled = !history.length;
@@ -834,7 +862,10 @@ function renderInteraction(itx) {
       wrap.onclick = (e) => {
         const sv = svg(); if (!sv) return;
         const evEl = e.target.closest(".score-ev");
-        if (evEl && +evEl.dataset.ev >= 0) { remove(+evEl.dataset.ev); paint(); return; }
+        if (evEl && +evEl.dataset.ev >= 0) {
+          if (advanced) { const ev = tune.events[+evEl.dataset.ev]; selected = selected === ev ? null : ev; paint(); return; }
+          remove(+evEl.dataset.ev); paint(); return;
+        }
         if (!held) return;
         const hit = TUNE.hitTest(sv, e.clientX, e.clientY, tune.level, held.d);
         if (hit && hit.onStave && hit.slot >= 0) { place(hit, held); paint(); }
@@ -874,9 +905,11 @@ function renderInteraction(itx) {
       if (cm) cm.onclick = () => { chordMode = !chordMode; cm.classList.toggle("on", chordMode); say(chordMode ? "Chord mode: each key you tap joins the last note" : "Chord mode off"); };
       $("tuneInst").onchange = () => { tune.inst = $("tuneInst").value; TUNE.ping(4, 0, tune.inst); };
       $("tunePlay").onclick = () => TUNE.play(tune, { onBeat: (k) => { active = k; paint(); } });
-      $("tuneUndo").onclick = () => { if (history.length) { tune.events = history.pop(); paint(); } };
+      $("tuneUndo").onclick = () => { if (history.length) { tune.events = history.pop(); selected = null; paint(); } };
+      const bpmSel = $("tuneBpm");
+      if (bpmSel) bpmSel.onchange = () => { tune.bpm = +bpmSel.value; };
       $("tuneClear").onclick = () => { if (tune.events.length) { history.push(tune.events.slice()); tune.events = []; paint(); } };
-      $("sendBtn").onclick = () => { TUNE.stop(); if (hasNotes()) submit({ sig: tune.sig, bars: tune.bars, level: tune.level, staff: tune.staff, chords: tune.chords, inst: tune.inst, unit: 16, events: tune.events.map((e) => ({ s: e.s, d: e.d, p: e.p, a: e.a || 0, st: e.st || 0 })) }); };
+      $("sendBtn").onclick = () => { TUNE.stop(); if (hasNotes()) submit({ sig: tune.sig, bars: tune.bars, level: tune.level, staff: tune.staff, chords: tune.chords, key: tune.key, bpm: tune.bpm, inst: tune.inst, unit: 16, events: tune.events.map((e) => ({ s: e.s, d: e.d, p: e.p, a: e.a || 0, st: e.st || 0, ...(e.tie ? { tie: true } : {}), ...(e.dyn ? { dyn: e.dyn } : {}) })) }); };
       paint();
     });
     return;

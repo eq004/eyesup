@@ -1031,6 +1031,7 @@ function sanitizeStep(it) {
     staff: ["treble", "bass", "grand"].includes(it.staff) ? it.staff : undefined,
     keys: typeof it.keys === "boolean" ? it.keys : undefined,
     chords: typeof it.chords === "boolean" ? it.chords : undefined,
+    key: Number.isInteger(it.key) && Math.abs(it.key) <= 3 ? it.key : undefined,
     sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
     url: it.mode === "link" ? cleanUrl(it.url) || undefined : undefined,
     linkLabel: it.mode === "link" && typeof it.linkLabel === "string" ? it.linkLabel.trim().slice(0, 60) || undefined : undefined,
@@ -1501,7 +1502,7 @@ function isRevealMode(mode) {
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -1591,6 +1592,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     staff: mode === "compose" ? (["treble", "bass", "grand"].includes(staff) ? staff : "treble") : null,
     keys: mode === "compose" ? keys !== false : null, // on-screen piano for students (teacher can switch it off)
     chords: mode === "compose" ? level === "advanced" && chords !== false : null, // stacked notes, Advanced only
+    key: mode === "compose" ? (level === "advanced" && Number.isInteger(Number(key)) ? Math.max(-3, Math.min(3, Number(key))) : 0) : null, // key signature, Advanced only
     // Link step: the website students are sent to.
     link: mode === "link" && cleanUrl(url) ? { url: cleanUrl(url), label: String(linkLabel || "").trim().slice(0, 60) } : null,
     imageUrl,
@@ -2010,6 +2012,7 @@ function teacherState(session) {
           staff: itx.staff,
           keys: itx.keys,
           chords: itx.chords,
+          key: itx.key,
           timeLimit: itx.timeLimit,
           imageUrl: itx.imageUrl,
           correct: itx.correct,
@@ -2112,6 +2115,7 @@ function studentState(session, student) {
             staff: itx.staff,
             keys: itx.keys,
             chords: itx.chords,
+            key: itx.key,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
@@ -3071,23 +3075,26 @@ function sanitizePayload(itx, payload) {
     const staff = itx.staff || "treble";
     for (const raw of (Array.isArray(payload.events) ? payload.events : []).slice(0, 192)) {
       const s = Number(raw?.s), d = Number(raw?.d), p = raw?.p == null ? null : Number(raw.p), a = Number(raw?.a) || 0;
+      const adv = itx.level === "advanced";
+      const tie = adv && raw?.tie === true, dyn = adv && ["pp", "p", "mp", "mf", "f", "ff"].includes(raw?.dyn) ? raw.dyn : undefined;
       const st = staff === "bass" ? 1 : staff === "grand" && raw?.st === 1 ? 1 : 0;
       const range = st === 1 ? TUNE_BASS_RANGE[itx.level] || TUNE_BASS_RANGE.standard : lvl.range;
       if (!Number.isInteger(s) || !Number.isInteger(d) || s < 0 || s + d > slots) continue;
       if (!(p == null ? lvl.rests : lvl.values).includes(d)) continue;
       if (p != null && (!Number.isInteger(p) || p < range[0] || p > range[1])) continue;
       if (a && !lvl.accidentals) continue;
-      if (![-1, 0, 1].includes(a)) continue;
+      if (![-1, 0, 1].includes(a) && !(a === 2 && adv)) continue;
       if (Math.floor(s / spb) !== Math.floor((s + d - 1) / spb)) continue;
       // overlap only matters on the same stave; with chords on, notes may share a start (same length, up to 4, different pitches)
       const mates = itx.chords && p != null ? events.filter((e) => e.st === st && e.s === s && e.p != null) : [];
       if (mates.length) { if (mates.length >= 4 || mates.some((e) => e.d !== d || (e.p === p && e.a === a))) continue; }
       if (events.some((e) => e.st === st && !(mates.length && e.s === s && e.p != null) && s < e.s + e.d && e.s < s + d)) continue;
-      events.push({ s, d, p, a, st });
+      events.push(tie || dyn ? { s, d, p, a, st, ...(tie ? { tie } : {}), ...(dyn ? { dyn } : {}) } : { s, d, p, a, st });
     }
     events.sort((x, y) => x.s - y.s || x.st - y.st);
+    const bpm = Math.max(40, Math.min(200, parseInt(payload.bpm, 10) || 96));
     const inst = ["piano", "bells", "flute", "guitar"].includes(payload.inst) ? payload.inst : "piano";
-    return events.some((e) => e.p != null) ? { sig: itx.sig, bars: itx.bars, level: itx.level, staff, chords: !!itx.chords, inst, unit: 16, events } : null; // silence isn't a tune
+    return events.some((e) => e.p != null) ? { sig: itx.sig, bars: itx.bars, level: itx.level, staff, chords: !!itx.chords, key: itx.key || 0, bpm, inst, unit: 16, events } : null; // silence isn't a tune
   }
 
   if (itx.mode === "dot_points") {
