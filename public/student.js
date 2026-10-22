@@ -795,7 +795,7 @@ function renderInteraction(itx) {
       };
       const place = (hit, item) => {
         const ev = { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc, st: hit.st || 0 };
-        if (!add(ev)) { say(hit.slot < 0 || hit.slot >= TUNE.totalSlots(tune) ? "Drop it on the stave" : "No room there — that note doesn't fit in the bar"); return false; }
+        if (!add(ev)) { say(TUNE.whyNot(tune, ev)); return false; }
         return true;
       };
       const remove = (i) => { history.push(tune.events.slice()); tune.events.splice(i, 1); };
@@ -807,7 +807,7 @@ function renderInteraction(itx) {
         const p = +k.dataset.p;
         const st = staveFor(p);
         const s = TUNE.nextFree(tune, item.d, st);
-        if (s < 0) { say(staves.length > 1 ? `That stave is full — remove a note or Clear` : "The tune is full — remove a note or Clear to start again"); return; }
+        if (s < 0) { say(staves.length > 1 ? `No room left on that stave for a ${TUNE.valueFor(item.d).label} — remove a note, pick a shorter note, or Clear` : `No room left for a ${TUNE.valueFor(item.d).label} — remove a note, pick a shorter note, or Clear`); return; }
         const a = +k.dataset.a || acc;
         if (item.rest) { add({ s, d: item.d, p: null, a: 0, st }); say("Rest added"); }
         else add({ s, d: item.d, p, a: a && lvl.accidentals ? a : 0, st });
@@ -848,7 +848,7 @@ function renderInteraction(itx) {
             if (dragEl) dragEl.remove();
             const g = ghost; ghost = null;
             held = item; // whatever you last touched is what the keys add
-            if (moved) { if (g && g.ok) add({ s: g.s, d: g.d, p: g.p, a: g.a, st: g.st }); else if (g) say("No room there — that note doesn't fit in the bar"); }
+            if (moved) { if (g && g.ok) add({ s: g.s, d: g.d, p: g.p, a: g.a, st: g.st }); else if (g) say(TUNE.whyNot(tune, g)); }
             paint();
           };
           window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);

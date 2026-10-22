@@ -324,6 +324,20 @@
     return !tune.events.some((e) => (e.st || 0) === (ev.st || 0) && ev.s < e.s + e.d && e.s < ev.s + ev.d);
   }
 
+  // Plain-English reason a note won't go where it was dropped.
+  function whyNot(tune, ev) {
+    const spb = slotsPerBar(tune.sig), slots = totalSlots(tune);
+    const name = ev.p == null ? `A ${valueFor(ev.d).label} rest` : `A ${valueFor(ev.d).label}`;
+    if (ev.s < 0 || ev.s >= slots) return "Drop it on the stave";
+    const barEnd = (Math.floor(ev.s / spb) + 1) * spb;
+    const clash = tune.events.find((e) => (e.st || 0) === (ev.st || 0) && ev.s < e.s + e.d && e.s < ev.s + ev.d);
+    if (clash && clash.s <= ev.s) return "There's already a note there — tap it to remove it first";
+    const room = (clash ? clash.s : barEnd) - ev.s;
+    const beats = (n) => { const b = n / 4; return `${b % 1 ? b.toFixed(1) : b} beat${b === 1 ? "" : "s"}`; };
+    if (room <= 0) return "That bar is full";
+    return `${name} needs ${beats(ev.d)} but only ${beats(room)} ${room === 4 ? "is" : "are"} left there`;
+  }
+
   // First free place on a stave where a value of length d fits (for "tap a key to add the next note").
   function nextFree(tune, d, st = 0) {
     const slots = totalSlots(tune), snap = d >= 4 ? 4 : d === 3 ? 1 : d;
@@ -331,5 +345,5 @@
     return -1;
   }
   const STEP_SEMIS = SEMIS;
-  window.TUNE = { VALUES, LEVELS, levelOf, rangeFor, stavesOf, BPM, INSTRUMENTS, setInstrument, valueFor, slotsPerBar, totalSlots, normalize, letters, pitchName, play, stop, ping, scoreSvg, valueGlyph, hitTest, fits, nextFree, unlock: audio, STEP_NAMES, STEP_SEMIS };
+  window.TUNE = { VALUES, LEVELS, levelOf, rangeFor, stavesOf, BPM, INSTRUMENTS, setInstrument, valueFor, slotsPerBar, totalSlots, normalize, letters, pitchName, play, stop, ping, scoreSvg, valueGlyph, hitTest, fits, whyNot, nextFree, unlock: audio, STEP_NAMES, STEP_SEMIS };
 })();
