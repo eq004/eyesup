@@ -736,7 +736,10 @@ function renderInteraction(itx) {
   /* --- make a tune: real notation — pick a note value, then tap piano keys (quick) or drop it on the stave (precise) --- */
   if (itx.mode === "compose") {
     const lvl = TUNE.levelOf(itx.level);
-    const tune = { sig: itx.sig || "4/4", bars: itx.bars || 2, level: itx.level || "standard", inst: "piano", unit: 16, events: [] };
+    const staff = itx.staff || "treble";
+    const tune = { sig: itx.sig || "4/4", bars: itx.bars || 2, level: itx.level || "standard", staff, inst: "piano", unit: 16, events: [] };
+    const staves = TUNE.stavesOf(staff);
+    const staveFor = (p) => (staff === "bass" ? 1 : staff === "grand" && p < 0 ? 1 : 0); // keys: middle C and up go on the treble
     let held = { d: 4, rest: false }; // the value in hand — crotchet to start, so the keys work straight away
     let acc = 0;      // accidental for the next note: 1 sharp, -1 flat, 0 none
     let ghost = null; // preview while dragging onto the stave
@@ -744,9 +747,10 @@ function renderInteraction(itx) {
     const history = [];
     const palItem = (d, rest) => `<button type="button" class="nv ${rest ? "rest" : ""}" data-d="${d}" data-rest="${rest ? 1 : 0}" aria-label="${rest ? TUNE.valueFor(d).label + " rest" : TUNE.valueFor(d).label}">${TUNE.valueGlyph(d, rest)}<small>${rest ? "rest" : TUNE.valueFor(d).label}</small></button>`;
     // A small piano across the level's range: white keys for naturals, black keys (sharps) when the level allows them.
+    const lo = Math.min(...staves.map((sv) => TUNE.rangeFor(tune.level, sv.st)[0])), hi = Math.max(...staves.map((sv) => TUNE.rangeFor(tune.level, sv.st)[1]));
     const keys = [];
-    for (let p = lvl.range[0]; p <= lvl.range[1]; p++) keys.push(p);
-    const hasBlackAfter = (p) => lvl.accidentals && [0, 1, 3, 4, 5].includes(((p % 7) + 7) % 7) && p < lvl.range[1];
+    for (let p = lo; p <= hi; p++) keys.push(p);
+    const hasBlackAfter = (p) => lvl.accidentals && [0, 1, 3, 4, 5].includes(((p % 7) + 7) % 7) && p < hi;
     const keyboard = `<div class="piano" id="piano">${keys
       .map((p) => `<div class="pk-slot"><button type="button" class="pk white" data-p="${p}" data-a="0">${TUNE.STEP_NAMES[((p % 7) + 7) % 7]}${p >= 7 ? "′" : p < 0 ? "," : ""}</button>${hasBlackAfter(p) ? `<button type="button" class="pk black" data-p="${p}" data-a="1" aria-label="${TUNE.STEP_NAMES[((p % 7) + 7) % 7]} sharp"></button>` : ""}</div>`)
       .join("")}</div>`;
@@ -776,7 +780,7 @@ function renderInteraction(itx) {
         pal.querySelectorAll(".nv").forEach((b) => b.classList.toggle("held", !!held && b.dataset.d === String(held.d) && b.dataset.rest === (held.rest ? "1" : "0")));
         pal.querySelectorAll(".nv.acc").forEach((b) => b.classList.toggle("held", +b.dataset.acc === acc));
         piano.classList.toggle("resting", !!held && held.rest);
-        piano.classList.toggle("full", TUNE.nextFree(tune, held ? held.d : 4) < 0);
+        piano.classList.toggle("full", staves.every((sv) => TUNE.nextFree(tune, held ? held.d : 4, sv.st) < 0));
       };
       const say = (t) => { msg.textContent = t; clearTimeout(say.t); say.t = setTimeout(() => { if (msg.textContent === t) msg.textContent = ""; }, 2200); };
       const svg = () => wrap.querySelector("svg");
@@ -789,7 +793,7 @@ function renderInteraction(itx) {
         return true;
       };
       const place = (hit, item) => {
-        const ev = { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc };
+        const ev = { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc, st: hit.st || 0 };
         if (!add(ev)) { say(hit.slot < 0 || hit.slot >= TUNE.totalSlots(tune) ? "Drop it on the stave" : "No room there — that note doesn't fit in the bar"); return false; }
         return true;
       };
@@ -799,11 +803,13 @@ function renderInteraction(itx) {
       piano.querySelectorAll(".pk").forEach((k) => (k.onpointerdown = (e) => {
         e.preventDefault();
         const item = held || { d: 4, rest: false };
-        const s = TUNE.nextFree(tune, item.d);
-        if (s < 0) { say("The tune is full — remove a note or Clear to start again"); return; }
+        const p = +k.dataset.p;
+        const st = staveFor(p);
+        const s = TUNE.nextFree(tune, item.d, st);
+        if (s < 0) { say(staves.length > 1 ? `That stave is full — remove a note or Clear` : "The tune is full — remove a note or Clear to start again"); return; }
         const a = +k.dataset.a || acc;
-        if (item.rest) { add({ s, d: item.d, p: null, a: 0 }); say("Rest added"); }
-        else add({ s, d: item.d, p: +k.dataset.p, a: a && lvl.accidentals ? a : 0 });
+        if (item.rest) { add({ s, d: item.d, p: null, a: 0, st }); say("Rest added"); }
+        else add({ s, d: item.d, p, a: a && lvl.accidentals ? a : 0, st });
         k.classList.add("down"); setTimeout(() => k.classList.remove("down"), 150);
         paint();
       }));
@@ -814,7 +820,7 @@ function renderInteraction(itx) {
         const evEl = e.target.closest(".score-ev");
         if (evEl && +evEl.dataset.ev >= 0) { remove(+evEl.dataset.ev); paint(); return; }
         if (!held) return;
-        const hit = TUNE.hitTest(sv, e.clientX, e.clientY, lvl.range, held.d);
+        const hit = TUNE.hitTest(sv, e.clientX, e.clientY, tune.level, held.d);
         if (hit && hit.onStave && hit.slot >= 0) { place(hit, held); paint(); }
       };
 
@@ -829,9 +835,9 @@ function renderInteraction(itx) {
             if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
             if (!dragEl) { moved = true; dragEl = chip.cloneNode(true); dragEl.classList.add("drag-ghost"); document.body.appendChild(dragEl); }
             dragEl.style.left = `${ev.clientX}px`; dragEl.style.top = `${ev.clientY}px`;
-            const sv = svg(); const hit = sv && TUNE.hitTest(sv, ev.clientX, ev.clientY, lvl.range, item.d);
+            const sv = svg(); const hit = sv && TUNE.hitTest(sv, ev.clientX, ev.clientY, tune.level, item.d);
             const next = hit && hit.onStave && hit.slot >= 0 && hit.slot < TUNE.totalSlots(tune)
-              ? { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc }
+              ? { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc, st: hit.st }
               : null;
             if (next) next.ok = TUNE.fits(tune, next);
             if (JSON.stringify(next) !== JSON.stringify(ghost)) { ghost = next; paint(); }
@@ -841,7 +847,7 @@ function renderInteraction(itx) {
             if (dragEl) dragEl.remove();
             const g = ghost; ghost = null;
             held = item; // whatever you last touched is what the keys add
-            if (moved) { if (g && g.ok) add({ s: g.s, d: g.d, p: g.p, a: g.a }); else if (g) say("No room there — that note doesn't fit in the bar"); }
+            if (moved) { if (g && g.ok) add({ s: g.s, d: g.d, p: g.p, a: g.a, st: g.st }); else if (g) say("No room there — that note doesn't fit in the bar"); }
             paint();
           };
           window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
@@ -852,7 +858,7 @@ function renderInteraction(itx) {
       $("tunePlay").onclick = () => TUNE.play(tune, { onBeat: (k) => { active = k; paint(); } });
       $("tuneUndo").onclick = () => { if (history.length) { tune.events = history.pop(); paint(); } };
       $("tuneClear").onclick = () => { if (tune.events.length) { history.push(tune.events.slice()); tune.events = []; paint(); } };
-      $("sendBtn").onclick = () => { TUNE.stop(); if (hasNotes()) submit({ sig: tune.sig, bars: tune.bars, level: tune.level, inst: tune.inst, unit: 16, events: tune.events.map((e) => ({ s: e.s, d: e.d, p: e.p, a: e.a || 0 })) }); };
+      $("sendBtn").onclick = () => { TUNE.stop(); if (hasNotes()) submit({ sig: tune.sig, bars: tune.bars, level: tune.level, staff: tune.staff, inst: tune.inst, unit: 16, events: tune.events.map((e) => ({ s: e.s, d: e.d, p: e.p, a: e.a || 0, st: e.st || 0 })) }); };
       paint();
     });
     return;

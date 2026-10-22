@@ -1028,6 +1028,7 @@ function sanitizeStep(it) {
     sig: ["2/4", "3/4", "4/4", "6/8"].includes(it.sig) ? it.sig : undefined,
     bars: [1, 2, 4].includes(it.bars) ? it.bars : undefined,
     level: ["beginner", "standard", "advanced"].includes(it.level) ? it.level : undefined,
+    staff: ["treble", "bass", "grand"].includes(it.staff) ? it.staff : undefined,
     sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
     url: it.mode === "link" ? cleanUrl(it.url) || undefined : undefined,
     linkLabel: it.mode === "link" && typeof it.linkLabel === "string" ? it.linkLabel.trim().slice(0, 60) || undefined : undefined,
@@ -1476,6 +1477,7 @@ const TUNE_LEVELS = { // values in semiquavers
   standard: { values: [16, 12, 8, 4, 2], rests: [16, 8, 4, 2], accidentals: true, range: [0, 12], sigs: ["4/4", "3/4", "2/4"], bars: [1, 2, 4] },
   advanced: { values: [16, 12, 8, 6, 4, 3, 2, 1], rests: [16, 8, 4, 2, 1], accidentals: true, range: [-2, 14], sigs: ["4/4", "3/4", "2/4", "6/8"], bars: [1, 2, 4] },
 };
+const TUNE_BASS_RANGE = { beginner: [-10, -2], standard: [-12, 2], advanced: [-14, 2] };
 const STEP_NAMES = ["C", "D", "E", "F", "G", "A", "B"];
 const TUNE_LEVEL_NAME = { beginner: "Beginner", advanced: "Advanced" };
 function tuneLetters(p) {
@@ -1497,7 +1499,7 @@ function isRevealMode(mode) {
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -1584,6 +1586,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     level: mode === "compose" ? (TUNE_LEVELS[level] ? level : "standard") : null,
     sig: mode === "compose" ? ((TUNE_LEVELS[level] || TUNE_LEVELS.standard).sigs.includes(sig) ? sig : "4/4") : null,
     bars: mode === "compose" ? ((TUNE_LEVELS[level] || TUNE_LEVELS.standard).bars.includes(Number(bars)) ? Number(bars) : 2) : null,
+    staff: mode === "compose" ? (["treble", "bass", "grand"].includes(staff) ? staff : "treble") : null,
     // Link step: the website students are sent to.
     link: mode === "link" && cleanUrl(url) ? { url: cleanUrl(url), label: String(linkLabel || "").trim().slice(0, 60) } : null,
     imageUrl,
@@ -2000,6 +2003,7 @@ function teacherState(session) {
           sig: itx.sig,
           bars: itx.bars,
           level: itx.level,
+          staff: itx.staff,
           timeLimit: itx.timeLimit,
           imageUrl: itx.imageUrl,
           correct: itx.correct,
@@ -2059,6 +2063,7 @@ function projectorState(session) {
           sig: itx.sig,
           bars: itx.bars,
           level: itx.level,
+          staff: itx.staff,
           aggregate: itx.resultsVisible ? aggregate(session, itx) : null,
           peek: !itx.resultsVisible && itx.peekId ? buildSpotlight(itx, itx.peekId, true) : null,
         }
@@ -2098,6 +2103,7 @@ function studentState(session, student) {
             sig: itx.sig,
             bars: itx.bars,
             level: itx.level,
+            staff: itx.staff,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
@@ -2301,6 +2307,7 @@ function buildSummary(session, { withImages = false } = {}) {
       item.sig = itx.sig;
       item.bars = itx.bars;
       item.level = itx.level;
+      item.staff = itx.staff;
       item.tunes = [...itx.responses.values()].filter((r) => r.name !== "👁 Preview").map((r) => ({ name: r.name, tune: r.payload })).slice(0, 60);
       item.answers = item.tunes.map((t) => tuneLetters(t.tune));
     }
@@ -3053,20 +3060,23 @@ function sanitizePayload(itx, payload) {
     const [num, den] = itx.sig.split("/").map(Number);
     const spb = (num * 16) / den, slots = spb * itx.bars;
     const events = [];
-    for (const raw of (Array.isArray(payload.events) ? payload.events : []).slice(0, 128)) {
+    const staff = itx.staff || "treble";
+    for (const raw of (Array.isArray(payload.events) ? payload.events : []).slice(0, 192)) {
       const s = Number(raw?.s), d = Number(raw?.d), p = raw?.p == null ? null : Number(raw.p), a = Number(raw?.a) || 0;
+      const st = staff === "bass" ? 1 : staff === "grand" && raw?.st === 1 ? 1 : 0;
+      const range = st === 1 ? TUNE_BASS_RANGE[itx.level] || TUNE_BASS_RANGE.standard : lvl.range;
       if (!Number.isInteger(s) || !Number.isInteger(d) || s < 0 || s + d > slots) continue;
       if (!(p == null ? lvl.rests : lvl.values).includes(d)) continue;
-      if (p != null && (!Number.isInteger(p) || p < lvl.range[0] || p > lvl.range[1])) continue;
+      if (p != null && (!Number.isInteger(p) || p < range[0] || p > range[1])) continue;
       if (a && !lvl.accidentals) continue;
       if (![-1, 0, 1].includes(a)) continue;
       if (Math.floor(s / spb) !== Math.floor((s + d - 1) / spb)) continue;
-      if (events.some((e) => s < e.s + e.d && e.s < s + d)) continue;
-      events.push({ s, d, p, a });
+      if (events.some((e) => e.st === st && s < e.s + e.d && e.s < s + d)) continue; // overlap only matters on the same stave
+      events.push({ s, d, p, a, st });
     }
-    events.sort((x, y) => x.s - y.s);
+    events.sort((x, y) => x.s - y.s || x.st - y.st);
     const inst = ["piano", "bells", "flute", "guitar"].includes(payload.inst) ? payload.inst : "piano";
-    return events.some((e) => e.p != null) ? { sig: itx.sig, bars: itx.bars, level: itx.level, inst, unit: 16, events } : null; // silence isn't a tune
+    return events.some((e) => e.p != null) ? { sig: itx.sig, bars: itx.bars, level: itx.level, staff, inst, unit: 16, events } : null; // silence isn't a tune
   }
 
   if (itx.mode === "dot_points") {
