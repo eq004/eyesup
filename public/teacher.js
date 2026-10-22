@@ -37,6 +37,8 @@ const MODES = {
                    ph: "Instruction for students, e.g. “Read the first section, then come back”" },
   question_set:  { icon: "📝", name: "Question Set",  hint: "Several short-answer questions on one screen, sent together", opts: { min: 2, max: 8, labels: "Question", maxLen: 200 },
                    ph: "Optional heading, e.g. “Chapter 3 check-in”" },
+  compose:       { icon: "🎵", name: "Make a Tune",   hint: "Students drag coloured notes onto a stave and play it — play any tune on the board", opts: null, tuneUI: true,
+                   ph: "e.g. “Compose a tune that ends on C” — or leave blank" },
   dot_points:    { icon: "📌", name: "Dot Points",    hint: "Students build a quick bulleted list, one point at a time", opts: null,
                    ph: "e.g. “List everything you know about volcanoes”" },
   table:         { icon: "📋", name: "Table",         hint: "Students fill a table — compare, sort, KWL", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true,
@@ -101,6 +103,7 @@ const CATEGORIES = [
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
   { label: "🎨 Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption", "image_long"] },
+  { label: "🎵 Music", modes: ["compose"] },
 ];
 
 const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
@@ -111,7 +114,7 @@ const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
   TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "question_set" || m === "sketch" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
   m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" ||
-  m === "counters" || m === "table" || m === "dot_points" || m === "plus_minus";
+  m === "counters" || m === "table" || m === "dot_points" || m === "plus_minus" || m === "compose";
 
 function miniTable(columns, rows) {
   return `<table class="mini-table"><thead><tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>
@@ -463,6 +466,18 @@ function openComposer(key, keepImage) {
     rowsSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(rowsSel);
   }
+  if (m.tuneUI) {
+    const beatsSel = document.createElement("select");
+    beatsSel.id = "beatsSel";
+    beatsSel.innerHTML = `<option value="4">4 beats (one bar)</option><option value="8" selected>8 beats (two bars)</option><option value="16">16 beats (four bars)</option>`;
+    beatsSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    opts.appendChild(beatsSel);
+    const notesSel = document.createElement("select");
+    notesSel.id = "notesSel";
+    notesSel.innerHTML = `<option value="three">3 notes — C D E (youngest)</option><option value="penta" selected>5 notes — C D E G A (always sounds good)</option><option value="all">8 notes — C to C (the full scale)</option>`;
+    notesSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    opts.appendChild(notesSel);
+  }
   if (m.sprintUI) {
     const durSel = document.createElement("select");
     durSel.id = "durSel";
@@ -601,9 +616,11 @@ function readComposer() {
   const counterKind = m.forceKind || undefined;
   const tableRows = m.tableUI ? parseInt($("rowsSel").value, 10) : undefined;
   const sprintSeconds = m.sprintUI ? parseInt($("durSel").value, 10) : undefined;
+  const beats = m.tuneUI ? parseInt($("beatsSel").value, 10) : undefined;
+  const noteSet = m.tuneUI ? $("notesSel").value : undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, beats, noteSet };
 }
 
 /* ---------------- rendering ---------------- */
@@ -949,6 +966,10 @@ function renderLive() {
       <p style="margin-top:0.8rem"><a href="${esc(itx.link?.url || "#")}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-weight:800;overflow-wrap:anywhere">🔗 ${esc(itx.link?.url || "")}</a></p>
       <p style="margin-top:0.6rem;font-weight:800">${itx.responses.length} of ${state.students.length} have opened it</p>
       ${waiting.length ? `<p style="margin-top:0.3rem;font-size:0.85rem;color:var(--muted)">Not yet: ${waiting.map((s) => esc(s.name)).join(", ")}</p>` : state.students.length ? `<p style="margin-top:0.3rem;font-size:0.85rem;color:var(--green);font-weight:700">Everyone has it open ✓</p>` : ""}`;
+  } else if (itx.mode === "compose") {
+    body = (itx.responses.length ? `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem;align-items:center"><button class="btn" data-tune-all="1">▶ Play them all here</button><span style="font-size:0.8rem;color:var(--muted)">“On board” plays through the projector's speakers and puts that tune up big.</span></div>` : "") +
+      revealCards((r) => `<div class="tune-mini" style="color:#1f2a3c">${TUNE.staffSvg(r.payload.notes || [], { compact: true })}</div>
+        <div style="display:flex;gap:0.4rem;margin-top:0.3rem"><button class="btn" data-tune-play="${r.studentId}">▶ Play here</button><button class="btn" data-tune-board="${r.studentId}">📽 On board</button></div>`);
   } else if (itx.mode === "dot_points") {
     body = revealCards((r) => `<ul style="margin:0;padding-left:1.1rem;text-align:left">${(r.payload.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`);
   } else if (itx.mode === "table") {
@@ -1001,6 +1022,17 @@ function renderLive() {
     </div>`;
 
   area.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => send({ type: b.dataset.act })));
+  area.querySelectorAll("[data-tune-play]").forEach((b) => (b.onclick = () => {
+    const r = itx.responses.find((x) => x.studentId === b.dataset.tunePlay);
+    if (r) TUNE.play(r.payload.notes || []);
+  }));
+  area.querySelectorAll("[data-tune-board]").forEach((b) => (b.onclick = () => send({ type: "play_tune", studentId: b.dataset.tuneBoard })));
+  const all = area.querySelector("[data-tune-all]");
+  if (all) all.onclick = () => {
+    const list = itx.responses.map((r) => r.payload.notes || []);
+    const next = (i) => { if (i < list.length) TUNE.play(list[i], { onDone: () => setTimeout(() => next(i + 1), 350) }); };
+    next(0);
+  };
   area.querySelectorAll("[data-reveal]").forEach(
     (b) => (b.onclick = () => send({ type: "reveal", studentId: b.dataset.reveal }))
   );
@@ -2154,6 +2186,7 @@ function fillComposer(st) {
   if (m.workingUI && $("expectedAns")) $("expectedAns").value = st.expected || "";
   if (m.tableUI && $("rowsSel") && st.tableRows) $("rowsSel").value = String(st.tableRows);
   if (m.sprintUI && $("durSel") && st.sprintSeconds) $("durSel").value = String(st.sprintSeconds);
+  if (m.tuneUI) { if ($("beatsSel") && st.beats) $("beatsSel").value = String(st.beats); if ($("notesSel") && st.noteSet) $("notesSel").value = st.noteSet; }
   if (m.postits && $("modSel")) $("modSel").value = st.moderated ? "1" : "0";
   if (m.multiOpt && $("multiSel")) $("multiSel").value = st.multi === false ? "0" : "1";
 }

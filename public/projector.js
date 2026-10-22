@@ -1,6 +1,7 @@
 /* Eyes Up — projected classroom screen */
 
 const stage = document.getElementById("stage");
+const $ = (id) => document.getElementById(id);
 const barCode = document.getElementById("barCode");
 const barCount = document.getElementById("barCount");
 
@@ -25,7 +26,7 @@ const MODE_TAGS = {
   smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
   picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
   spelling: "Spelling Test", cloze: "Fill the Gaps", working: "Show Your Working",
-  counters: "Build It With Counters", table: "Fill the Table", question_set: "Question Set", dot_points: "Dot Points", link: "Website", plus_minus: "Plus & Minus",
+  counters: "Build It With Counters", table: "Fill the Table", question_set: "Question Set", dot_points: "Dot Points", compose: "Make a Tune", link: "Website", plus_minus: "Plus & Minus",
   long_response: "Long Response",
 };
 
@@ -80,6 +81,8 @@ function connect() {
       state = msg;
       render();
     }
+    // The teacher's phone or laptop asked for a tune to play through these speakers.
+    if (msg.type === "play_tune") playTuneOnBoard(msg.studentId);
   };
   ws.onclose = () => setTimeout(connect, 1200);
 }
@@ -557,6 +560,13 @@ function renderInteraction(itx) {
           `<p class="waiting-note" style="font-size:1rem">…</p>`}
       </div>`;
     body = `<div class="pm-board">${col("＋", agg.plus, "pm-plus")}${col("−", agg.minus, "pm-minus")}</div>`;
+  } else if (itx.mode === "compose") {
+    body = agg.tunes.length
+      ? `<div class="tune-board-actions"><button class="names-btn" id="tunePlayAll">▶ Play them all</button><span class="waiting-note" style="font-size:0.9rem;display:inline">tap a tune to put it up big and play it</span></div>
+         <div class="answers">${agg.tunes
+          .map((t, i) => `<div class="answer-card tappable tune-card" data-spot="${t.sid}" data-tune-sid="${t.sid}" style="animation-delay:${(i % 6) * 0.07}s"><div class="tune-mini">${TUNE.staffSvg(t.notes, { compact: true })}</div>${nameTag(t.name)}</div>`)
+          .join("")}</div>`
+      : `<p class="waiting-note">Tunes appear here as they're sent in…</p>`;
   } else if (itx.mode === "dot_points") {
     body = agg.lists.length
       ? `<div class="answers">${agg.lists
@@ -586,6 +596,7 @@ function renderInteraction(itx) {
   }
 
   stage.innerHTML = promptBlock(itx) + body + progressLine(itx);
+  wireTuneButtons(itx);
 
   // Interactive whiteboard: tap a response to spotlight it; while one is
   // up, tapping anywhere else takes the board back to normal.
@@ -633,6 +644,9 @@ function renderGenericSpotlight(s, hint = "tap anywhere to go back") {
   } else if (s.kind === "board") {
     inner = `${boardSvg(s.items, s.counterKind, "min(640px, 74vw)")}
       <div class="spot-text" style="margin-top:0.6rem">= ${esc(s.answer || "—")}${s.ok === true ? " ✓" : s.ok === false ? " ✗" : ""}</div>`;
+  } else if (s.kind === "tune") {
+    inner = `<div class="tune-spot" id="tuneSpot">${TUNE.staffSvg(s.notes)}</div>
+      <button class="reveal-big tune-play-big" id="tunePlayBig" data-notes="${s.notes.map((n) => (n == null ? "r" : n)).join(",")}">▶ Play</button>`;
   } else if (s.kind === "list") {
     inner = `<ul class="dp-proj big">${(s.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
   } else if (s.kind === "table") {
@@ -896,6 +910,42 @@ function renderBuilds(agg) {
 }
 
 // Small name badge, shown only when the teacher flips names on.
+/* Make a Tune — sound comes out of whatever the projector computer is plugged into. */
+function wireTuneButtons(itx) {
+  const big = $("tunePlayBig");
+  if (big) big.onclick = (e) => {
+    e.stopPropagation(); // don't tap the spotlight away
+    const notes = big.dataset.notes.split(",").map((x) => (x === "r" ? null : +x));
+    animateTune($("tuneSpot"), notes);
+  };
+  const all = $("tunePlayAll");
+  if (all) all.onclick = (e) => {
+    e.stopPropagation();
+    const cards = [...stage.querySelectorAll(".tune-card")];
+    const tunes = itx.aggregate?.tunes || [];
+    const next = (i) => {
+      cards.forEach((c, k) => c.classList.toggle("playing", k === i));
+      if (i >= tunes.length) return;
+      animateTune(cards[i].querySelector(".tune-mini"), tunes[i].notes, { compact: true, onDone: () => setTimeout(() => next(i + 1), 400) });
+    };
+    next(0);
+  };
+}
+function animateTune(box, notes, { compact = false, onDone } = {}) {
+  if (!box) return TUNE.play(notes, { onDone });
+  TUNE.play(notes, {
+    onBeat: (k) => { if (box.isConnected) box.innerHTML = TUNE.staffSvg(notes, { compact, active: k }); },
+    onDone,
+  });
+}
+function playTuneOnBoard(studentId) {
+  const itx = state?.interaction;
+  const t = (itx?.aggregate?.tunes || []).find((x) => x.sid === studentId) || (itx?.aggregate?.spotlight?.sid === studentId ? itx.aggregate.spotlight : null);
+  if (!t) return;
+  // The state that spotlights this tune arrives just before; give the DOM a beat to catch up.
+  setTimeout(() => animateTune($("tuneSpot") || stage.querySelector(`.tune-card[data-tune-sid="${studentId}"] .tune-mini`), t.notes, { compact: !$("tuneSpot") }), 120);
+}
+
 function nameTag(name) {
   return name ? `<span class="resp-name">${esc(name)}</span>` : "";
 }

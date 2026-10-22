@@ -989,7 +989,7 @@ const MAX_STEPS = 40;
 const STEP_MODES = new Set([
   "multi_choice", "poll", "tick_boxes", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley",
   "scale", "example_nonexample", "word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze", "short_answer",
-  "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example",
+  "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "compose", "exit_ticket", "finish_sentence", "give_example",
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
   "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "annotate", "image_drop",
@@ -1025,6 +1025,8 @@ function sanitizeStep(it) {
     expected: typeof it.expected === "string" ? it.expected.slice(0, 30) : undefined,
     counterKind: it.counterKind === "base10" || it.counterKind === "colors" ? it.counterKind : undefined,
     tableRows: Number.isInteger(it.tableRows) ? it.tableRows : undefined,
+    beats: [4, 8, 16].includes(it.beats) ? it.beats : undefined,
+    noteSet: ["three", "penta", "all"].includes(it.noteSet) ? it.noteSet : undefined,
     sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
     url: it.mode === "link" ? cleanUrl(it.url) || undefined : undefined,
     linkLabel: it.mode === "link" && typeof it.linkLabel === "string" ? it.linkLabel.trim().slice(0, 60) || undefined : undefined,
@@ -1467,20 +1469,24 @@ const PHONICS_TOKENS = new Set([
   "ow", "er", "ar", "ai", "ay", "ee", "ea", "igh", "oa", "oi", "oy", "-e",
 ]);
 
+// Make a Tune: note names and the sets a teacher can limit the class to.
+const NOTE_NAMES = ["C", "D", "E", "F", "G", "A", "B", "C′"];
+const NOTE_SETS = { three: [0, 1, 2], penta: [0, 1, 2, 4, 5], all: [0, 1, 2, 3, 4, 5, 6, 7] };
+
 // Does the teacher gate this response type onto the projector?
 function isRevealMode(mode) {
   return (
     TEXT_MODES.has(mode) || STRUCTURED_FIELDS[mode] || mode === "question_set" ||
     IMAGE_MODES.has(mode) || mode === "example_nonexample" ||
     mode === "post_its" || mode === "phonics" || mode === "working" || mode === "counters" ||
-    mode === "table" || mode === "dot_points" || mode === "plus_minus"
+    mode === "table" || mode === "dot_points" || mode === "plus_minus" || mode === "compose"
   );
 }
 
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, beats, noteSet }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -1563,6 +1569,9 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
         ? [60, 120, 180].includes(Number(sprintSeconds)) ? Number(sprintSeconds) : 60
         : TIME_LIMITS[mode] || null,
     tableRows: mode === "table" ? Math.min(3, Math.max(1, Number(tableRows) || 1)) : null,
+    // Make a Tune: how many beats on the stave, and which notes the class may use.
+    beats: mode === "compose" ? ([4, 8, 16].includes(Number(beats)) ? Number(beats) : 8) : null,
+    noteSet: mode === "compose" ? (["three", "penta", "all"].includes(noteSet) ? noteSet : "penta") : null,
     // Link step: the website students are sent to.
     link: mode === "link" && cleanUrl(url) ? { url: cleanUrl(url), label: String(linkLabel || "").trim().slice(0, 60) } : null,
     imageUrl,
@@ -1634,6 +1643,7 @@ function buildSpotlight(itx, id = itx.spotlightId, peek = false) {
   if (m === "table")
     return { kind: "table", columns: itx.options, rows: r.payload.rows, name, sid: key };
   if (m === "dot_points") return { kind: "list", points: r.payload.points, name, sid: key };
+  if (m === "compose") return { kind: "tune", notes: r.payload.notes, name, sid: key };
   if (itx.fields) return { kind: "structured", fields: itx.fields, parts: r.payload.parts, name, sid: key };
   if (m === "example_nonexample")
     return { kind: "text", text: `${itx.options[r.payload.choice]}${r.payload.text ? " — " + r.payload.text : ""}`, name, sid: key };
@@ -1851,6 +1861,13 @@ function aggregate(session, itx) {
 
   if (itx.mode === "link") return { ...base, opened: responses.length };
 
+  if (itx.mode === "compose") {
+    const tunes = [...itx.responses.entries()]
+      .filter(([, r]) => r.revealed)
+      .map(([sid, r]) => ({ notes: r.payload.notes, name: nm(r), sid }));
+    return { ...base, tunes, revealedCount: tunes.length, beats: itx.beats };
+  }
+
   if (itx.mode === "dot_points") {
     const lists = [...itx.responses.entries()]
       .filter(([, r]) => r.revealed)
@@ -1968,6 +1985,8 @@ function teacherState(session) {
           expected: itx.expected,
           counterKind: itx.counterKind,
           tableRows: itx.tableRows,
+          beats: itx.beats,
+          noteSet: itx.noteSet,
           timeLimit: itx.timeLimit,
           imageUrl: itx.imageUrl,
           correct: itx.correct,
@@ -2024,6 +2043,7 @@ function projectorState(session) {
           // Picture Phonics: the word frame with its gaps (answers stay hidden).
           clozeParts: itx.cloze ? itx.cloze.parts : null,
           link: itx.link,
+          beats: itx.beats,
           aggregate: itx.resultsVisible ? aggregate(session, itx) : null,
           peek: !itx.resultsVisible && itx.peekId ? buildSpotlight(itx, itx.peekId, true) : null,
         }
@@ -2060,6 +2080,8 @@ function studentState(session, student) {
             hasExpected: !!itx.expected,
             counterKind: itx.counterKind,
             tableRows: itx.tableRows,
+            beats: itx.beats,
+            noteSet: itx.noteSet,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
@@ -2147,6 +2169,7 @@ function describePayload(itx, p) {
     return (p.items || []).map((it) => `${it.side === 0 ? "＋" : "−"} ${it.text}`).join("  |  ");
   if (itx.mode === "link") return "opened the link";
   if (itx.mode === "dot_points") return (p.points || []).map((x) => `• ${x}`).join("   ");
+  if (itx.mode === "compose") return (p.notes || []).map((n) => (n == null ? "–" : NOTE_NAMES[n])).join(" ");
   if (itx.mode === "table")
     return (p.rows || [])
       .map((row) => row.map((c, i) => `${itx.options[i]}: ${c || "—"}`).join("  |  "))
@@ -2258,6 +2281,11 @@ function buildSummary(session, { withImages = false } = {}) {
     if (itx.mode === "link" && itx.link) item.link = itx.link.url;
     if (itx.mode === "dot_points")
       item.answers = [...itx.responses.values()].map((r) => (r.payload.points || []).map((x) => `• ${x}`).join("  ")).slice(0, 40);
+    if (itx.mode === "compose") {
+      item.beats = itx.beats;
+      item.tunes = [...itx.responses.values()].filter((r) => r.name !== "👁 Preview").map((r) => ({ name: r.name, notes: r.payload.notes })).slice(0, 60);
+      item.answers = item.tunes.map((t) => t.notes.map((n) => (n == null ? "–" : NOTE_NAMES[n])).join(" "));
+    }
     return item;
   });
 
@@ -2571,6 +2599,17 @@ async function handle(ws, msg) {
           r.revealed = true;
           if (Array.isArray(r.noteRevealed)) r.noteRevealed = r.noteRevealed.map(() => true);
         }
+      break;
+    }
+    case "play_tune": {
+      // Teacher or remote asks the big screen to play one student's tune (it spotlights it too).
+      const itx = session.interaction;
+      if (itx && itx.mode === "compose" && itx.responses.has(msg.studentId)) {
+        itx.spotlightId = msg.studentId;
+        itx.responses.get(msg.studentId).revealed = true;
+        broadcast(session);
+        for (const p of session.projectors) safeSend(p, { type: "play_tune", studentId: msg.studentId });
+      }
       break;
     }
     case "spotlight_response": {
@@ -2989,6 +3028,13 @@ function sanitizePayload(itx, payload) {
   }
 
   if (itx.mode === "link") return { opened: true };
+
+  if (itx.mode === "compose") {
+    const allowed = NOTE_SETS[itx.noteSet] || NOTE_SETS.penta;
+    const raw = Array.isArray(payload.notes) ? payload.notes : [];
+    const notes = Array.from({ length: itx.beats || 8 }, (_, k) => (Number.isInteger(raw[k]) && allowed.includes(raw[k]) ? raw[k] : null));
+    return notes.some((n) => n != null) ? { notes } : null; // silence isn't a tune
+  }
 
   if (itx.mode === "dot_points") {
     const points = (Array.isArray(payload.points) ? payload.points : [])

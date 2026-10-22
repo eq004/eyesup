@@ -35,7 +35,7 @@ const MODE_NAMES = {
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
   phonics: "🔤 Phonics Keyboard",
   spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", phonics_cloze: "🖼️ Picture Phonics", working: "🧮 Working Out",
-  counters: "🟠 Counters", question_set: "📝 Question Set", table: "📋 Table", dot_points: "📌 Dot Points", link: "🔗 Website", plus_minus: "➕➖ Plus & Minus",
+  counters: "🟠 Counters", question_set: "📝 Question Set", table: "📋 Table", dot_points: "📌 Dot Points", compose: "🎵 Make a Tune", link: "🔗 Website", plus_minus: "➕➖ Plus & Minus",
   long_response: "📜 Long Response",
 };
 
@@ -733,6 +733,93 @@ function renderInteraction(itx) {
   }
 
   /* --- dot points: a quick bulleted list, one point at a time --- */
+  /* --- make a tune: drag coloured notes onto the stave, play it, send it --- */
+  if (itx.mode === "compose") {
+    const beats = itx.beats || 8;
+    const allowed = TUNE.NOTE_SETS[itx.noteSet] || TUNE.NOTE_SETS.penta;
+    const notes = Array(beats).fill(null);
+    let held = null; // palette note picked up by tap (tap a beat to place it)
+    show(`${h}
+      <p class="hint" style="margin-top:0">Drag a note onto the stave — or tap a note, then tap where it goes. Tap a note on the stave to take it off.</p>
+      <div class="tune-palette" id="tunePal">${allowed
+        .map((n) => `<button type="button" class="tune-chip" data-pal="${n}" style="background:${TUNE.NOTES[n].color}" aria-label="note ${TUNE.NOTES[n].name}">${TUNE.NOTES[n].name}</button>`)
+        .join("")}<button type="button" class="tune-chip rest" data-pal="rest" aria-label="rest"><span class="rest-bar"></span><small>rest</small></button></div>
+      <div class="tune-stage" id="tuneStage"></div>
+      <div class="tune-actions">
+        <button type="button" class="btn" id="tunePlay">▶ Play my tune</button>
+        <button type="button" class="btn" id="tuneClear">Clear</button>
+      </div>
+      <button class="btn send" id="sendBtn" disabled>Send my tune</button>`, () => {
+      const stage = $("tuneStage"), pal = $("tunePal");
+      let active = -1;
+      const paint = () => {
+        stage.innerHTML = TUNE.staffSvg(notes, { slots: true, active });
+        $("sendBtn").disabled = !notes.some((n) => n != null);
+        $("tunePlay").disabled = !notes.some((n) => n != null);
+        pal.querySelectorAll(".tune-chip").forEach((c) => c.classList.toggle("held", held != null && String(c.dataset.pal) === String(held)));
+      };
+      const put = (beat, n) => { if (beat >= 0 && beat < beats) { notes[beat] = n; if (n != null) TUNE.ping(n); paint(); } };
+      const beatAt = (clientX) => {
+        const svg = stage.querySelector("svg");
+        const slots = [...svg.querySelectorAll(".tune-slot")];
+        const hit = slots.find((r) => { const b = r.getBoundingClientRect(); return clientX >= b.left && clientX <= b.right; });
+        return hit ? +hit.dataset.beat : -1;
+      };
+      // Tap on the stave: place the held note, or lift a note off.
+      stage.onclick = (e) => {
+        const noteEl = e.target.closest(".tune-note");
+        const slot = e.target.closest(".tune-slot, .tune-rest");
+        const beat = noteEl ? +noteEl.dataset.beat : slot ? +slot.dataset.beat : -1;
+        if (beat < 0) return;
+        if (held != null) { put(beat, held === "rest" ? null : held); return; }
+        if (noteEl) put(beat, null);
+      };
+      // Palette: tap to hold, or drag straight onto a beat.
+      pal.querySelectorAll(".tune-chip").forEach((chip) => {
+        chip.onpointerdown = (e) => {
+          const val = chip.dataset.pal === "rest" ? "rest" : +chip.dataset.pal;
+          const startX = e.clientX, startY = e.clientY;
+          let ghost = null, moved = false;
+          const move = (ev) => {
+            if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+            if (!ghost) {
+              moved = true;
+              ghost = chip.cloneNode(true);
+              ghost.className = "tune-chip ghost";
+              ghost.style.background = chip.style.background;
+              document.body.appendChild(ghost);
+            }
+            ghost.style.left = `${ev.clientX}px`;
+            ghost.style.top = `${ev.clientY}px`;
+            const b = beatAt(ev.clientX);
+            const over = ev.clientY > stage.getBoundingClientRect().top - 20 && ev.clientY < stage.getBoundingClientRect().bottom + 20;
+            if (active !== (over ? b : -1)) { active = over ? b : -1; paint(); }
+          };
+          const up = (ev) => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+            window.removeEventListener("pointercancel", up);
+            if (ghost) ghost.remove();
+            const b = active; active = -1;
+            if (moved) { if (b >= 0) put(b, val === "rest" ? null : val); else paint(); }
+            else { held = held === val ? null : val; if (val !== "rest" && held != null) TUNE.ping(val); paint(); }
+          };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", up);
+          window.addEventListener("pointercancel", up);
+          e.preventDefault();
+        };
+      });
+      $("tunePlay").onclick = () => {
+        TUNE.play(notes, { onBeat: (k) => { active = k; paint(); } });
+      };
+      $("tuneClear").onclick = () => { notes.fill(null); paint(); };
+      $("sendBtn").onclick = () => { TUNE.stop(); if (notes.some((n) => n != null)) submit({ notes: [...notes] }); };
+      paint();
+    });
+    return;
+  }
+
   if (itx.mode === "dot_points") {
     const MAXP = 12;
     const points = [];

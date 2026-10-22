@@ -40,6 +40,7 @@ const MODES = {
   retrieval_sprint:{ icon: "🧠", name: "Sprint", sprintUI: true },
   table:         { icon: "📋", name: "Table", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true },
   question_set:  { icon: "📝", name: "Question Set", opts: { min: 2, max: 8, labels: "Question", maxLen: 200 }, ph: "Optional heading" },
+  compose:       { icon: "🎵", name: "Make a Tune", tuneUI: true, ph: "e.g. “Compose a tune that ends on C”" },
   dot_points:    { icon: "📌", name: "Dot Points", ph: "e.g. “List everything you know about…”" },
   link:          { icon: "🔗", name: "Website Link", linkUI: true, ph: "Instruction, e.g. “Read the first section”" },
   exit_ticket:   { icon: "🎟️", name: "Exit Ticket" },
@@ -82,13 +83,14 @@ const CATEGORIES = [
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
   { label: "Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption", "image_long"] },
+  { label: "Music", modes: ["compose"] },
 ];
 
 const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["question_set", "sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "dot_points", "plus_minus"].includes(m);
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["question_set", "sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "dot_points", "plus_minus", "compose"].includes(m);
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -218,6 +220,7 @@ function bindActions() {
     if (b.dataset.act === "clear" && !confirm("Clear everyone's answers to this question? They can answer again.")) return;
     send({ type: b.dataset.act });
   }));
+  main.querySelectorAll("[data-tune-board]").forEach((b) => (b.onclick = () => send({ type: "play_tune", studentId: b.dataset.tuneBoard })));
   main.querySelectorAll("[data-goto]").forEach((b) => (b.onclick = () => { tab = b.dataset.goto; render(); }));
   const sl = $("stopLive");
   if (sl) sl.onclick = () => send({ type: "eyes_up" }); // next step stays loaded
@@ -255,6 +258,7 @@ function lineFor(itx, p) {
   if (m === "working") return `${(p.lines || []).join("; ")}${p.lines?.length ? " → " : ""}${p.answer || "—"}${itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : ""}`;
   if (m === "link") return "opened the link";
   if (m === "dot_points") return (p.points || []).map((x) => `• ${x}`).join("  ");
+  if (m === "compose") return TUNE.letters(p.notes || []);
   if (m === "table")
     return (p.rows || []).map((row) => row.filter(Boolean).join(" | ")).join(" // ");
   if (m === "plus_minus")
@@ -398,6 +402,17 @@ function renderLiveResponses(itx) {
     return out;
   }
 
+  if (itx.mode === "compose" && itx.responses.length) {
+    out += `<h3 class="sec">Tunes — ▶ plays on the board</h3>` + itx.responses
+      .map((r) => `<div class="resp-row">
+        <span class="rr-who">${esc(r.name || "")}</span>
+        <span class="rr-what">${esc(TUNE.letters(r.payload.notes || []))}</span>
+        <button class="rr-tgl ${r.revealed ? "on" : ""}" data-tune-board="${r.studentId}">▶ board</button>
+      </div>`)
+      .join("");
+    return out;
+  }
+
   if (revealMode(itx.mode) && itx.responses.length) {
     out += `<h3 class="sec">Responses</h3>`;
     out += itx.responses
@@ -426,7 +441,7 @@ const SEARCH_WORDS = {
   short_answer: "write text question", long_response: "essay paragraph write", picture_prompt: "image photo write", retrieval_sprint: "timed quick fire recall", table: "grid columns", question_set: "several many questions quiz", dot_points: "list bullet points", link: "website url open page", exit_ticket: "reflection end of lesson",
   finish_sentence: "stem complete", give_example: "write", make_connection: "link ideas", teach_back: "explain", spot_mistake: "error find wrong", quick_challenge: "task", predict: "guess what next",
   three_two_one: "321 reflection recall", notice_wonder: "reflection see think", before_after: "reflection compare", plus_minus: "pros cons", muddiest_point: "confused unsure anonymous", ask_question: "anonymous questions",
-  ranking: "order rank sort", put_in_order: "sequence sort steps", match_up: "pairs matching connect", venn: "compare diagram sort", spelling: "test words dictation", cloze: "gap fill missing words passage",
+  ranking: "order rank sort", put_in_order: "sequence sort steps", match_up: "pairs matching connect", venn: "compare diagram sort", spelling: "test words dictation", cloze: "gap fill missing words passage", compose: "music notes song melody stave play sound",
 };
 let launchQuery = "";
 function renderLaunch() {
@@ -492,6 +507,8 @@ function openComposer(key) {
   if (m.clozeUI) fields += `<textarea class="rin" id="cCloze" rows="5" maxlength="1500" placeholder="Paste the passage; put [brackets] around hidden words"></textarea>
     <select class="rin" id="cClozeMode"><option value="type">⌨️ Students type</option><option value="bank">🧺 Word bank</option></select>`;
   if (m.tableUI) fields += `<select class="rin" id="cRows"><option value="1">1 row of answers</option><option value="2">2 rows</option><option value="3">3 rows</option></select>`;
+  if (m.tuneUI) fields += `<select class="rin" id="cBeats"><option value="4">4 beats (one bar)</option><option value="8" selected>8 beats (two bars)</option><option value="16">16 beats (four bars)</option></select>
+    <select class="rin" id="cNotes"><option value="three">3 notes — C D E</option><option value="penta" selected>5 notes — C D E G A</option><option value="all">8 notes — C to C</option></select>`;
   if (m.sprintUI) fields += `<select class="rin" id="cDur"><option value="60">⏱ 1 minute</option><option value="120">⏱ 2 minutes</option><option value="180">⏱ 3 minutes</option></select>`;
   if (m.workingUI) fields += `<input class="rin" id="cExpected" maxlength="30" placeholder="Correct answer (optional, auto-checks)" />`;
   if (m.imageUpload) fields += `<input class="rin" type="file" id="cImg" accept="image/*" />
@@ -551,13 +568,15 @@ function readComposer() {
   const multi = m.multiOpt ? $("cMulti").value !== "0" : undefined;
   const tableRows = m.tableUI ? parseInt($("cRows").value, 10) : undefined;
   const sprintSeconds = m.sprintUI ? parseInt($("cDur").value, 10) : undefined;
+  const beats = m.tuneUI ? parseInt($("cBeats").value, 10) : undefined;
+  const noteSet = m.tuneUI ? $("cNotes").value : undefined;
   let url, linkLabel;
   if (m.linkUI) {
     url = $("cUrl").value.trim();
     linkLabel = $("cLinkLabel").value.trim() || undefined;
     if (!/\.[a-z]{2,}/i.test(url)) { toast("Paste the website address"); return null; }
   }
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, beats, noteSet };
 }
 
 /* ---------------- PLAN tab ---------------- */
