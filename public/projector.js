@@ -482,7 +482,9 @@ function renderLobby() {
 }
 
 function promptBlock(itx) {
-  const tag = itx.mode === "counters" && itx.counterKind === "base10" ? "Tens & Ones" : MODE_TAGS[itx.mode] || itx.mode;
+  const tag = itx.mode === "counters" && itx.counterKind === "base10" ? "Tens & Ones"
+    : itx.mode === "compose" && itx.level && itx.level !== "standard" ? `Make a Tune · ${itx.level[0].toUpperCase()}${itx.level.slice(1)}`
+    : MODE_TAGS[itx.mode] || itx.mode;
   return `
     <div class="q-tag">${tag}</div>
     <h1 class="prompt">${itx.prompt ? esc(itx.prompt) : itx.mode === "phonics_cloze" ? "What's the word?" : `<span class="aloud">Listen to the question…</span>`}</h1>`;
@@ -645,8 +647,10 @@ function renderGenericSpotlight(s, hint = "tap anywhere to go back") {
     inner = `${boardSvg(s.items, s.counterKind, "min(640px, 74vw)")}
       <div class="spot-text" style="margin-top:0.6rem">= ${esc(s.answer || "—")}${s.ok === true ? " ✓" : s.ok === false ? " ✗" : ""}</div>`;
   } else if (s.kind === "tune") {
+    const inst = (s.tune && s.tune.inst) || "piano";
     inner = `<div class="tune-spot" id="tuneSpot">${TUNE.scoreSvg(s.tune)}</div>
-      <button class="reveal-big tune-play-big" id="tunePlayBig">▶ Play</button>`;
+      <div class="tune-spot-row"><button class="reveal-big tune-play-big" id="tunePlayBig">▶ Play</button>
+      <select class="tune-inst-sel" id="tuneInstSel" aria-label="instrument">${Object.entries(TUNE.INSTRUMENTS).map(([k, v]) => `<option value="${k}" ${k === inst ? "selected" : ""}>${v}</option>`).join("")}</select></div>`;
   } else if (s.kind === "list") {
     inner = `<ul class="dp-proj big">${(s.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
   } else if (s.kind === "table") {
@@ -915,8 +919,10 @@ function wireTuneButtons(itx) {
   const big = $("tunePlayBig");
   if (big) big.onclick = (e) => {
     e.stopPropagation(); // don't tap the spotlight away
-    animateTune($("tuneSpot"), itx.aggregate?.spotlight?.tune);
+    animateTune($("tuneSpot"), itx.aggregate?.spotlight?.tune, { inst: $("tuneInstSel")?.value });
   };
+  const sel = $("tuneInstSel");
+  if (sel) { sel.onclick = (e) => e.stopPropagation(); sel.onchange = (e) => { e.stopPropagation(); TUNE.ping(7, 0, sel.value); }; }
   const all = $("tunePlayAll");
   if (all) all.onclick = (e) => {
     e.stopPropagation();
@@ -930,10 +936,11 @@ function wireTuneButtons(itx) {
     next(0);
   };
 }
-function animateTune(box, tune, { compact = false, onDone } = {}) {
+function animateTune(box, tune, { compact = false, onDone, inst } = {}) {
   if (!tune) return;
-  if (!box) return TUNE.play(tune, { onDone });
+  if (!box) return TUNE.play(tune, { onDone, inst });
   TUNE.play(tune, {
+    inst,
     onBeat: (k) => { if (box.isConnected) box.innerHTML = TUNE.scoreSvg(tune, { compact, active: k }); },
     onDone,
   });

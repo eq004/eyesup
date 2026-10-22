@@ -733,31 +733,40 @@ function renderInteraction(itx) {
   }
 
   /* --- dot points: a quick bulleted list, one point at a time --- */
-  /* --- make a tune: real notation — drag a note value onto the stave, the drop point sets the pitch --- */
+  /* --- make a tune: real notation — pick a note value, then tap piano keys (quick) or drop it on the stave (precise) --- */
   if (itx.mode === "compose") {
-    const lvl = TUNE.LEVELS[itx.level] || TUNE.LEVELS.standard;
-    const tune = { sig: itx.sig || "4/4", bars: itx.bars || 2, events: [] };
-    let held = null;   // {d, rest} picked up by tap — the next tap on the stave places it
-    let acc = 0;       // accidental to put on the next note: 1 sharp, -1 flat, 0 none
-    let ghost = null;  // preview while dragging
-    let active = -1;   // event index being played
+    const lvl = TUNE.levelOf(itx.level);
+    const tune = { sig: itx.sig || "4/4", bars: itx.bars || 2, level: itx.level || "standard", inst: "piano", unit: 16, events: [] };
+    let held = { d: 4, rest: false }; // the value in hand — crotchet to start, so the keys work straight away
+    let acc = 0;      // accidental for the next note: 1 sharp, -1 flat, 0 none
+    let ghost = null; // preview while dragging onto the stave
+    let active = -1;  // event being played
     const history = [];
     const palItem = (d, rest) => `<button type="button" class="nv ${rest ? "rest" : ""}" data-d="${d}" data-rest="${rest ? 1 : 0}" aria-label="${rest ? TUNE.valueFor(d).label + " rest" : TUNE.valueFor(d).label}">${TUNE.valueGlyph(d, rest)}<small>${rest ? "rest" : TUNE.valueFor(d).label}</small></button>`;
+    // A small piano across the level's range: white keys for naturals, black keys (sharps) when the level allows them.
+    const keys = [];
+    for (let p = lvl.range[0]; p <= lvl.range[1]; p++) keys.push(p);
+    const hasBlackAfter = (p) => lvl.accidentals && [0, 1, 3, 4, 5].includes(((p % 7) + 7) % 7) && p < lvl.range[1];
+    const keyboard = `<div class="piano" id="piano">${keys
+      .map((p) => `<div class="pk-slot"><button type="button" class="pk white" data-p="${p}" data-a="0">${TUNE.STEP_NAMES[((p % 7) + 7) % 7]}${p >= 7 ? "′" : p < 0 ? "," : ""}</button>${hasBlackAfter(p) ? `<button type="button" class="pk black" data-p="${p}" data-a="1" aria-label="${TUNE.STEP_NAMES[((p % 7) + 7) % 7]} sharp"></button>` : ""}</div>`)
+      .join("")}</div>`;
     show(`${h}
-      <p class="hint" style="margin-top:0">Drag a note onto the stave — where you drop it sets the pitch. Or tap a note, then tap the stave. Tap a note on the stave to take it off.</p>
       <div class="nv-palette" id="nvPal">
         <div class="nv-row">${lvl.values.map((d) => palItem(d, false)).join("")}</div>
         <div class="nv-row">${lvl.rests.map((d) => palItem(d, true)).join("")}${lvl.accidentals ? `<span class="nv-gap"></span><button type="button" class="nv acc" data-acc="1">♯<small>sharp</small></button><button type="button" class="nv acc" data-acc="-1">♭<small>flat</small></button>` : ""}</div>
       </div>
       <div class="score-wrap" id="scoreWrap"></div>
       <p class="hint" id="scoreMsg" style="margin:0.3rem 0 0;min-height:1.2em"></p>
+      <p class="hint" style="margin:0.5rem 0 0.2rem"><b>Tap a key</b> to add that note next — or drag a note from above onto the stave to put it exactly where you want. Tap a note on the stave to remove it.</p>
+      ${keyboard}
       <div class="tune-actions">
         <button type="button" class="btn" id="tunePlay">▶ Play</button>
+        <select id="tuneInst" class="tune-inst" aria-label="instrument">${Object.entries(TUNE.INSTRUMENTS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
         <button type="button" class="btn" id="tuneUndo">↶ Undo</button>
         <button type="button" class="btn" id="tuneClear">Clear</button>
       </div>
       <button class="btn send" id="sendBtn" disabled>Send my tune</button>`, () => {
-      const wrap = $("scoreWrap"), pal = $("nvPal"), msg = $("scoreMsg");
+      const wrap = $("scoreWrap"), pal = $("nvPal"), msg = $("scoreMsg"), piano = $("piano");
       const hasNotes = () => tune.events.some((e) => e.p != null);
       const paint = () => {
         wrap.innerHTML = TUNE.scoreSvg(tune, { editor: true, ghost, active });
@@ -766,45 +775,50 @@ function renderInteraction(itx) {
         $("tuneUndo").disabled = !history.length;
         pal.querySelectorAll(".nv").forEach((b) => b.classList.toggle("held", !!held && b.dataset.d === String(held.d) && b.dataset.rest === (held.rest ? "1" : "0")));
         pal.querySelectorAll(".nv.acc").forEach((b) => b.classList.toggle("held", +b.dataset.acc === acc));
+        piano.classList.toggle("resting", !!held && held.rest);
+        piano.classList.toggle("full", TUNE.nextFree(tune, held ? held.d : 4) < 0);
       };
       const say = (t) => { msg.textContent = t; clearTimeout(say.t); say.t = setTimeout(() => { if (msg.textContent === t) msg.textContent = ""; }, 2200); };
       const svg = () => wrap.querySelector("svg");
-      const place = (hit, item) => {
-        const ev = { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc };
-        if (!TUNE.fits(tune, ev)) {
-          say(hit.slot < 0 || hit.slot >= TUNE.totalSlots(tune) ? "Drop it on the stave" : "No room there — that note doesn't fit in the bar");
-          return false;
-        }
+      const add = (ev) => {
+        if (!TUNE.fits(tune, ev)) return false;
         history.push(tune.events.slice());
         tune.events.push(ev);
         tune.events.sort((x, y) => x.s - y.s);
-        if (ev.p != null) TUNE.ping(ev.p, ev.a);
+        if (ev.p != null) TUNE.ping(ev.p, ev.a, tune.inst);
+        return true;
+      };
+      const place = (hit, item) => {
+        const ev = { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc };
+        if (!add(ev)) { say(hit.slot < 0 || hit.slot >= TUNE.totalSlots(tune) ? "Drop it on the stave" : "No room there — that note doesn't fit in the bar"); return false; }
         return true;
       };
       const remove = (i) => { history.push(tune.events.slice()); tune.events.splice(i, 1); };
+
+      // Piano keys: add the held value at the next free place, at this pitch.
+      piano.querySelectorAll(".pk").forEach((k) => (k.onpointerdown = (e) => {
+        e.preventDefault();
+        const item = held || { d: 4, rest: false };
+        const s = TUNE.nextFree(tune, item.d);
+        if (s < 0) { say("The tune is full — remove a note or Clear to start again"); return; }
+        const a = +k.dataset.a || acc;
+        if (item.rest) { add({ s, d: item.d, p: null, a: 0 }); say("Rest added"); }
+        else add({ s, d: item.d, p: +k.dataset.p, a: a && lvl.accidentals ? a : 0 });
+        k.classList.add("down"); setTimeout(() => k.classList.remove("down"), 150);
+        paint();
+      }));
 
       // Taps on the stave: place what's held, or lift a note off.
       wrap.onclick = (e) => {
         const sv = svg(); if (!sv) return;
         const evEl = e.target.closest(".score-ev");
-        if (evEl && +evEl.dataset.ev >= 0) {
-          const i = +evEl.dataset.ev;
-          if (held) {
-            // Swap: lift the old note, try the held one in its place; put it back if it doesn't fit.
-            const hit = TUNE.hitTest(sv, e.clientX, e.clientY);
-            const before = tune.events.slice();
-            remove(i);
-            if (!place(hit, held)) { tune.events = before; history.pop(); }
-          } else remove(i);
-          paint();
-          return;
-        }
+        if (evEl && +evEl.dataset.ev >= 0) { remove(+evEl.dataset.ev); paint(); return; }
         if (!held) return;
-        const hit = TUNE.hitTest(sv, e.clientX, e.clientY);
-        if (hit && hit.onStave) { place(hit, held); paint(); }
+        const hit = TUNE.hitTest(sv, e.clientX, e.clientY, lvl.range, held.d);
+        if (hit && hit.onStave && hit.slot >= 0) { place(hit, held); paint(); }
       };
 
-      // Palette: tap to hold, or drag straight onto the stave.
+      // Palette: tap to pick a value (it stays picked), or drag straight onto the stave.
       pal.querySelectorAll(".nv.acc").forEach((b) => (b.onclick = () => { acc = acc === +b.dataset.acc ? 0 : +b.dataset.acc; paint(); }));
       pal.querySelectorAll(".nv:not(.acc)").forEach((chip) => {
         chip.onpointerdown = (e) => {
@@ -815,7 +829,7 @@ function renderInteraction(itx) {
             if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
             if (!dragEl) { moved = true; dragEl = chip.cloneNode(true); dragEl.classList.add("drag-ghost"); document.body.appendChild(dragEl); }
             dragEl.style.left = `${ev.clientX}px`; dragEl.style.top = `${ev.clientY}px`;
-            const sv = svg(); const hit = sv && TUNE.hitTest(sv, ev.clientX, ev.clientY);
+            const sv = svg(); const hit = sv && TUNE.hitTest(sv, ev.clientX, ev.clientY, lvl.range, item.d);
             const next = hit && hit.onStave && hit.slot >= 0 && hit.slot < TUNE.totalSlots(tune)
               ? { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc }
               : null;
@@ -826,18 +840,19 @@ function renderInteraction(itx) {
             window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
             if (dragEl) dragEl.remove();
             const g = ghost; ghost = null;
-            if (moved) { if (g && g.ok) { place({ slot: g.s, step: g.p ?? 0 }, item); } else if (g) say("No room there — that note doesn't fit in the bar"); }
-            else { held = held && held.d === item.d && held.rest === item.rest ? null : item; }
+            held = item; // whatever you last touched is what the keys add
+            if (moved) { if (g && g.ok) add({ s: g.s, d: g.d, p: g.p, a: g.a }); else if (g) say("No room there — that note doesn't fit in the bar"); }
             paint();
           };
           window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
           e.preventDefault();
         };
       });
+      $("tuneInst").onchange = () => { tune.inst = $("tuneInst").value; TUNE.ping(4, 0, tune.inst); };
       $("tunePlay").onclick = () => TUNE.play(tune, { onBeat: (k) => { active = k; paint(); } });
       $("tuneUndo").onclick = () => { if (history.length) { tune.events = history.pop(); paint(); } };
       $("tuneClear").onclick = () => { if (tune.events.length) { history.push(tune.events.slice()); tune.events = []; paint(); } };
-      $("sendBtn").onclick = () => { TUNE.stop(); if (hasNotes()) submit({ sig: tune.sig, bars: tune.bars, events: tune.events.map((e) => ({ s: e.s, d: e.d, p: e.p, a: e.a || 0 })) }); };
+      $("sendBtn").onclick = () => { TUNE.stop(); if (hasNotes()) submit({ sig: tune.sig, bars: tune.bars, level: tune.level, inst: tune.inst, unit: 16, events: tune.events.map((e) => ({ s: e.s, d: e.d, p: e.p, a: e.a || 0 })) }); };
       paint();
     });
     return;

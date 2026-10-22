@@ -1025,9 +1025,9 @@ function sanitizeStep(it) {
     expected: typeof it.expected === "string" ? it.expected.slice(0, 30) : undefined,
     counterKind: it.counterKind === "base10" || it.counterKind === "colors" ? it.counterKind : undefined,
     tableRows: Number.isInteger(it.tableRows) ? it.tableRows : undefined,
-    sig: ["2/4", "3/4", "4/4"].includes(it.sig) ? it.sig : undefined,
+    sig: ["2/4", "3/4", "4/4", "6/8"].includes(it.sig) ? it.sig : undefined,
     bars: [1, 2, 4].includes(it.bars) ? it.bars : undefined,
-    level: ["simple", "standard", "full"].includes(it.level) ? it.level : undefined,
+    level: ["beginner", "standard", "advanced"].includes(it.level) ? it.level : undefined,
     sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
     url: it.mode === "link" ? cleanUrl(it.url) || undefined : undefined,
     linkLabel: it.mode === "link" && typeof it.linkLabel === "string" ? it.linkLabel.trim().slice(0, 60) || undefined : undefined,
@@ -1471,15 +1471,17 @@ const PHONICS_TOKENS = new Set([
 ]);
 
 // Make a Tune: what each notation level allows (mirrors public/tune.js), and note names for exports.
-const TUNE_LEVELS = {
-  simple: { values: [4, 2], rests: [4, 2], accidentals: false },
-  standard: { values: [8, 4, 2, 1], rests: [8, 4, 2, 1], accidentals: false },
-  full: { values: [8, 6, 4, 3, 2, 1], rests: [8, 4, 2, 1], accidentals: true },
+const TUNE_LEVELS = { // values in semiquavers
+  beginner: { values: [8, 4], rests: [4], accidentals: false, range: [0, 7], sigs: ["4/4"], bars: [1, 2] },
+  standard: { values: [16, 12, 8, 4, 2], rests: [16, 8, 4, 2], accidentals: true, range: [0, 12], sigs: ["4/4", "3/4", "2/4"], bars: [1, 2, 4] },
+  advanced: { values: [16, 12, 8, 6, 4, 3, 2, 1], rests: [16, 8, 4, 2, 1], accidentals: true, range: [-2, 14], sigs: ["4/4", "3/4", "2/4", "6/8"], bars: [1, 2, 4] },
 };
 const STEP_NAMES = ["C", "D", "E", "F", "G", "A", "B"];
+const TUNE_LEVEL_NAME = { beginner: "Beginner", advanced: "Advanced" };
 function tuneLetters(p) {
   if (Array.isArray(p?.notes)) return p.notes.map((n) => (n == null ? "–" : ["C", "D", "E", "F", "G", "A", "B", "C′"][n])).join(" ");
-  return (p?.events || []).map((e) => (e.p == null ? "–" : `${STEP_NAMES[e.p % 7]}${e.a === 1 ? "♯" : e.a === -1 ? "♭" : ""}${e.p >= 7 ? "′" : ""}`)).join(" ");
+  const m = (n, k) => ((n % k) + k) % k;
+  return (p?.events || []).map((e) => (e.p == null ? "–" : `${STEP_NAMES[m(e.p, 7)]}${e.a === 1 ? "♯" : e.a === -1 ? "♭" : ""}${e.p >= 7 ? "′" : e.p < 0 ? "," : ""}`)).join(" ");
 }
 
 // Does the teacher gate this response type onto the projector?
@@ -1579,9 +1581,9 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
         : TIME_LIMITS[mode] || null,
     tableRows: mode === "table" ? Math.min(3, Math.max(1, Number(tableRows) || 1)) : null,
     // Make a Tune: time signature, how many bars, and how much notation the class may use.
-    sig: mode === "compose" ? (["2/4", "3/4", "4/4"].includes(sig) ? sig : "4/4") : null,
-    bars: mode === "compose" ? ([1, 2, 4].includes(Number(bars)) ? Number(bars) : 2) : null,
-    level: mode === "compose" ? (["simple", "standard", "full"].includes(level) ? level : "standard") : null,
+    level: mode === "compose" ? (TUNE_LEVELS[level] ? level : "standard") : null,
+    sig: mode === "compose" ? ((TUNE_LEVELS[level] || TUNE_LEVELS.standard).sigs.includes(sig) ? sig : "4/4") : null,
+    bars: mode === "compose" ? ((TUNE_LEVELS[level] || TUNE_LEVELS.standard).bars.includes(Number(bars)) ? Number(bars) : 2) : null,
     // Link step: the website students are sent to.
     link: mode === "link" && cleanUrl(url) ? { url: cleanUrl(url), label: String(linkLabel || "").trim().slice(0, 60) } : null,
     imageUrl,
@@ -2056,6 +2058,7 @@ function projectorState(session) {
           link: itx.link,
           sig: itx.sig,
           bars: itx.bars,
+          level: itx.level,
           aggregate: itx.resultsVisible ? aggregate(session, itx) : null,
           peek: !itx.resultsVisible && itx.peekId ? buildSpotlight(itx, itx.peekId, true) : null,
         }
@@ -2297,6 +2300,7 @@ function buildSummary(session, { withImages = false } = {}) {
     if (itx.mode === "compose") {
       item.sig = itx.sig;
       item.bars = itx.bars;
+      item.level = itx.level;
       item.tunes = [...itx.responses.values()].filter((r) => r.name !== "👁 Preview").map((r) => ({ name: r.name, tune: r.payload })).slice(0, 60);
       item.answers = item.tunes.map((t) => tuneLetters(t.tune));
     }
@@ -3044,15 +3048,16 @@ function sanitizePayload(itx, payload) {
   if (itx.mode === "link") return { opened: true };
 
   if (itx.mode === "compose") {
-    // Events must be real note values, sit inside one bar, not overlap, and use only what the level allows.
+    // Events (in semiquavers) must be real note values, sit inside one bar, not overlap, and use only what the level allows.
     const lvl = TUNE_LEVELS[itx.level] || TUNE_LEVELS.standard;
-    const spb = parseInt(itx.sig, 10) * 2, slots = spb * itx.bars;
+    const [num, den] = itx.sig.split("/").map(Number);
+    const spb = (num * 16) / den, slots = spb * itx.bars;
     const events = [];
-    for (const raw of (Array.isArray(payload.events) ? payload.events : []).slice(0, 64)) {
+    for (const raw of (Array.isArray(payload.events) ? payload.events : []).slice(0, 128)) {
       const s = Number(raw?.s), d = Number(raw?.d), p = raw?.p == null ? null : Number(raw.p), a = Number(raw?.a) || 0;
       if (!Number.isInteger(s) || !Number.isInteger(d) || s < 0 || s + d > slots) continue;
       if (!(p == null ? lvl.rests : lvl.values).includes(d)) continue;
-      if (p != null && (!Number.isInteger(p) || p < 0 || p > 12)) continue;
+      if (p != null && (!Number.isInteger(p) || p < lvl.range[0] || p > lvl.range[1])) continue;
       if (a && !lvl.accidentals) continue;
       if (![-1, 0, 1].includes(a)) continue;
       if (Math.floor(s / spb) !== Math.floor((s + d - 1) / spb)) continue;
@@ -3060,7 +3065,8 @@ function sanitizePayload(itx, payload) {
       events.push({ s, d, p, a });
     }
     events.sort((x, y) => x.s - y.s);
-    return events.some((e) => e.p != null) ? { sig: itx.sig, bars: itx.bars, events } : null; // silence isn't a tune
+    const inst = ["piano", "bells", "flute", "guitar"].includes(payload.inst) ? payload.inst : "piano";
+    return events.some((e) => e.p != null) ? { sig: itx.sig, bars: itx.bars, level: itx.level, inst, unit: 16, events } : null; // silence isn't a tune
   }
 
   if (itx.mode === "dot_points") {

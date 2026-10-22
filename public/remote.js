@@ -40,7 +40,9 @@ const MODES = {
   retrieval_sprint:{ icon: "🧠", name: "Sprint", sprintUI: true },
   table:         { icon: "📋", name: "Table", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true },
   question_set:  { icon: "📝", name: "Question Set", opts: { min: 2, max: 8, labels: "Question", maxLen: 200 }, ph: "Optional heading" },
-  compose:       { icon: "🎵", name: "Make a Tune", tuneUI: true, ph: "e.g. “Compose a tune that ends on C”" },
+  compose_beginner: { icon: "🎵", name: "Tune · Beginner", tuneUI: true, launchAs: "compose", forceLevel: "beginner", ph: "e.g. “Write a tune using C, D and E”" },
+  compose:       { icon: "🎼", name: "Make a Tune", tuneUI: true, forceLevel: "standard", ph: "e.g. “Compose a tune that ends on C”" },
+  compose_advanced: { icon: "🎼", name: "Tune · Advanced", tuneUI: true, launchAs: "compose", forceLevel: "advanced", ph: "e.g. “Write a 4-bar melody in 6/8”" },
   dot_points:    { icon: "📌", name: "Dot Points", ph: "e.g. “List everything you know about…”" },
   link:          { icon: "🔗", name: "Website Link", linkUI: true, ph: "Instruction, e.g. “Read the first section”" },
   exit_ticket:   { icon: "🎟️", name: "Exit Ticket" },
@@ -83,7 +85,7 @@ const CATEGORIES = [
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
   { label: "Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption", "image_long"] },
-  { label: "Music", modes: ["compose"] },
+  { label: "Music", modes: ["compose_beginner", "compose", "compose_advanced"] },
 ];
 
 const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
@@ -103,8 +105,10 @@ function markMatch(a, t) {
   const nx = Number(x.replace(",", ".")), ny = Number(y.replace(",", "."));
   return Number.isFinite(nx) && Number.isFinite(ny) && Math.abs(nx - ny) < 1e-9;
 }
-function modeName(m, counterKind) {
+function modeName(m, counterKind, level) {
   if (m === "counters" && counterKind === "base10") return "🔟 Tens & Ones";
+  if (m === "compose" && level === "beginner") return "🎵 Tune · Beginner";
+  if (m === "compose" && level === "advanced") return "🎼 Tune · Advanced";
   const md = MODES[m];
   return md ? `${md.icon} ${md.name}` : m;
 }
@@ -441,7 +445,7 @@ const SEARCH_WORDS = {
   short_answer: "write text question", long_response: "essay paragraph write", picture_prompt: "image photo write", retrieval_sprint: "timed quick fire recall", table: "grid columns", question_set: "several many questions quiz", dot_points: "list bullet points", link: "website url open page", exit_ticket: "reflection end of lesson",
   finish_sentence: "stem complete", give_example: "write", make_connection: "link ideas", teach_back: "explain", spot_mistake: "error find wrong", quick_challenge: "task", predict: "guess what next",
   three_two_one: "321 reflection recall", notice_wonder: "reflection see think", before_after: "reflection compare", plus_minus: "pros cons", muddiest_point: "confused unsure anonymous", ask_question: "anonymous questions",
-  ranking: "order rank sort", put_in_order: "sequence sort steps", match_up: "pairs matching connect", venn: "compare diagram sort", spelling: "test words dictation", cloze: "gap fill missing words passage", compose: "music notes song melody stave play sound",
+  ranking: "order rank sort", put_in_order: "sequence sort steps", match_up: "pairs matching connect", venn: "compare diagram sort", spelling: "test words dictation", cloze: "gap fill missing words passage", compose: "music notes song melody stave play sound", compose_beginner: "music notes song melody easy young", compose_advanced: "music notes song melody semiquaver beam 6/8",
 };
 let launchQuery = "";
 function renderLaunch() {
@@ -507,9 +511,11 @@ function openComposer(key) {
   if (m.clozeUI) fields += `<textarea class="rin" id="cCloze" rows="5" maxlength="1500" placeholder="Paste the passage; put [brackets] around hidden words"></textarea>
     <select class="rin" id="cClozeMode"><option value="type">⌨️ Students type</option><option value="bank">🧺 Word bank</option></select>`;
   if (m.tableUI) fields += `<select class="rin" id="cRows"><option value="1">1 row of answers</option><option value="2">2 rows</option><option value="3">3 rows</option></select>`;
-  if (m.tuneUI) fields += `<select class="rin" id="cSig"><option value="4/4" selected>4/4 time</option><option value="3/4">3/4 time</option><option value="2/4">2/4 time</option></select>
-    <select class="rin" id="cBars"><option value="1">1 bar</option><option value="2" selected>2 bars</option><option value="4">4 bars</option></select>
-    <select class="rin" id="cLevel"><option value="simple">Simple — crotchets &amp; minims</option><option value="standard" selected>Standard — semibreve to quaver + rests</option><option value="full">Full — dotted notes, sharps &amp; flats</option></select>`;
+  if (m.tuneUI) {
+    const lvl = TUNE.levelOf(m.forceLevel);
+    if (lvl.sigs.length > 1) fields += `<select class="rin" id="cSig">${lvl.sigs.map((s) => `<option value="${s}" ${s === "4/4" ? "selected" : ""}>${s} time</option>`).join("")}</select>`;
+    fields += `<select class="rin" id="cBars">${lvl.bars.map((b) => `<option value="${b}" ${b === 2 ? "selected" : ""}>${b} bar${b === 1 ? "" : "s"}</option>`).join("")}</select>`;
+  }
   if (m.sprintUI) fields += `<select class="rin" id="cDur"><option value="60">⏱ 1 minute</option><option value="120">⏱ 2 minutes</option><option value="180">⏱ 3 minutes</option></select>`;
   if (m.workingUI) fields += `<input class="rin" id="cExpected" maxlength="30" placeholder="Correct answer (optional, auto-checks)" />`;
   if (m.imageUpload) fields += `<input class="rin" type="file" id="cImg" accept="image/*" />
@@ -569,9 +575,9 @@ function readComposer() {
   const multi = m.multiOpt ? $("cMulti").value !== "0" : undefined;
   const tableRows = m.tableUI ? parseInt($("cRows").value, 10) : undefined;
   const sprintSeconds = m.sprintUI ? parseInt($("cDur").value, 10) : undefined;
-  const sig = m.tuneUI ? $("cSig").value : undefined;
+  const sig = m.tuneUI ? ($("cSig") ? $("cSig").value : "4/4") : undefined;
   const bars = m.tuneUI ? parseInt($("cBars").value, 10) : undefined;
-  const level = m.tuneUI ? $("cLevel").value : undefined;
+  const level = m.tuneUI ? m.forceLevel : undefined;
   let url, linkLabel;
   if (m.linkUI) {
     url = $("cUrl").value.trim();

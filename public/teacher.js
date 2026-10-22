@@ -37,8 +37,12 @@ const MODES = {
                    ph: "Instruction for students, e.g. “Read the first section, then come back”" },
   question_set:  { icon: "📝", name: "Question Set",  hint: "Several short-answer questions on one screen, sent together", opts: { min: 2, max: 8, labels: "Question", maxLen: 200 },
                    ph: "Optional heading, e.g. “Chapter 3 check-in”" },
-  compose:       { icon: "🎵", name: "Make a Tune",   hint: "Students write music on a stave — notes, rests, time signature — play it, and you play any tune on the board", opts: null, tuneUI: true,
+  compose_beginner: { icon: "🎵", name: "Make a Tune · Beginner", hint: "Crotchets and minims in 4/4, letters inside the notes, C to C — a first go at writing music", opts: null, tuneUI: true, launchAs: "compose", forceLevel: "beginner",
+                   ph: "e.g. “Write a tune using C, D and E” — or leave blank" },
+  compose:       { icon: "🎼", name: "Make a Tune",   hint: "Semibreve to quaver with rests, sharps & flats, 2/4 3/4 4/4 — real notation on a treble stave", opts: null, tuneUI: true, forceLevel: "standard",
                    ph: "e.g. “Compose a tune that ends on C” — or leave blank" },
+  compose_advanced: { icon: "🎼", name: "Make a Tune · Advanced", hint: "Adds semiquavers, dotted notes, beams, 6/8 and a wider range (A below the stave to high C)", opts: null, tuneUI: true, launchAs: "compose", forceLevel: "advanced",
+                   ph: "e.g. “Write a 4-bar melody in 6/8” — or leave blank" },
   dot_points:    { icon: "📌", name: "Dot Points",    hint: "Students build a quick bulleted list, one point at a time", opts: null,
                    ph: "e.g. “List everything you know about volcanoes”" },
   table:         { icon: "📋", name: "Table",         hint: "Students fill a table — compare, sort, KWL", opts: { min: 2, max: 4, labels: "Column heading" }, tableUI: true,
@@ -103,7 +107,7 @@ const CATEGORIES = [
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
   { label: "🎨 Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption", "image_long"] },
-  { label: "🎵 Music", modes: ["compose"] },
+  { label: "🎵 Music", modes: ["compose_beginner", "compose", "compose_advanced"] },
 ];
 
 const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
@@ -467,10 +471,14 @@ function openComposer(key, keepImage) {
     opts.appendChild(rowsSel);
   }
   if (m.tuneUI) {
+    const lvl = TUNE.levelOf(m.forceLevel);
     const mk = (id, html) => { const el = document.createElement("select"); el.id = id; el.innerHTML = html; el.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem"; opts.appendChild(el); };
-    mk("sigSel", `<option value="4/4" selected>4/4 time</option><option value="3/4">3/4 time</option><option value="2/4">2/4 time</option>`);
-    mk("barsSel", `<option value="1">1 bar</option><option value="2" selected>2 bars</option><option value="4">4 bars</option>`);
-    mk("levelSel", `<option value="simple">Simple — crotchets &amp; minims</option><option value="standard" selected>Standard — semibreve to quaver, with rests</option><option value="full">Full — adds dotted notes, sharps &amp; flats</option>`);
+    if (lvl.sigs.length > 1) mk("sigSel", lvl.sigs.map((s) => `<option value="${s}" ${s === "4/4" ? "selected" : ""}>${s} time</option>`).join(""));
+    mk("barsSel", lvl.bars.map((b) => `<option value="${b}" ${b === 2 ? "selected" : ""}>${b} bar${b === 1 ? "" : "s"}</option>`).join(""));
+    const note = document.createElement("p");
+    note.style.cssText = "margin:0.5rem 0 0;font-size:0.8rem;color:var(--muted)";
+    note.textContent = { beginner: "Students get crotchets, minims and a crotchet rest, C to C, with letter names inside the notes.", standard: "Students get semibreve to quaver, rests, sharps and flats, middle C to A above the stave.", advanced: "Students also get semiquavers, dotted notes, beaming, 6/8 and the range A below the stave to high C." }[m.forceLevel] || "";
+    opts.appendChild(note);
   }
   if (m.sprintUI) {
     const durSel = document.createElement("select");
@@ -610,9 +618,9 @@ function readComposer() {
   const counterKind = m.forceKind || undefined;
   const tableRows = m.tableUI ? parseInt($("rowsSel").value, 10) : undefined;
   const sprintSeconds = m.sprintUI ? parseInt($("durSel").value, 10) : undefined;
-  const sig = m.tuneUI ? $("sigSel").value : undefined;
+  const sig = m.tuneUI ? ($("sigSel") ? $("sigSel").value : "4/4") : undefined;
   const bars = m.tuneUI ? parseInt($("barsSel").value, 10) : undefined;
-  const level = m.tuneUI ? $("levelSel").value : undefined;
+  const level = m.tuneUI ? m.forceLevel : undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
   return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level };
@@ -1738,7 +1746,10 @@ const canon = (v) =>
       : val
   );
 
-const keyForStep = (st) => (st.mode === "counters" ? (st.counterKind === "base10" ? "tens_ones" : "counters") : st.mode);
+const keyForStep = (st) =>
+  st.mode === "counters" ? (st.counterKind === "base10" ? "tens_ones" : "counters")
+  : st.mode === "compose" ? (st.level === "beginner" ? "compose_beginner" : st.level === "advanced" ? "compose_advanced" : "compose")
+  : st.mode;
 const stepTag = (st) => {
   const m = MODES[keyForStep(st)];
   return m ? `${m.icon} ${m.name}` : st.mode;
@@ -2181,7 +2192,7 @@ function fillComposer(st) {
   if (m.workingUI && $("expectedAns")) $("expectedAns").value = st.expected || "";
   if (m.tableUI && $("rowsSel") && st.tableRows) $("rowsSel").value = String(st.tableRows);
   if (m.sprintUI && $("durSel") && st.sprintSeconds) $("durSel").value = String(st.sprintSeconds);
-  if (m.tuneUI) { if ($("sigSel") && st.sig) $("sigSel").value = st.sig; if ($("barsSel") && st.bars) $("barsSel").value = String(st.bars); if ($("levelSel") && st.level) $("levelSel").value = st.level; }
+  if (m.tuneUI) { if ($("sigSel") && st.sig) $("sigSel").value = st.sig; if ($("barsSel") && st.bars) $("barsSel").value = String(st.bars); }
   if (m.postits && $("modSel")) $("modSel").value = st.moderated ? "1" : "0";
   if (m.multiOpt && $("multiSel")) $("multiSel").value = st.multi === false ? "0" : "1";
 }
