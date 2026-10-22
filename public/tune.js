@@ -55,12 +55,21 @@
     }
     const k = payload.unit === 16 ? 1 : 2; // quaver-unit tunes → semiquavers
     const staff = ["treble", "bass", "grand"].includes(payload.staff) ? payload.staff : "treble";
-    return { sig: payload.sig || "4/4", bars: payload.bars || 2, level: payload.level || "standard", staff, inst: INSTRUMENTS[payload.inst] ? payload.inst : "piano", unit: 16,
+    return { sig: payload.sig || "4/4", bars: payload.bars || 2, level: payload.level || "standard", staff, chords: payload.chords === true, inst: INSTRUMENTS[payload.inst] ? payload.inst : "piano", unit: 16,
       events: (payload.events || []).map((e) => ({ s: e.s * k, d: e.d * k, p: e.p, a: e.a || 0, st: staff === "bass" ? 1 : staff === "grand" && e.st === 1 ? 1 : 0 })).sort((x, y) => x.s - y.s || x.st - y.st) };
   }
 
   const pitchName = (p, a) => `${STEP_NAMES[mod(p, 7)]}${a === 1 ? "♯" : a === -1 ? "♭" : ""}${p >= 7 ? "′" : p < 0 ? "," : ""}`;
-  const letters = (tune) => normalize(tune).events.map((e) => (e.p == null ? "–" : pitchName(e.p, e.a))).join(" ");
+  const letters = (tune) => {
+    const t = normalize(tune), out = [];
+    t.events.forEach((e, i) => {
+      const prev = t.events[i - 1];
+      const name = e.p == null ? "–" : pitchName(e.p, e.a);
+      if (prev && prev.s === e.s && (prev.st || 0) === (e.st || 0) && prev.p != null && e.p != null) out[out.length - 1] += "+" + name;
+      else out.push(name);
+    });
+    return out.join(" ");
+  };
   const freqOf = (p, a) => 261.63 * Math.pow(2, (SEMIS[mod(p, 7)] + 12 * Math.floor(p / 7) + (a || 0)) / 12);
 
   /* ---------- sound ---------- */
@@ -191,6 +200,7 @@
       if (e.p == null || e.d >= 4) { flush(); return; }
       if (cur.length) {
         const prev = ev[cur[cur.length - 1]];
+        if (prev.s === e.s && (prev.st || 0) === (e.st || 0)) { cur.push(i); return; } // chord mate shares the beam
         if (Math.floor(prev.s / per) !== Math.floor(e.s / per) || prev.s + prev.d !== e.s) flush();
       }
       cur.push(i);
@@ -242,6 +252,7 @@
         const y = up ? Math.min(...ys) - STEM : Math.max(...ys) + STEM;
         g.forEach((i) => beamed.set(i, { y, up }));
         const sx = (i) => xOf(tune.events[i].s) + (up ? 7.5 : -7.5);
+        if (sx(g[0]) === sx(g[g.length - 1])) { g.forEach((i) => beamed.delete(i)); continue; } // a lone chord: flags, not a beam
         beams.push(`<line x1="${sx(g[0])}" y1="${y}" x2="${sx(g[g.length - 1])}" y2="${y}" stroke="currentColor" stroke-width="5"/>`);
         const y2 = up ? y + 8 : y - 8; // second beam for semiquavers
         g.forEach((i, k) => {
@@ -254,9 +265,13 @@
       }
     }
 
+    // Notes that start together on one stave form a chord: one stem, heads stacked.
+    const chordOf = (e) => tune.events.filter((o) => o.p != null && (o.st || 0) === (e.st || 0) && o.s === e.s);
     const drawEvent = (e, i, ghost) => {
       const sv = staves.find((x) => x.st === (e.st || 0)) || staves[0];
-      const x = xOf(e.s);
+      const chord = ghost || e.p == null ? [e] : chordOf(e);
+      const x0 = xOf(e.s);
+      let x = x0;
       const active = opts.active === i;
       const colr = ghost ? (ghost.ok ? "#1d3f78" : "#c92a2a") : active ? "#1d6fd8" : "currentColor";
       let g = `<g class="score-ev ${active ? "active" : ""}" data-ev="${i}" opacity="${ghost ? 0.55 : 1}" style="color:${colr}">`;
@@ -264,16 +279,25 @@
       if (e.p == null) { out.push(g + restGlyph(e.d, x, sv.base) + "</g>"); return; }
       const v = valueFor(e.d);
       const y = yOn(e.p, sv.base, sv.bottom);
+      const bm = ghost ? null : beamed.get(i);
+      const up = bm ? bm.up : chord.reduce((a, o) => a + o.p, 0) / chord.length < sv.mid;
+      // a "second" (adjacent notes) can't share a column: the upper note goes right of an up-stem, the lower note left of a down-stem
+      const sorted = chord.slice().sort((a, b) => a.p - b.p);
+      if (chord.length > 1) {
+        const k = sorted.indexOf(e);
+        if (up && k > 0 && sorted[k].p - sorted[k - 1].p === 1 && !(k > 1 && sorted[k - 1].p - sorted[k - 2].p === 1)) x = x0 + 15;
+        if (!up && k < sorted.length - 1 && sorted[k + 1].p - sorted[k].p === 1 && !(k < sorted.length - 2 && sorted[k + 2].p - sorted[k + 1].p === 1)) x = x0 - 15;
+      }
       for (let k = sv.bottom - 2; k >= e.p; k -= 2) g += `<line x1="${x - 12}" y1="${yOn(k, sv.base, sv.bottom)}" x2="${x + 12}" y2="${yOn(k, sv.base, sv.bottom)}" stroke="currentColor" stroke-width="1.4"/>`;
       for (let k = sv.bottom + 10; k <= e.p; k += 2) g += `<line x1="${x - 12}" y1="${yOn(k, sv.base, sv.bottom)}" x2="${x + 12}" y2="${yOn(k, sv.base, sv.bottom)}" stroke="currentColor" stroke-width="1.4"/>`;
       if (e.a) g += e.a === 1 ? glyph("♯", x - 23, y + 0.135 * EM * 0.78, EM * 0.78) : glyph("♭", x - 21, y, EM * 0.78);
-      const bm = ghost ? null : beamed.get(i);
-      const up = bm ? bm.up : e.p < sv.mid;
       if (v.stem) {
-        const sx = up ? x + 7.5 : x - 7.5, sy1 = up ? y - 2 : y + 2;
-        const sy2 = bm ? bm.y : up ? y - STEM : y + STEM;
+        const tipNote = up ? sorted[sorted.length - 1] : sorted[0];
+        const tipY = yOn(tipNote.p, sv.base, sv.bottom);
+        const sx = up ? x0 + 7.5 : x0 - 7.5, sy1 = up ? y - 2 : y + 2;
+        const sy2 = bm ? bm.y : up ? tipY - STEM : tipY + STEM;
         g += `<line x1="${sx}" y1="${sy1}" x2="${sx}" y2="${sy2}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`;
-        if (!bm) for (let f = 0; f < (v.flags || 0); f++) g += flagPath(sx, sy2 + (up ? f * 8 : -f * 8), up);
+        if (!bm && e === tipNote) for (let f = 0; f < (v.flags || 0); f++) g += flagPath(sx, sy2 + (up ? f * 8 : -f * 8), up);
       }
       g += `<ellipse cx="${x}" cy="${y}" rx="8.2" ry="5.6" fill="${v.hollow ? "none" : "currentColor"}" stroke="currentColor" stroke-width="${v.hollow ? 2.4 : 1}" transform="rotate(-22 ${x} ${y})"/>`;
       if (lvl.letters && !ghost) g += `<text x="${x}" y="${y + 2.8}" text-anchor="middle" font-size="7.5" font-weight="800" fill="${v.hollow ? "currentColor" : "#fff"}" style="pointer-events:none">${STEP_NAMES[mod(e.p, 7)]}</text>`;
@@ -322,7 +346,12 @@
     const spb = slotsPerBar(tune.sig), slots = totalSlots(tune);
     if (ev.s < 0 || ev.s + ev.d > slots) return false;
     if (Math.floor(ev.s / spb) !== Math.floor((ev.s + ev.d - 1) / spb)) return false;
-    return !tune.events.some((e) => (e.st || 0) === (ev.st || 0) && ev.s < e.s + e.d && e.s < ev.s + ev.d);
+    const same = (e) => (e.st || 0) === (ev.st || 0);
+    if (tune.chords && ev.p != null) {
+      const mates = tune.events.filter((e) => same(e) && e.s === ev.s && e.p != null);
+      if (mates.length) return mates.length < 4 && mates.every((e) => e.d === ev.d && (e.p !== ev.p || e.a !== ev.a)) && !tune.events.some((e) => same(e) && e.s !== ev.s && ev.s < e.s + e.d && e.s < ev.s + ev.d);
+    }
+    return !tune.events.some((e) => same(e) && ev.s < e.s + e.d && e.s < ev.s + ev.d);
   }
 
   // Where a dropped note settles: the spot under the finger if it fits, otherwise the nearest
@@ -347,6 +376,12 @@
     if (ev.s < 0 || ev.s >= slots) return "Drop it on the stave";
     const barEnd = (Math.floor(ev.s / spb) + 1) * spb;
     const clash = tune.events.find((e) => (e.st || 0) === (ev.st || 0) && ev.s < e.s + e.d && e.s < ev.s + ev.d);
+    if (tune.chords && clash && clash.s === ev.s && ev.p != null && clash.p != null) {
+      const mates = tune.events.filter((e) => (e.st || 0) === (ev.st || 0) && e.s === ev.s && e.p != null);
+      if (mates.length >= 4) return "A chord can have up to 4 notes";
+      if (mates.some((e) => e.d !== ev.d)) return `Notes in a chord must be the same length — that one is a ${valueFor(mates[0].d).label}`;
+      if (mates.some((e) => e.p === ev.p && e.a === ev.a)) return "That note is already in the chord";
+    }
     if (clash && clash.s <= ev.s) {
       const what = clash.p == null ? `${valueFor(clash.d).label} rest` : valueFor(clash.d).label;
       return clash.d >= spb

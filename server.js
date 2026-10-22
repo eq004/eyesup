@@ -1030,6 +1030,7 @@ function sanitizeStep(it) {
     level: ["beginner", "standard", "advanced"].includes(it.level) ? it.level : undefined,
     staff: ["treble", "bass", "grand"].includes(it.staff) ? it.staff : undefined,
     keys: typeof it.keys === "boolean" ? it.keys : undefined,
+    chords: typeof it.chords === "boolean" ? it.chords : undefined,
     sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
     url: it.mode === "link" ? cleanUrl(it.url) || undefined : undefined,
     linkLabel: it.mode === "link" && typeof it.linkLabel === "string" ? it.linkLabel.trim().slice(0, 60) || undefined : undefined,
@@ -1500,7 +1501,7 @@ function isRevealMode(mode) {
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -1589,6 +1590,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     bars: mode === "compose" ? ((TUNE_LEVELS[level] || TUNE_LEVELS.standard).bars.includes(Number(bars)) ? Number(bars) : 2) : null,
     staff: mode === "compose" ? (["treble", "bass", "grand"].includes(staff) ? staff : "treble") : null,
     keys: mode === "compose" ? keys !== false : null, // on-screen piano for students (teacher can switch it off)
+    chords: mode === "compose" ? level === "advanced" && chords !== false : null, // stacked notes, Advanced only
     // Link step: the website students are sent to.
     link: mode === "link" && cleanUrl(url) ? { url: cleanUrl(url), label: String(linkLabel || "").trim().slice(0, 60) } : null,
     imageUrl,
@@ -2007,6 +2009,7 @@ function teacherState(session) {
           level: itx.level,
           staff: itx.staff,
           keys: itx.keys,
+          chords: itx.chords,
           timeLimit: itx.timeLimit,
           imageUrl: itx.imageUrl,
           correct: itx.correct,
@@ -2108,6 +2111,7 @@ function studentState(session, student) {
             level: itx.level,
             staff: itx.staff,
             keys: itx.keys,
+            chords: itx.chords,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
@@ -3075,12 +3079,15 @@ function sanitizePayload(itx, payload) {
       if (a && !lvl.accidentals) continue;
       if (![-1, 0, 1].includes(a)) continue;
       if (Math.floor(s / spb) !== Math.floor((s + d - 1) / spb)) continue;
-      if (events.some((e) => e.st === st && s < e.s + e.d && e.s < s + d)) continue; // overlap only matters on the same stave
+      // overlap only matters on the same stave; with chords on, notes may share a start (same length, up to 4, different pitches)
+      const mates = itx.chords && p != null ? events.filter((e) => e.st === st && e.s === s && e.p != null) : [];
+      if (mates.length) { if (mates.length >= 4 || mates.some((e) => e.d !== d || (e.p === p && e.a === a))) continue; }
+      if (events.some((e) => e.st === st && !(mates.length && e.s === s && e.p != null) && s < e.s + e.d && e.s < s + d)) continue;
       events.push({ s, d, p, a, st });
     }
     events.sort((x, y) => x.s - y.s || x.st - y.st);
     const inst = ["piano", "bells", "flute", "guitar"].includes(payload.inst) ? payload.inst : "piano";
-    return events.some((e) => e.p != null) ? { sig: itx.sig, bars: itx.bars, level: itx.level, staff, inst, unit: 16, events } : null; // silence isn't a tune
+    return events.some((e) => e.p != null) ? { sig: itx.sig, bars: itx.bars, level: itx.level, staff, chords: !!itx.chords, inst, unit: 16, events } : null; // silence isn't a tune
   }
 
   if (itx.mode === "dot_points") {

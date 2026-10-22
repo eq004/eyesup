@@ -477,6 +477,7 @@ function openComposer(key, keepImage) {
     mk("barsSel", lvl.bars.map((b) => `<option value="${b}" ${b === 2 ? "selected" : ""}>${b} bar${b === 1 ? "" : "s"}</option>`).join(""));
     mk("staffSel", `<option value="treble" selected>Staves: treble only</option><option value="bass">Staves: bass only</option><option value="grand">Staves: treble + bass (grand staff)</option>`);
     mk("keysSel", `<option value="1" selected>On-screen piano: on (tap keys to add notes)</option><option value="0">On-screen piano: off (drag or tap the stave only)</option>`);
+    if (m.forceLevel === "advanced") mk("chordsSel", `<option value="1" selected>Chords: allowed (up to 4 notes together)</option><option value="0">Chords: off (one note at a time)</option>`);
     const note = document.createElement("p");
     note.style.cssText = "margin:0.5rem 0 0;font-size:0.8rem;color:var(--muted)";
     note.textContent = { beginner: "Students get crotchets, minims and a crotchet rest, C to C, with letter names inside the notes.", standard: "Students get semibreve to quaver, rests, sharps and flats, middle C to A above the stave.", advanced: "Students also get semiquavers, dotted notes, beaming, 6/8 and the range A below the stave to high C." }[m.forceLevel] || "";
@@ -625,9 +626,10 @@ function readComposer() {
   const level = m.tuneUI ? m.forceLevel : undefined;
   const staff = m.tuneUI ? $("staffSel").value : undefined;
   const keys = m.tuneUI ? $("keysSel").value !== "0" : undefined;
+  const chords = m.tuneUI ? ($("chordsSel") ? $("chordsSel").value !== "0" : false) : undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords };
 }
 
 /* ---------------- rendering ---------------- */
@@ -2196,7 +2198,7 @@ function fillComposer(st) {
   if (m.workingUI && $("expectedAns")) $("expectedAns").value = st.expected || "";
   if (m.tableUI && $("rowsSel") && st.tableRows) $("rowsSel").value = String(st.tableRows);
   if (m.sprintUI && $("durSel") && st.sprintSeconds) $("durSel").value = String(st.sprintSeconds);
-  if (m.tuneUI) { if ($("sigSel") && st.sig) $("sigSel").value = st.sig; if ($("barsSel") && st.bars) $("barsSel").value = String(st.bars); if ($("staffSel") && st.staff) $("staffSel").value = st.staff; if ($("keysSel")) $("keysSel").value = st.keys === false ? "0" : "1"; }
+  if (m.tuneUI) { if ($("sigSel") && st.sig) $("sigSel").value = st.sig; if ($("barsSel") && st.bars) $("barsSel").value = String(st.bars); if ($("staffSel") && st.staff) $("staffSel").value = st.staff; if ($("keysSel")) $("keysSel").value = st.keys === false ? "0" : "1"; if ($("chordsSel")) $("chordsSel").value = st.chords === false ? "0" : "1"; }
   if (m.postits && $("modSel")) $("modSel").value = st.moderated ? "1" : "0";
   if (m.multiOpt && $("multiSel")) $("multiSel").value = st.multi === false ? "0" : "1";
 }

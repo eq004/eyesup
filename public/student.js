@@ -737,7 +737,9 @@ function renderInteraction(itx) {
   if (itx.mode === "compose") {
     const lvl = TUNE.levelOf(itx.level);
     const staff = itx.staff || "treble";
-    const tune = { sig: itx.sig || "4/4", bars: itx.bars || 2, level: itx.level || "standard", staff, inst: "piano", unit: 16, events: [] };
+    const tune = { sig: itx.sig || "4/4", bars: itx.bars || 2, level: itx.level || "standard", staff, chords: itx.chords === true, inst: "piano", unit: 16, events: [] };
+    let chordMode = false; // piano keys stack onto the last note instead of adding the next one
+    let lastAdded = null;
     const staves = TUNE.stavesOf(staff);
     const staveFor = (p) => (staff === "bass" ? 1 : staff === "grand" && p < 0 ? 1 : 0); // keys: middle C and up go on the treble
     let held = { d: 4, rest: false }; // the value in hand — crotchet to start, so the keys work straight away
@@ -765,6 +767,7 @@ function renderInteraction(itx) {
         ? `<p class="hint" style="margin:0.5rem 0 0.2rem">Pick a note value above, then <b>tap the stave</b> where it goes — or drag it on. Tap a note on the stave to remove it.</p>`
         : `<p class="hint" style="margin:0.5rem 0 0.2rem"><b>Tap a key</b> to add that note next — or drag a note from above onto the stave to put it exactly where you want. Tap a note on the stave to remove it.</p>${keyboard}`}
       <div class="tune-actions">
+        ${tune.chords ? `<button type="button" class="btn" id="chordMode" title="Keys stack notes onto the last note to make a chord">♩♩ Chord</button>` : ""}
         <button type="button" class="btn" id="tunePlay">▶ Play</button>
         <select id="tuneInst" class="tune-inst" aria-label="instrument">${Object.entries(TUNE.INSTRUMENTS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
         <button type="button" class="btn" id="tuneUndo">↶ Undo</button>
@@ -789,6 +792,7 @@ function renderInteraction(itx) {
         if (!TUNE.fits(tune, ev)) return false;
         history.push(tune.events.slice());
         tune.events.push(ev);
+        lastAdded = ev;
         tune.events.sort((x, y) => x.s - y.s);
         if (ev.p != null) TUNE.ping(ev.p, ev.a, tune.inst);
         return true;
@@ -806,6 +810,16 @@ function renderInteraction(itx) {
         e.preventDefault();
         const item = held || { d: 4, rest: false };
         const p = +k.dataset.p;
+        const a0 = +k.dataset.a || acc;
+        if (chordMode && lastAdded && lastAdded.p != null && !item.rest) {
+          // stack onto the last note: same start, same length, its stave
+          const ev = { s: lastAdded.s, d: lastAdded.d, p, a: a0 && lvl.accidentals ? a0 : 0, st: lastAdded.st || 0 };
+          const was = lastAdded;
+          if (add(ev)) { lastAdded = was; k.classList.add("down"); setTimeout(() => k.classList.remove("down"), 150); }
+          else say(TUNE.whyNot(tune, ev));
+          paint();
+          return;
+        }
         const st = staveFor(p);
         const s = TUNE.nextFree(tune, item.d, st);
         if (s < 0) { say(staves.length > 1 ? `No room left on that stave for a ${TUNE.valueFor(item.d).label} — remove a note, pick a shorter note, or Clear` : `No room left for a ${TUNE.valueFor(item.d).label} — remove a note, pick a shorter note, or Clear`); return; }
@@ -856,11 +870,13 @@ function renderInteraction(itx) {
           e.preventDefault();
         };
       });
+      const cm = $("chordMode");
+      if (cm) cm.onclick = () => { chordMode = !chordMode; cm.classList.toggle("on", chordMode); say(chordMode ? "Chord mode: each key you tap joins the last note" : "Chord mode off"); };
       $("tuneInst").onchange = () => { tune.inst = $("tuneInst").value; TUNE.ping(4, 0, tune.inst); };
       $("tunePlay").onclick = () => TUNE.play(tune, { onBeat: (k) => { active = k; paint(); } });
       $("tuneUndo").onclick = () => { if (history.length) { tune.events = history.pop(); paint(); } };
       $("tuneClear").onclick = () => { if (tune.events.length) { history.push(tune.events.slice()); tune.events = []; paint(); } };
-      $("sendBtn").onclick = () => { TUNE.stop(); if (hasNotes()) submit({ sig: tune.sig, bars: tune.bars, level: tune.level, staff: tune.staff, inst: tune.inst, unit: 16, events: tune.events.map((e) => ({ s: e.s, d: e.d, p: e.p, a: e.a || 0, st: e.st || 0 })) }); };
+      $("sendBtn").onclick = () => { TUNE.stop(); if (hasNotes()) submit({ sig: tune.sig, bars: tune.bars, level: tune.level, staff: tune.staff, chords: tune.chords, inst: tune.inst, unit: 16, events: tune.events.map((e) => ({ s: e.s, d: e.d, p: e.p, a: e.a || 0, st: e.st || 0 })) }); };
       paint();
     });
     return;
