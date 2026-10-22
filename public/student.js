@@ -761,8 +761,9 @@ function renderInteraction(itx) {
       </div>
       <div class="score-wrap" id="scoreWrap"></div>
       <p class="hint" id="scoreMsg" style="margin:0.3rem 0 0;min-height:1.2em"></p>
-      <p class="hint" style="margin:0.5rem 0 0.2rem"><b>Tap a key</b> to add that note next — or drag a note from above onto the stave to put it exactly where you want. Tap a note on the stave to remove it.</p>
-      ${keyboard}
+      ${itx.keys === false
+        ? `<p class="hint" style="margin:0.5rem 0 0.2rem">Pick a note value above, then <b>tap the stave</b> where it goes — or drag it on. Tap a note on the stave to remove it.</p>`
+        : `<p class="hint" style="margin:0.5rem 0 0.2rem"><b>Tap a key</b> to add that note next — or drag a note from above onto the stave to put it exactly where you want. Tap a note on the stave to remove it.</p>${keyboard}`}
       <div class="tune-actions">
         <button type="button" class="btn" id="tunePlay">▶ Play</button>
         <select id="tuneInst" class="tune-inst" aria-label="instrument">${Object.entries(TUNE.INSTRUMENTS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
@@ -770,7 +771,7 @@ function renderInteraction(itx) {
         <button type="button" class="btn" id="tuneClear">Clear</button>
       </div>
       <button class="btn send" id="sendBtn" disabled>Send my tune</button>`, () => {
-      const wrap = $("scoreWrap"), pal = $("nvPal"), msg = $("scoreMsg"), piano = $("piano");
+      const wrap = $("scoreWrap"), pal = $("nvPal"), msg = $("scoreMsg"), piano = $("piano") || document.createElement("div");
       const hasNotes = () => tune.events.some((e) => e.p != null);
       const paint = () => {
         wrap.innerHTML = TUNE.scoreSvg(tune, { editor: true, ghost, active });

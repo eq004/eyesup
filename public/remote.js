@@ -515,7 +515,8 @@ function openComposer(key) {
     const lvl = TUNE.levelOf(m.forceLevel);
     if (lvl.sigs.length > 1) fields += `<select class="rin" id="cSig">${lvl.sigs.map((s) => `<option value="${s}" ${s === "4/4" ? "selected" : ""}>${s} time</option>`).join("")}</select>`;
     fields += `<select class="rin" id="cBars">${lvl.bars.map((b) => `<option value="${b}" ${b === 2 ? "selected" : ""}>${b} bar${b === 1 ? "" : "s"}</option>`).join("")}</select>
-      <select class="rin" id="cStaff"><option value="treble" selected>𝄞 Treble clef</option><option value="bass">𝄢 Bass clef</option><option value="grand">𝄞 + 𝄢 Grand staff</option></select>`;
+      <select class="rin" id="cStaff"><option value="treble" selected>Staves: treble only</option><option value="bass">Staves: bass only</option><option value="grand">Staves: treble + bass</option></select>
+      <select class="rin" id="cKeys"><option value="1" selected>On-screen piano: on</option><option value="0">On-screen piano: off</option></select>`;
   }
   if (m.sprintUI) fields += `<select class="rin" id="cDur"><option value="60">⏱ 1 minute</option><option value="120">⏱ 2 minutes</option><option value="180">⏱ 3 minutes</option></select>`;
   if (m.workingUI) fields += `<input class="rin" id="cExpected" maxlength="30" placeholder="Correct answer (optional, auto-checks)" />`;
@@ -580,13 +581,14 @@ function readComposer() {
   const bars = m.tuneUI ? parseInt($("cBars").value, 10) : undefined;
   const level = m.tuneUI ? m.forceLevel : undefined;
   const staff = m.tuneUI ? $("cStaff").value : undefined;
+  const keys = m.tuneUI ? $("cKeys").value !== "0" : undefined;
   let url, linkLabel;
   if (m.linkUI) {
     url = $("cUrl").value.trim();
     linkLabel = $("cLinkLabel").value.trim() || undefined;
     if (!/\.[a-z]{2,}/i.test(url)) { toast("Paste the website address"); return null; }
   }
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys };
 }
 
 /* ---------------- PLAN tab ---------------- */

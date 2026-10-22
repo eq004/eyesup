@@ -1029,6 +1029,7 @@ function sanitizeStep(it) {
     bars: [1, 2, 4].includes(it.bars) ? it.bars : undefined,
     level: ["beginner", "standard", "advanced"].includes(it.level) ? it.level : undefined,
     staff: ["treble", "bass", "grand"].includes(it.staff) ? it.staff : undefined,
+    keys: typeof it.keys === "boolean" ? it.keys : undefined,
     sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
     url: it.mode === "link" ? cleanUrl(it.url) || undefined : undefined,
     linkLabel: it.mode === "link" && typeof it.linkLabel === "string" ? it.linkLabel.trim().slice(0, 60) || undefined : undefined,
@@ -1499,7 +1500,7 @@ function isRevealMode(mode) {
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -1587,6 +1588,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     sig: mode === "compose" ? ((TUNE_LEVELS[level] || TUNE_LEVELS.standard).sigs.includes(sig) ? sig : "4/4") : null,
     bars: mode === "compose" ? ((TUNE_LEVELS[level] || TUNE_LEVELS.standard).bars.includes(Number(bars)) ? Number(bars) : 2) : null,
     staff: mode === "compose" ? (["treble", "bass", "grand"].includes(staff) ? staff : "treble") : null,
+    keys: mode === "compose" ? keys !== false : null, // on-screen piano for students (teacher can switch it off)
     // Link step: the website students are sent to.
     link: mode === "link" && cleanUrl(url) ? { url: cleanUrl(url), label: String(linkLabel || "").trim().slice(0, 60) } : null,
     imageUrl,
@@ -2004,6 +2006,7 @@ function teacherState(session) {
           bars: itx.bars,
           level: itx.level,
           staff: itx.staff,
+          keys: itx.keys,
           timeLimit: itx.timeLimit,
           imageUrl: itx.imageUrl,
           correct: itx.correct,
@@ -2104,6 +2107,7 @@ function studentState(session, student) {
             bars: itx.bars,
             level: itx.level,
             staff: itx.staff,
+            keys: itx.keys,
             timeLimit: itx.timeLimit,
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
