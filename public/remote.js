@@ -258,7 +258,7 @@ function lineFor(itx, p) {
   if (m === "working") return `${(p.lines || []).join("; ")}${p.lines?.length ? " → " : ""}${p.answer || "—"}${itx.expected ? (markMatch(p.answer, itx.expected) ? " ✓" : " ✗") : ""}`;
   if (m === "link") return "opened the link";
   if (m === "dot_points") return (p.points || []).map((x) => `• ${x}`).join("  ");
-  if (m === "compose") return TUNE.letters(p.notes || []);
+  if (m === "compose") return TUNE.letters(p);
   if (m === "table")
     return (p.rows || []).map((row) => row.filter(Boolean).join(" | ")).join(" // ");
   if (m === "plus_minus")
@@ -406,7 +406,7 @@ function renderLiveResponses(itx) {
     out += `<h3 class="sec">Tunes — ▶ plays on the board</h3>` + itx.responses
       .map((r) => `<div class="resp-row">
         <span class="rr-who">${esc(r.name || "")}</span>
-        <span class="rr-what">${esc(TUNE.letters(r.payload.notes || []))}</span>
+        <span class="rr-what">${esc(TUNE.letters(r.payload))}</span>
         <button class="rr-tgl ${r.revealed ? "on" : ""}" data-tune-board="${r.studentId}">▶ board</button>
       </div>`)
       .join("");
@@ -507,8 +507,9 @@ function openComposer(key) {
   if (m.clozeUI) fields += `<textarea class="rin" id="cCloze" rows="5" maxlength="1500" placeholder="Paste the passage; put [brackets] around hidden words"></textarea>
     <select class="rin" id="cClozeMode"><option value="type">⌨️ Students type</option><option value="bank">🧺 Word bank</option></select>`;
   if (m.tableUI) fields += `<select class="rin" id="cRows"><option value="1">1 row of answers</option><option value="2">2 rows</option><option value="3">3 rows</option></select>`;
-  if (m.tuneUI) fields += `<select class="rin" id="cBeats"><option value="4">4 beats (one bar)</option><option value="8" selected>8 beats (two bars)</option><option value="16">16 beats (four bars)</option></select>
-    <select class="rin" id="cNotes"><option value="three">3 notes — C D E</option><option value="penta" selected>5 notes — C D E G A</option><option value="all">8 notes — C to C</option></select>`;
+  if (m.tuneUI) fields += `<select class="rin" id="cSig"><option value="4/4" selected>4/4 time</option><option value="3/4">3/4 time</option><option value="2/4">2/4 time</option></select>
+    <select class="rin" id="cBars"><option value="1">1 bar</option><option value="2" selected>2 bars</option><option value="4">4 bars</option></select>
+    <select class="rin" id="cLevel"><option value="simple">Simple — crotchets &amp; minims</option><option value="standard" selected>Standard — semibreve to quaver + rests</option><option value="full">Full — dotted notes, sharps &amp; flats</option></select>`;
   if (m.sprintUI) fields += `<select class="rin" id="cDur"><option value="60">⏱ 1 minute</option><option value="120">⏱ 2 minutes</option><option value="180">⏱ 3 minutes</option></select>`;
   if (m.workingUI) fields += `<input class="rin" id="cExpected" maxlength="30" placeholder="Correct answer (optional, auto-checks)" />`;
   if (m.imageUpload) fields += `<input class="rin" type="file" id="cImg" accept="image/*" />
@@ -568,15 +569,16 @@ function readComposer() {
   const multi = m.multiOpt ? $("cMulti").value !== "0" : undefined;
   const tableRows = m.tableUI ? parseInt($("cRows").value, 10) : undefined;
   const sprintSeconds = m.sprintUI ? parseInt($("cDur").value, 10) : undefined;
-  const beats = m.tuneUI ? parseInt($("cBeats").value, 10) : undefined;
-  const noteSet = m.tuneUI ? $("cNotes").value : undefined;
+  const sig = m.tuneUI ? $("cSig").value : undefined;
+  const bars = m.tuneUI ? parseInt($("cBars").value, 10) : undefined;
+  const level = m.tuneUI ? $("cLevel").value : undefined;
   let url, linkLabel;
   if (m.linkUI) {
     url = $("cUrl").value.trim();
     linkLabel = $("cLinkLabel").value.trim() || undefined;
     if (!/\.[a-z]{2,}/i.test(url)) { toast("Paste the website address"); return null; }
   }
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, beats, noteSet };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level };
 }
 
 /* ---------------- PLAN tab ---------------- */

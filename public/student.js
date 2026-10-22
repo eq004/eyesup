@@ -733,88 +733,111 @@ function renderInteraction(itx) {
   }
 
   /* --- dot points: a quick bulleted list, one point at a time --- */
-  /* --- make a tune: drag coloured notes onto the stave, play it, send it --- */
+  /* --- make a tune: real notation — drag a note value onto the stave, the drop point sets the pitch --- */
   if (itx.mode === "compose") {
-    const beats = itx.beats || 8;
-    const allowed = TUNE.NOTE_SETS[itx.noteSet] || TUNE.NOTE_SETS.penta;
-    const notes = Array(beats).fill(null);
-    let held = null; // palette note picked up by tap (tap a beat to place it)
+    const lvl = TUNE.LEVELS[itx.level] || TUNE.LEVELS.standard;
+    const tune = { sig: itx.sig || "4/4", bars: itx.bars || 2, events: [] };
+    let held = null;   // {d, rest} picked up by tap — the next tap on the stave places it
+    let acc = 0;       // accidental to put on the next note: 1 sharp, -1 flat, 0 none
+    let ghost = null;  // preview while dragging
+    let active = -1;   // event index being played
+    const history = [];
+    const palItem = (d, rest) => `<button type="button" class="nv ${rest ? "rest" : ""}" data-d="${d}" data-rest="${rest ? 1 : 0}" aria-label="${rest ? TUNE.valueFor(d).label + " rest" : TUNE.valueFor(d).label}">${TUNE.valueGlyph(d, rest)}<small>${rest ? "rest" : TUNE.valueFor(d).label}</small></button>`;
     show(`${h}
-      <p class="hint" style="margin-top:0">Drag a note onto the stave — or tap a note, then tap where it goes. Tap a note on the stave to take it off.</p>
-      <div class="tune-palette" id="tunePal">${allowed
-        .map((n) => `<button type="button" class="tune-chip" data-pal="${n}" style="background:${TUNE.NOTES[n].color}" aria-label="note ${TUNE.NOTES[n].name}">${TUNE.NOTES[n].name}</button>`)
-        .join("")}<button type="button" class="tune-chip rest" data-pal="rest" aria-label="rest"><span class="rest-bar"></span><small>rest</small></button></div>
-      <div class="tune-stage" id="tuneStage"></div>
+      <p class="hint" style="margin-top:0">Drag a note onto the stave — where you drop it sets the pitch. Or tap a note, then tap the stave. Tap a note on the stave to take it off.</p>
+      <div class="nv-palette" id="nvPal">
+        <div class="nv-row">${lvl.values.map((d) => palItem(d, false)).join("")}</div>
+        <div class="nv-row">${lvl.rests.map((d) => palItem(d, true)).join("")}${lvl.accidentals ? `<span class="nv-gap"></span><button type="button" class="nv acc" data-acc="1">♯<small>sharp</small></button><button type="button" class="nv acc" data-acc="-1">♭<small>flat</small></button>` : ""}</div>
+      </div>
+      <div class="score-wrap" id="scoreWrap"></div>
+      <p class="hint" id="scoreMsg" style="margin:0.3rem 0 0;min-height:1.2em"></p>
       <div class="tune-actions">
-        <button type="button" class="btn" id="tunePlay">▶ Play my tune</button>
+        <button type="button" class="btn" id="tunePlay">▶ Play</button>
+        <button type="button" class="btn" id="tuneUndo">↶ Undo</button>
         <button type="button" class="btn" id="tuneClear">Clear</button>
       </div>
       <button class="btn send" id="sendBtn" disabled>Send my tune</button>`, () => {
-      const stage = $("tuneStage"), pal = $("tunePal");
-      let active = -1;
+      const wrap = $("scoreWrap"), pal = $("nvPal"), msg = $("scoreMsg");
+      const hasNotes = () => tune.events.some((e) => e.p != null);
       const paint = () => {
-        stage.innerHTML = TUNE.staffSvg(notes, { slots: true, active });
-        $("sendBtn").disabled = !notes.some((n) => n != null);
-        $("tunePlay").disabled = !notes.some((n) => n != null);
-        pal.querySelectorAll(".tune-chip").forEach((c) => c.classList.toggle("held", held != null && String(c.dataset.pal) === String(held)));
+        wrap.innerHTML = TUNE.scoreSvg(tune, { editor: true, ghost, active });
+        $("sendBtn").disabled = !hasNotes();
+        $("tunePlay").disabled = !hasNotes();
+        $("tuneUndo").disabled = !history.length;
+        pal.querySelectorAll(".nv").forEach((b) => b.classList.toggle("held", !!held && b.dataset.d === String(held.d) && b.dataset.rest === (held.rest ? "1" : "0")));
+        pal.querySelectorAll(".nv.acc").forEach((b) => b.classList.toggle("held", +b.dataset.acc === acc));
       };
-      const put = (beat, n) => { if (beat >= 0 && beat < beats) { notes[beat] = n; if (n != null) TUNE.ping(n); paint(); } };
-      const beatAt = (clientX) => {
-        const svg = stage.querySelector("svg");
-        const slots = [...svg.querySelectorAll(".tune-slot")];
-        const hit = slots.find((r) => { const b = r.getBoundingClientRect(); return clientX >= b.left && clientX <= b.right; });
-        return hit ? +hit.dataset.beat : -1;
+      const say = (t) => { msg.textContent = t; clearTimeout(say.t); say.t = setTimeout(() => { if (msg.textContent === t) msg.textContent = ""; }, 2200); };
+      const svg = () => wrap.querySelector("svg");
+      const place = (hit, item) => {
+        const ev = { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc };
+        if (!TUNE.fits(tune, ev)) {
+          say(hit.slot < 0 || hit.slot >= TUNE.totalSlots(tune) ? "Drop it on the stave" : "No room there — that note doesn't fit in the bar");
+          return false;
+        }
+        history.push(tune.events.slice());
+        tune.events.push(ev);
+        tune.events.sort((x, y) => x.s - y.s);
+        if (ev.p != null) TUNE.ping(ev.p, ev.a);
+        return true;
       };
-      // Tap on the stave: place the held note, or lift a note off.
-      stage.onclick = (e) => {
-        const noteEl = e.target.closest(".tune-note");
-        const slot = e.target.closest(".tune-slot, .tune-rest");
-        const beat = noteEl ? +noteEl.dataset.beat : slot ? +slot.dataset.beat : -1;
-        if (beat < 0) return;
-        if (held != null) { put(beat, held === "rest" ? null : held); return; }
-        if (noteEl) put(beat, null);
+      const remove = (i) => { history.push(tune.events.slice()); tune.events.splice(i, 1); };
+
+      // Taps on the stave: place what's held, or lift a note off.
+      wrap.onclick = (e) => {
+        const sv = svg(); if (!sv) return;
+        const evEl = e.target.closest(".score-ev");
+        if (evEl && +evEl.dataset.ev >= 0) {
+          const i = +evEl.dataset.ev;
+          if (held) {
+            // Swap: lift the old note, try the held one in its place; put it back if it doesn't fit.
+            const hit = TUNE.hitTest(sv, e.clientX, e.clientY);
+            const before = tune.events.slice();
+            remove(i);
+            if (!place(hit, held)) { tune.events = before; history.pop(); }
+          } else remove(i);
+          paint();
+          return;
+        }
+        if (!held) return;
+        const hit = TUNE.hitTest(sv, e.clientX, e.clientY);
+        if (hit && hit.onStave) { place(hit, held); paint(); }
       };
-      // Palette: tap to hold, or drag straight onto a beat.
-      pal.querySelectorAll(".tune-chip").forEach((chip) => {
+
+      // Palette: tap to hold, or drag straight onto the stave.
+      pal.querySelectorAll(".nv.acc").forEach((b) => (b.onclick = () => { acc = acc === +b.dataset.acc ? 0 : +b.dataset.acc; paint(); }));
+      pal.querySelectorAll(".nv:not(.acc)").forEach((chip) => {
         chip.onpointerdown = (e) => {
-          const val = chip.dataset.pal === "rest" ? "rest" : +chip.dataset.pal;
-          const startX = e.clientX, startY = e.clientY;
-          let ghost = null, moved = false;
+          const item = { d: +chip.dataset.d, rest: chip.dataset.rest === "1" };
+          const sx = e.clientX, sy = e.clientY;
+          let moved = false, dragEl = null;
           const move = (ev) => {
-            if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
-            if (!ghost) {
-              moved = true;
-              ghost = chip.cloneNode(true);
-              ghost.className = "tune-chip ghost";
-              ghost.style.background = chip.style.background;
-              document.body.appendChild(ghost);
-            }
-            ghost.style.left = `${ev.clientX}px`;
-            ghost.style.top = `${ev.clientY}px`;
-            const b = beatAt(ev.clientX);
-            const over = ev.clientY > stage.getBoundingClientRect().top - 20 && ev.clientY < stage.getBoundingClientRect().bottom + 20;
-            if (active !== (over ? b : -1)) { active = over ? b : -1; paint(); }
+            if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+            if (!dragEl) { moved = true; dragEl = chip.cloneNode(true); dragEl.classList.add("drag-ghost"); document.body.appendChild(dragEl); }
+            dragEl.style.left = `${ev.clientX}px`; dragEl.style.top = `${ev.clientY}px`;
+            const sv = svg(); const hit = sv && TUNE.hitTest(sv, ev.clientX, ev.clientY);
+            const next = hit && hit.onStave && hit.slot >= 0 && hit.slot < TUNE.totalSlots(tune)
+              ? { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc }
+              : null;
+            if (next) next.ok = TUNE.fits(tune, next);
+            if (JSON.stringify(next) !== JSON.stringify(ghost)) { ghost = next; paint(); }
           };
           const up = (ev) => {
-            window.removeEventListener("pointermove", move);
-            window.removeEventListener("pointerup", up);
-            window.removeEventListener("pointercancel", up);
-            if (ghost) ghost.remove();
-            const b = active; active = -1;
-            if (moved) { if (b >= 0) put(b, val === "rest" ? null : val); else paint(); }
-            else { held = held === val ? null : val; if (val !== "rest" && held != null) TUNE.ping(val); paint(); }
+            window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+            if (dragEl) dragEl.remove();
+            const g = ghost; ghost = null;
+            if (moved) { if (g && g.ok) { place({ slot: g.s, step: g.p ?? 0 }, item); } else if (g) say("No room there — that note doesn't fit in the bar"); }
+            else { held = held && held.d === item.d && held.rest === item.rest ? null : item; }
+            paint();
           };
-          window.addEventListener("pointermove", move);
-          window.addEventListener("pointerup", up);
-          window.addEventListener("pointercancel", up);
+          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
           e.preventDefault();
         };
       });
-      $("tunePlay").onclick = () => {
-        TUNE.play(notes, { onBeat: (k) => { active = k; paint(); } });
-      };
-      $("tuneClear").onclick = () => { notes.fill(null); paint(); };
-      $("sendBtn").onclick = () => { TUNE.stop(); if (notes.some((n) => n != null)) submit({ notes: [...notes] }); };
+      $("tunePlay").onclick = () => TUNE.play(tune, { onBeat: (k) => { active = k; paint(); } });
+      $("tuneUndo").onclick = () => { if (history.length) { tune.events = history.pop(); paint(); } };
+      $("tuneClear").onclick = () => { if (tune.events.length) { history.push(tune.events.slice()); tune.events = []; paint(); } };
+      $("sendBtn").onclick = () => { TUNE.stop(); if (hasNotes()) submit({ sig: tune.sig, bars: tune.bars, events: tune.events.map((e) => ({ s: e.s, d: e.d, p: e.p, a: e.a || 0 })) }); };
       paint();
     });
     return;

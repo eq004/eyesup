@@ -564,7 +564,7 @@ function renderInteraction(itx) {
     body = agg.tunes.length
       ? `<div class="tune-board-actions"><button class="names-btn" id="tunePlayAll">▶ Play them all</button><span class="waiting-note" style="font-size:0.9rem;display:inline">tap a tune to put it up big and play it</span></div>
          <div class="answers">${agg.tunes
-          .map((t, i) => `<div class="answer-card tappable tune-card" data-spot="${t.sid}" data-tune-sid="${t.sid}" style="animation-delay:${(i % 6) * 0.07}s"><div class="tune-mini">${TUNE.staffSvg(t.notes, { compact: true })}</div>${nameTag(t.name)}</div>`)
+          .map((t, i) => `<div class="answer-card tappable tune-card" data-spot="${t.sid}" data-tune-sid="${t.sid}" style="animation-delay:${(i % 6) * 0.07}s"><div class="tune-mini">${TUNE.scoreSvg(t.tune, { compact: true })}</div>${nameTag(t.name)}</div>`)
           .join("")}</div>`
       : `<p class="waiting-note">Tunes appear here as they're sent in…</p>`;
   } else if (itx.mode === "dot_points") {
@@ -645,8 +645,8 @@ function renderGenericSpotlight(s, hint = "tap anywhere to go back") {
     inner = `${boardSvg(s.items, s.counterKind, "min(640px, 74vw)")}
       <div class="spot-text" style="margin-top:0.6rem">= ${esc(s.answer || "—")}${s.ok === true ? " ✓" : s.ok === false ? " ✗" : ""}</div>`;
   } else if (s.kind === "tune") {
-    inner = `<div class="tune-spot" id="tuneSpot">${TUNE.staffSvg(s.notes)}</div>
-      <button class="reveal-big tune-play-big" id="tunePlayBig" data-notes="${s.notes.map((n) => (n == null ? "r" : n)).join(",")}">▶ Play</button>`;
+    inner = `<div class="tune-spot" id="tuneSpot">${TUNE.scoreSvg(s.tune)}</div>
+      <button class="reveal-big tune-play-big" id="tunePlayBig">▶ Play</button>`;
   } else if (s.kind === "list") {
     inner = `<ul class="dp-proj big">${(s.points || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
   } else if (s.kind === "table") {
@@ -915,8 +915,7 @@ function wireTuneButtons(itx) {
   const big = $("tunePlayBig");
   if (big) big.onclick = (e) => {
     e.stopPropagation(); // don't tap the spotlight away
-    const notes = big.dataset.notes.split(",").map((x) => (x === "r" ? null : +x));
-    animateTune($("tuneSpot"), notes);
+    animateTune($("tuneSpot"), itx.aggregate?.spotlight?.tune);
   };
   const all = $("tunePlayAll");
   if (all) all.onclick = (e) => {
@@ -926,15 +925,16 @@ function wireTuneButtons(itx) {
     const next = (i) => {
       cards.forEach((c, k) => c.classList.toggle("playing", k === i));
       if (i >= tunes.length) return;
-      animateTune(cards[i].querySelector(".tune-mini"), tunes[i].notes, { compact: true, onDone: () => setTimeout(() => next(i + 1), 400) });
+      animateTune(cards[i].querySelector(".tune-mini"), tunes[i].tune, { compact: true, onDone: () => setTimeout(() => next(i + 1), 400) });
     };
     next(0);
   };
 }
-function animateTune(box, notes, { compact = false, onDone } = {}) {
-  if (!box) return TUNE.play(notes, { onDone });
-  TUNE.play(notes, {
-    onBeat: (k) => { if (box.isConnected) box.innerHTML = TUNE.staffSvg(notes, { compact, active: k }); },
+function animateTune(box, tune, { compact = false, onDone } = {}) {
+  if (!tune) return;
+  if (!box) return TUNE.play(tune, { onDone });
+  TUNE.play(tune, {
+    onBeat: (k) => { if (box.isConnected) box.innerHTML = TUNE.scoreSvg(tune, { compact, active: k }); },
     onDone,
   });
 }
@@ -943,7 +943,7 @@ function playTuneOnBoard(studentId) {
   const t = (itx?.aggregate?.tunes || []).find((x) => x.sid === studentId) || (itx?.aggregate?.spotlight?.sid === studentId ? itx.aggregate.spotlight : null);
   if (!t) return;
   // The state that spotlights this tune arrives just before; give the DOM a beat to catch up.
-  setTimeout(() => animateTune($("tuneSpot") || stage.querySelector(`.tune-card[data-tune-sid="${studentId}"] .tune-mini`), t.notes, { compact: !$("tuneSpot") }), 120);
+  setTimeout(() => animateTune($("tuneSpot") || stage.querySelector(`.tune-card[data-tune-sid="${studentId}"] .tune-mini`), t.tune, { compact: !$("tuneSpot") }), 120);
 }
 
 function nameTag(name) {
