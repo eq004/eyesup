@@ -795,7 +795,8 @@ function renderInteraction(itx) {
       };
       const place = (hit, item) => {
         const ev = { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc, st: hit.st || 0 };
-        if (!add(ev)) { say(TUNE.whyNot(tune, ev)); return false; }
+        const settled = TUNE.settle(tune, ev);
+        if (!settled || !add(settled)) { say(TUNE.whyNot(tune, ev)); return false; }
         return true;
       };
       const remove = (i) => { history.push(tune.events.slice()); tune.events.splice(i, 1); };
@@ -837,10 +838,10 @@ function renderInteraction(itx) {
             if (!dragEl) { moved = true; dragEl = chip.cloneNode(true); dragEl.classList.add("drag-ghost"); document.body.appendChild(dragEl); }
             dragEl.style.left = `${ev.clientX}px`; dragEl.style.top = `${ev.clientY}px`;
             const sv = svg(); const hit = sv && TUNE.hitTest(sv, ev.clientX, ev.clientY, tune.level, item.d);
-            const next = hit && hit.onStave && hit.slot >= 0 && hit.slot < TUNE.totalSlots(tune)
+            let next = hit && hit.onStave && hit.slot >= 0 && hit.slot < TUNE.totalSlots(tune)
               ? { s: hit.slot, d: item.d, p: item.rest ? null : hit.step, a: item.rest ? 0 : acc, st: hit.st }
               : null;
-            if (next) next.ok = TUNE.fits(tune, next);
+            if (next) { const settled = TUNE.settle(tune, next); if (settled) next = { ...settled, ok: true }; else next.ok = false; }
             if (JSON.stringify(next) !== JSON.stringify(ghost)) { ghost = next; paint(); }
           };
           const up = (ev) => {

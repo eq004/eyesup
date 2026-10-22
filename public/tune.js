@@ -324,6 +324,21 @@
     return !tune.events.some((e) => (e.st || 0) === (ev.st || 0) && ev.s < e.s + e.d && e.s < ev.s + ev.d);
   }
 
+  // Where a dropped note settles: the spot under the finger if it fits, otherwise the nearest
+  // earlier start in the same bar that does (a semibreve dropped mid-bar fills the bar). null = nowhere.
+  function settle(tune, ev) {
+    if (fits(tune, ev)) return ev;
+    const spb = slotsPerBar(tune.sig), slots = totalSlots(tune);
+    if (ev.s < 0 || ev.s >= slots) return null;
+    const barStart = Math.floor(ev.s / spb) * spb;
+    const snap = ev.d >= 4 ? 4 : ev.d === 3 ? 1 : ev.d;
+    for (let s = ev.s - snap; s >= barStart; s -= snap) {
+      const cand = { ...ev, s };
+      if (fits(tune, cand)) return cand; // the latest free gap in this bar that holds it
+    }
+    return null;
+  }
+
   // Plain-English reason a note won't go where it was dropped.
   function whyNot(tune, ev) {
     const spb = slotsPerBar(tune.sig), slots = totalSlots(tune);
@@ -345,5 +360,5 @@
     return -1;
   }
   const STEP_SEMIS = SEMIS;
-  window.TUNE = { VALUES, LEVELS, levelOf, rangeFor, stavesOf, BPM, INSTRUMENTS, setInstrument, valueFor, slotsPerBar, totalSlots, normalize, letters, pitchName, play, stop, ping, scoreSvg, valueGlyph, hitTest, fits, whyNot, nextFree, unlock: audio, STEP_NAMES, STEP_SEMIS };
+  window.TUNE = { VALUES, LEVELS, levelOf, rangeFor, stavesOf, BPM, INSTRUMENTS, setInstrument, valueFor, slotsPerBar, totalSlots, normalize, letters, pitchName, play, stop, ping, scoreSvg, valueGlyph, hitTest, fits, settle, whyNot, nextFree, unlock: audio, STEP_NAMES, STEP_SEMIS };
 })();
