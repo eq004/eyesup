@@ -161,6 +161,9 @@
   const SP = 8; // one pitch step (half a stave space)
   const LINE = SP * 2;
   const STEM = 52;
+  const MUSIC_FONT = "'Noto Music','Bravura Text',serif";
+  const EM = 4 * LINE; // music font size: one em spans the five lines
+  const glyph = (ch, x, y, size = EM, extra = "") => `<text x="${x}" y="${y}" font-size="${size}" font-family="${MUSIC_FONT}" fill="currentColor" ${extra}>${ch}</text>`;
   const STAVE_GAP = 128; // treble bottom line to bass bottom line on a grand staff
   const yOn = (p, base, bottom) => base - (p - bottom) * SP;
   const stepOn = (y, base, bottom, range) => Math.max(range[0], Math.min(range[1], Math.round((base - y) / SP + bottom)));
@@ -169,14 +172,12 @@
     const k = up ? 1 : -1; // a filled crescent curling away from the stem tip
     return `<path d="M${sx} ${sy} C ${sx + 1} ${sy + 11 * k}, ${sx + 13} ${sy + 13 * k}, ${sx + 10} ${sy + 30 * k} C ${sx + 11} ${sy + 19 * k}, ${sx + 5} ${sy + 15 * k}, ${sx} ${sy + 10 * k} Z" fill="currentColor"/>`;
   }
+  // Rests from the music font. Whole and half rests sit one space higher than the font draws them
+  // (hanging from the 4th line / sitting on the middle line, as engraved).
   function restGlyph(d, x, base) {
-    const mid = base - 2 * LINE; // middle line
-    if (d >= 16) return `<rect x="${x - 7}" y="${mid - LINE}" width="14" height="${SP - 1}" rx="1" fill="currentColor"/>`;
-    if (d >= 8) return `<rect x="${x - 7}" y="${mid - SP + 1}" width="14" height="${SP - 1}" rx="1" fill="currentColor"/>`;
-    if (d >= 4) return `<path d="M${x - 3} ${mid - 14} l6 7 l-5 6 l6 8 c-5 -3 -8 0 -5 6 c-4 -3 -5 -8 -1 -11 l-5 -7 z" fill="currentColor"/>`;
-    const hook = (cy) => `<circle cx="${x - 5}" cy="${cy}" r="2.4" fill="currentColor"/><path d="M${x + 4} ${cy - 1} c-3 4 -7 4 -9 1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
-    if (d >= 2) return `<path d="M${x + 4} ${mid - 8} l-5 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>${hook(mid - 7)}`;
-    return `<path d="M${x + 5} ${mid - 10} l-7 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>${hook(mid - 9)}${hook(mid - 1)}`;
+    const ch = d >= 16 ? "𝄻" : d >= 8 ? "𝄼" : d >= 4 ? "𝄽" : d >= 2 ? "𝄾" : "𝄿";
+    const wide = d >= 8;
+    return glyph(ch, x - (wide ? 0.34 : d >= 2 && d < 4 ? 0.12 : 0.16) * EM, wide ? base - LINE : base, EM);
   }
 
   // Runs of quavers/semiquavers on one stave that share a beat get a beam instead of flags.
@@ -204,7 +205,7 @@
     const staves = stavesOf(tune.staff);
     const spb = slotsPerBar(tune.sig), slots = totalSlots(tune);
     const col = opts.compact ? 8 : 12; // per semiquaver
-    const left = 76, right = 18;
+    const left = 90, right = 18;
     const w = left + slots * col + right;
     const base0 = 100;
     staves.forEach((sv, i) => { sv.base = base0 + i * STAVE_GAP; sv.top = sv.base - 4 * LINE; });
@@ -213,13 +214,12 @@
     const out = [];
     const [num, den] = sigParts(tune.sig);
     for (const sv of staves) {
-      for (let k = 0; k < 5; k++) out.push(`<line x1="${left - 60}" y1="${sv.base - k * LINE}" x2="${w - right + 4}" y2="${sv.base - k * LINE}" stroke="currentColor" stroke-width="1.3"/>`);
-      out.push(sv.clef === "bass"
-        ? `<text x="${left - 58}" y="${sv.base - LINE - 1}" font-size="46" font-family="'Noto Music','Bravura Text','Apple Symbols',serif" fill="currentColor">𝄢</text>`
-        : `<text x="${left - 62}" y="${sv.base + 10}" font-size="62" font-family="'Noto Music','Bravura Text','Apple Symbols',serif" fill="currentColor">𝄞</text>`);
-      out.push(`<text x="${left - 18}" y="${sv.base - LINE * 2 - 2}" font-size="22" font-weight="800" text-anchor="middle" fill="currentColor" font-family="serif">${num}</text><text x="${left - 18}" y="${sv.base - 1}" font-size="22" font-weight="800" text-anchor="middle" fill="currentColor" font-family="serif">${den}</text>`);
+      for (let k = 0; k < 5; k++) out.push(`<line x1="${left - 78}" y1="${sv.base - k * LINE}" x2="${w - right + 4}" y2="${sv.base - k * LINE}" stroke="currentColor" stroke-width="1.3"/>`);
+      // clef: baseline on the bottom line, one em tall — the treble curls round the G line, the bass dots sit either side of the F line
+      out.push(glyph(sv.clef === "bass" ? "𝄢" : "𝄞", left - 76, sv.base, EM));
+      out.push(`<text x="${left - 20}" y="${sv.base - LINE * 2 - 1}" font-size="30" font-weight="800" text-anchor="middle" fill="currentColor" font-family="'Noto Music',serif">${num}</text><text x="${left - 20}" y="${sv.base - 1}" font-size="30" font-weight="800" text-anchor="middle" fill="currentColor" font-family="'Noto Music',serif">${den}</text>`);
     }
-    if (staves.length > 1) out.push(`<line x1="${left - 60}" y1="${firstTop}" x2="${left - 60}" y2="${lastBase}" stroke="currentColor" stroke-width="1.6"/><path d="M${left - 66} ${firstTop} q -8 ${(lastBase - firstTop) / 4} 0 ${(lastBase - firstTop) / 2} q -8 ${(lastBase - firstTop) / 4} 0 ${(lastBase - firstTop) / 2}" fill="none" stroke="currentColor" stroke-width="2.4"/>`);
+    if (staves.length > 1) out.push(`<line x1="${left - 78}" y1="${firstTop}" x2="${left - 78}" y2="${lastBase}" stroke="currentColor" stroke-width="1.6"/><path d="M${left - 84} ${firstTop} q -8 ${(lastBase - firstTop) / 4} 0 ${(lastBase - firstTop) / 2} q -8 ${(lastBase - firstTop) / 4} 0 ${(lastBase - firstTop) / 2}" fill="none" stroke="currentColor" stroke-width="2.4"/>`);
     for (let b = 1; b < tune.bars; b++) out.push(`<line x1="${left + b * spb * col}" y1="${firstTop}" x2="${left + b * spb * col}" y2="${lastBase}" stroke="currentColor" stroke-width="1.3"/>`);
     out.push(`<line x1="${w - right}" y1="${firstTop}" x2="${w - right}" y2="${lastBase}" stroke="currentColor" stroke-width="1.3"/><line x1="${w - right + 4}" y1="${firstTop}" x2="${w - right + 4}" y2="${lastBase}" stroke="currentColor" stroke-width="3.5"/>`);
     if (opts.editor) {
@@ -265,7 +265,7 @@
       const y = yOn(e.p, sv.base, sv.bottom);
       for (let k = sv.bottom - 2; k >= e.p; k -= 2) g += `<line x1="${x - 12}" y1="${yOn(k, sv.base, sv.bottom)}" x2="${x + 12}" y2="${yOn(k, sv.base, sv.bottom)}" stroke="currentColor" stroke-width="1.4"/>`;
       for (let k = sv.bottom + 10; k <= e.p; k += 2) g += `<line x1="${x - 12}" y1="${yOn(k, sv.base, sv.bottom)}" x2="${x + 12}" y2="${yOn(k, sv.base, sv.bottom)}" stroke="currentColor" stroke-width="1.4"/>`;
-      if (e.a) g += `<text x="${x - 11}" y="${y + 5}" text-anchor="end" font-size="16" font-weight="700" fill="currentColor">${e.a === 1 ? "♯" : "♭"}</text>`;
+      if (e.a) g += e.a === 1 ? glyph("♯", x - 26, y + 0.135 * EM, EM) : glyph("♭", x - 24, y, EM);
       const bm = ghost ? null : beamed.get(i);
       const up = bm ? bm.up : e.p < sv.mid;
       if (v.stem) {
@@ -289,7 +289,7 @@
   // A palette picture of one note value or rest.
   function valueGlyph(d, rest) {
     const x = 20;
-    if (rest) return `<svg viewBox="0 0 44 56" width="34" height="44">${restGlyph(d, x, 60)}</svg>`;
+    if (rest) return `<svg viewBox="0 0 44 56" width="34" height="44">${restGlyph(d, 22, d >= 8 ? 50 : 54)}</svg>`;
     const v = valueFor(d), y = 36;
     let g = "";
     if (v.stem) g += `<line x1="${x + 7.5}" y1="${y - 2}" x2="${x + 7.5}" y2="${y - 32}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`;
