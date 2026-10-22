@@ -27,6 +27,7 @@
     { d: 1, label: "semiquaver", hollow: false, stem: true, flags: 2 },
   ];
   const valueFor = (d) => VALUES.find((v) => v.d === d) || VALUES[4];
+  const beatsText = (d) => { const b = d / 4; const t = b === 0.25 ? "¼" : b === 0.5 ? "½" : b === 0.75 ? "¾" : b === 1.5 ? "1½" : String(b); return `${t} beat${b === 1 ? "" : "s"}`; };
 
   // What each level puts in the student's hands.
   const LEVELS = {
@@ -265,7 +266,7 @@
       const y = yOn(e.p, sv.base, sv.bottom);
       for (let k = sv.bottom - 2; k >= e.p; k -= 2) g += `<line x1="${x - 12}" y1="${yOn(k, sv.base, sv.bottom)}" x2="${x + 12}" y2="${yOn(k, sv.base, sv.bottom)}" stroke="currentColor" stroke-width="1.4"/>`;
       for (let k = sv.bottom + 10; k <= e.p; k += 2) g += `<line x1="${x - 12}" y1="${yOn(k, sv.base, sv.bottom)}" x2="${x + 12}" y2="${yOn(k, sv.base, sv.bottom)}" stroke="currentColor" stroke-width="1.4"/>`;
-      if (e.a) g += e.a === 1 ? glyph("♯", x - 26, y + 0.135 * EM, EM) : glyph("♭", x - 24, y, EM);
+      if (e.a) g += e.a === 1 ? glyph("♯", x - 23, y + 0.135 * EM * 0.78, EM * 0.78) : glyph("♭", x - 21, y, EM * 0.78);
       const bm = ghost ? null : beamed.get(i);
       const up = bm ? bm.up : e.p < sv.mid;
       if (v.stem) {
@@ -346,7 +347,12 @@
     if (ev.s < 0 || ev.s >= slots) return "Drop it on the stave";
     const barEnd = (Math.floor(ev.s / spb) + 1) * spb;
     const clash = tune.events.find((e) => (e.st || 0) === (ev.st || 0) && ev.s < e.s + e.d && e.s < ev.s + ev.d);
-    if (clash && clash.s <= ev.s) return "There's already a note there — tap it to remove it first";
+    if (clash && clash.s <= ev.s) {
+      const what = clash.p == null ? `${valueFor(clash.d).label} rest` : valueFor(clash.d).label;
+      return clash.d >= spb
+        ? `That bar is already full — the ${what} takes all ${spb / 4} beats. Tap it to remove it.`
+        : `There's already a ${what} there — tap it to remove it first`;
+    }
     const room = (clash ? clash.s : barEnd) - ev.s;
     const beats = (n) => { const b = n / 4; return `${b % 1 ? b.toFixed(1) : b} beat${b === 1 ? "" : "s"}`; };
     if (room <= 0) return "That bar is full";
@@ -360,5 +366,5 @@
     return -1;
   }
   const STEP_SEMIS = SEMIS;
-  window.TUNE = { VALUES, LEVELS, levelOf, rangeFor, stavesOf, BPM, INSTRUMENTS, setInstrument, valueFor, slotsPerBar, totalSlots, normalize, letters, pitchName, play, stop, ping, scoreSvg, valueGlyph, hitTest, fits, settle, whyNot, nextFree, unlock: audio, STEP_NAMES, STEP_SEMIS };
+  window.TUNE = { VALUES, LEVELS, levelOf, rangeFor, stavesOf, BPM, INSTRUMENTS, setInstrument, valueFor, slotsPerBar, totalSlots, normalize, letters, pitchName, play, stop, ping, scoreSvg, valueGlyph, hitTest, fits, settle, whyNot, nextFree, beatsText, unlock: audio, STEP_NAMES, STEP_SEMIS };
 })();

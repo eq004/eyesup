@@ -745,7 +745,7 @@ function renderInteraction(itx) {
     let ghost = null; // preview while dragging onto the stave
     let active = -1;  // event being played
     const history = [];
-    const palItem = (d, rest) => `<button type="button" class="nv ${rest ? "rest" : ""}" data-d="${d}" data-rest="${rest ? 1 : 0}" aria-label="${rest ? TUNE.valueFor(d).label + " rest" : TUNE.valueFor(d).label}">${TUNE.valueGlyph(d, rest)}<small>${rest ? "rest" : TUNE.valueFor(d).label}</small></button>`;
+    const palItem = (d, rest) => `<button type="button" class="nv ${rest ? "rest" : ""}" data-d="${d}" data-rest="${rest ? 1 : 0}" aria-label="${rest ? TUNE.valueFor(d).label + " rest" : TUNE.valueFor(d).label}">${TUNE.valueGlyph(d, rest)}<small>${rest ? "rest" : TUNE.valueFor(d).label}</small><small class="nv-beats">${TUNE.beatsText(d)}</small></button>`;
     // A small piano across the level's range: white keys for naturals, black keys (sharps) when the level allows them.
     const lo = Math.min(...staves.map((sv) => TUNE.rangeFor(tune.level, sv.st)[0])), hi = Math.max(...staves.map((sv) => TUNE.rangeFor(tune.level, sv.st)[1]));
     const keys = [];
