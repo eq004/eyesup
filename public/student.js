@@ -1646,7 +1646,8 @@ function renderJoin(forceFullForm) {
       style="margin-top:1.2rem;text-transform:uppercase;text-align:center;letter-spacing:0.35em;font-weight:800;font-size:1.4rem" />
     <input type="text" id="nameInput" placeholder="First name" maxlength="24" value="${forceFullForm ? "" : esc(savedName)}" style="margin-top:0.6rem;text-align:center" />
     <button class="btn send" id="joinBtn">Join</button>
-    <p class="hint">No account. No downloads. You're just here to think.</p>`, () => {
+    <p class="hint">No account. No downloads. You're just here to think.</p>
+    <p style="text-align:center;margin-top:1.2rem">Eyes Up <a class="by-peakyou" href="https://peakyou.com.au" target="_blank" rel="noopener">by <b>PeakYou</b></a></p>`, () => {
     const code = $("codeInput"), name = $("nameInput");
     (preset ? name : code).focus();
     const go = () => doJoin(code.value.trim().toUpperCase(), name.value.trim());

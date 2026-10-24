@@ -847,7 +847,8 @@ function renderMore() {
 
     <h3 class="sec">Account</h3>
     <div class="status"><div class="q">${name ? `Signed in as ${esc(name)}` : creds().token ? "Signed in" : "Local mode (no account)"}</div></div>
-    ${creds().token ? `<button class="rbtn" id="inviteBtn">➕ Invite a colleague (copy link)</button><button class="rbtn warn" id="signOut">↪ Sign out</button>` : ""}`;
+    ${creds().token ? `<button class="rbtn" id="inviteBtn">➕ Invite a colleague (copy link)</button><button class="rbtn warn" id="signOut">↪ Sign out</button>` : ""}
+    <p class="on-navy" style="text-align:center;margin:1.4rem 0 0.4rem">Eyes Up <a class="by-peakyou" href="https://peakyou.com.au" target="_blank" rel="noopener">by <b>PeakYou</b></a></p>`;
   const ib = $("inviteBtn");
   if (ib) ib.onclick = async () => {
     try {

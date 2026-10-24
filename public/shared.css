@@ -84,6 +84,13 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 .wordmark .logo-eyes { height: 1.05em; width: auto; flex: 0 0 auto; display: block; }
 .wordmark .logo-text { font-size: 1.15em; line-height: 1; padding-bottom: 0.08em; }
 .wordmark.inverted, .on-navy .wordmark { color: #f4f2ea; --eyeball: var(--navy); }
+/* Maker's mark: small, quiet, everywhere a page ends or a sign-in starts. */
+.by-peakyou { font-family: var(--font-ui); font-size: 0.74rem; font-weight: 600; color: var(--muted); text-decoration: none; letter-spacing: 0.01em; }
+.by-peakyou b { font-weight: 800; }
+.by-peakyou:hover { text-decoration: underline; }
+.on-navy .by-peakyou { color: var(--navy-text); }
+.made-with { text-align: center; font-size: 0.74rem; color: var(--muted); margin: 2rem 0 1rem; }
+.made-with a { color: inherit; font-weight: 800; text-decoration: none; }
 .wordmark .logo-sub { font-family: var(--font-ui); font-weight: 600; font-size: 0.72em; color: var(--navy-text); margin-left: 0.25em; letter-spacing: 0; }
 
 @keyframes pop-in {
