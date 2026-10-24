@@ -230,7 +230,8 @@ async function teacherFromToken(token) {
       `SELECT ${TEACHER_COLS} FROM teachers WHERE id = $1`, [id]
     );
     if (!rows[0] || rows[0].status === "disabled") return null; // a switched-off account is signed out everywhere
-    return token === signToken(rows[0].id, rows[0].pass_hash) ? rows[0] : null;
+    const expected = Buffer.from(signToken(rows[0].id, rows[0].pass_hash)), given = Buffer.from(token);
+    return expected.length === given.length && crypto.timingSafeEqual(expected, given) ? rows[0] : null;
   } catch (e) {
     // Distinct from a bad token: callers must not treat an outage as
     // "signed out" (the dashboard would throw the token away).
@@ -264,7 +265,7 @@ async function adminHttp(res, token) {
 // Tiny in-memory rate limit for the public sign-in / sign-up doors.
 const hits = new Map(); // key -> [timestamps]
 function limited(req, res, bucket, max, windowMs) {
-  const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+  const ip = String(req.ip || req.socket.remoteAddress || "");
   const key = `${bucket}:${ip}`;
   const now = Date.now();
   const list = (hits.get(key) || []).filter((ts) => now - ts < windowMs);
@@ -344,6 +345,16 @@ function persistSession(session) {
   }, 4000);
 }
 const app = express();
+app.set("trust proxy", 1); // Render sits directly in front; req.ip is then the real client
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("X-Frame-Options", "SAMEORIGIN");
+  res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=(), payment=()");
+  if (req.secure || req.headers["x-forwarded-proto"] === "https") res.set("Strict-Transport-Security", "max-age=15552000");
+  next();
+});
 const smallJson = express.json({ limit: "16kb" });
 const planJson = express.json({ limit: "12mb" }); // saved lessons can include pictures
 // Stripe signs the exact bytes it sends, so its webhook must stay unparsed.
@@ -1379,7 +1390,19 @@ app.get("/api/images/:code/:itx?", async (req, res) => {
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/ws" });
+const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 20 * 1024 * 1024 }); // six print-size photos fit; anything bigger is dropped
+// A room code is four letters — stop a bot from joining rooms by the hundred.
+const wsHits = new Map();
+function wsLimited(ws, bucket, max, windowMs) {
+  const key = `${bucket}:${ws.ip || "?"}`;
+  const now = Date.now();
+  const list = (wsHits.get(key) || []).filter((ts) => now - ts < windowMs);
+  list.push(now);
+  wsHits.set(key, list);
+  if (wsHits.size > 5000) for (const [k, v] of wsHits) if (!v.some((ts) => now - ts < 3600000)) wsHits.delete(k);
+  return list.length > max;
+}
+const MAX_RESP_IMAGE_BYTES = 120 * 1024 * 1024; // per room, across all students
 
 /* ------------------------------------------------------------------ */
 /* Session model                                                      */
@@ -2376,7 +2399,9 @@ function buildSummary(session, { withImages = false } = {}) {
 
 let nextStudentId = 1;
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, req) => {
+  // Behind Render the client address is the last hop in X-Forwarded-For.
+  ws.ip = String(req.headers["x-forwarded-for"] || "").split(",").pop().trim() || req.socket.remoteAddress || "";
   ws.isAlive = true;
   ws.on("pong", () => (ws.isAlive = true));
 
@@ -2428,6 +2453,7 @@ async function handle(ws, msg) {
   /* ---- connection / identity ---- */
 
   if (type === "teacher_create") {
+    if (wsLimited(ws, "create", 30, 600000)) return safeSend(ws, { type: "error", error: "slow_down" });
     const auth = await authTeacher(msg);
     if (!auth.ok) return safeSend(ws, { type: "error", error: auth.error });
     if (auth.teacher) {
@@ -2474,6 +2500,7 @@ async function handle(ws, msg) {
   }
 
   if (type === "student_join") {
+    if (wsLimited(ws, "join", 40, 600000)) return safeSend(ws, { type: "error", error: "slow_down" });
     const session = sessions.get(String(msg.code || "").toUpperCase());
     if (!session || session.phase === "ended")
       return safeSend(ws, { type: "error", error: "no_session" });
@@ -2513,6 +2540,10 @@ async function handle(ws, msg) {
       // screen; park the bytes here and send everyone links instead.
       const prefix = `${itx.id}/${student.id}/`;
       for (const key of [...session.respImages.keys()]) if (key.startsWith(prefix)) session.respImages.delete(key);
+      // Keep one room from eating the server's memory with photos.
+      let held = 0;
+      for (const v of session.respImages.values()) held += v.length;
+      if (held + payload.images.reduce((a, u) => a + u.length, 0) > MAX_RESP_IMAGE_BYTES) return safeSend(ws, { type: "error", error: "room_full_of_images" });
       const v = Date.now();
       payload.images = payload.images.map((dataUrl, k) => {
         session.respImages.set(prefix + k, dataUrl);
