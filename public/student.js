@@ -62,6 +62,20 @@ let workLines = []; // working-out: completed calculation lines
 let workCur = ""; // working-out: line being typed
 let counterItems = []; // counters: {k, x, y} pieces on the board (percent coords)
 
+// Students' own spelling stands: no autocorrect, no auto-capitals, no spell-check underlines
+// on anything they type (applies to every box, including ones drawn later).
+function noAutocorrect(root) {
+  root.querySelectorAll("input, textarea, [contenteditable]").forEach((el) => {
+    if (el.type === "file" || el.type === "checkbox" || el.type === "radio" || el.type === "range") return;
+    el.setAttribute("spellcheck", "false");
+    el.setAttribute("autocorrect", "off");
+    el.setAttribute("autocapitalize", "off");
+    if (!el.hasAttribute("autocomplete")) el.setAttribute("autocomplete", "off");
+  });
+}
+noAutocorrect(document);
+new MutationObserver(() => noAutocorrect(document)).observe(document.documentElement, { childList: true, subtree: true });
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
