@@ -94,6 +94,18 @@ const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
   TEXT_MODES.has(m) || STRUCTURED.has(m) || ["question_set", "sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "dot_points", "plus_minus", "compose"].includes(m);
 
+// No autocorrect, auto-capitals or spell-check on anything typed here (covers boxes drawn later too).
+function noAutocorrect(root) {
+  root.querySelectorAll("input, textarea, [contenteditable]").forEach((el) => {
+    if (["file", "checkbox", "radio", "range", "password", "date", "number"].includes(el.type)) return;
+    el.setAttribute("spellcheck", "false");
+    el.setAttribute("autocorrect", "off");
+    el.setAttribute("autocapitalize", "off");
+  });
+}
+noAutocorrect(document);
+new MutationObserver(() => noAutocorrect(document)).observe(document.documentElement, { childList: true, subtree: true });
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }

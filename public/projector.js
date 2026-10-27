@@ -57,6 +57,18 @@ function phonCat(p) {
 
 const CLOUD_COLORS = ["#e6edf7", "#a3bde4", "#8fd6a9", "#edc27a", "#e0a7f0", "#7fd0d4", "#eef3fa", "#c2d0e6"];
 
+// No autocorrect, auto-capitals or spell-check on anything typed here (covers boxes drawn later too).
+function noAutocorrect(root) {
+  root.querySelectorAll("input, textarea, [contenteditable]").forEach((el) => {
+    if (["file", "checkbox", "radio", "range", "password", "date", "number"].includes(el.type)) return;
+    el.setAttribute("spellcheck", "false");
+    el.setAttribute("autocorrect", "off");
+    el.setAttribute("autocapitalize", "off");
+  });
+}
+noAutocorrect(document);
+new MutationObserver(() => noAutocorrect(document)).observe(document.documentElement, { childList: true, subtree: true });
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
