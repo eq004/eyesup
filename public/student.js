@@ -155,7 +155,7 @@ function render(force) {
   }
 
   if (!itx) {
-    if (state.phase === "slide") {
+    if (state.phase === "slide" || state.phase === "deck") {
       return show(`
         <div class="big-emoji">📽</div>
         <div class="state-title">Eyes on the board</div>

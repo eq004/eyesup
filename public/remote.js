@@ -18,6 +18,7 @@ let userSummaryWanted = false;
 
 const MODES = {
   slide:         { icon: "📽", name: "Slide" },
+  deck:          { icon: "🎞", name: "Live slides" },
   multi_choice:  { icon: "🅰️", name: "Multi Choice", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true },
   tick_boxes:    { icon: "☑️", name: "Tick the Boxes", opts: { min: 2, max: 10, labels: "Box" } },
   poll:          { icon: "📊", name: "Poll", opts: { min: 2, max: 5, labels: "Option" } },
@@ -324,6 +325,10 @@ function renderLive() {
           ${itx.resultsVisible ? "" : `<span>🙈 board hidden</span>`}
         </div>
       </div>`;
+  } else if (state.phase === "deck" && state.deck) {
+    status = `<div class="status"><div class="mode">🎞 Live slides on the board${inPlan ? ` · step ${state.seqIndex + 1} of ${seq.length}` : ""}</div>
+      <div class="q">${esc(state.deck.title || "Your slides")}</div>
+      <div class="meta"><span>Use your clicker (or click the board) to move through the slides</span></div></div>`;
   } else if (state.phase === "slide" && state.slide) {
     const sl = state.slide;
     status = `<div class="status"><div class="mode">📽 Slide ${sl.page} of ${sl.pages}${inPlan ? ` · step ${state.seqIndex + 1} of ${seq.length}` : ""}</div>
@@ -336,7 +341,7 @@ function renderLive() {
 
   // --- the one button for this moment
   const nextBtn = nextStep
-    ? `<button class="rbtn primary-act" data-act="next">▶ ${state.seqIndex < 0 ? "Start the lesson" : nextStep.mode === "slide" ? `Next slide (${nextStep.page} of ${nextStep.pages})` : `Next: step ${nextI + 1} of ${seq.length}`}<small>${nextStep.mode === "slide" ? esc(cut(nextStep.prompt || "", 44)) : `${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(cut(nextStep.prompt, 44)) : ""}`}</small></button>`
+    ? `<button class="rbtn primary-act" data-act="next">▶ ${state.seqIndex < 0 ? "Start the lesson" : nextStep.mode === "slide" ? `Next slide (${nextStep.page} of ${nextStep.pages})` : nextStep.mode === "deck" ? "Back to the live slides" : `Next: step ${nextI + 1} of ${seq.length}`}<small>${nextStep.mode === "slide" ? esc(cut(nextStep.prompt || "", 44)) : `${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(cut(nextStep.prompt, 44)) : ""}`}</small></button>`
     : `<button class="rbtn primary-act" data-goto="launch">🚀 Ask something<small>pick an activity</small></button>`;
   let primary, primaryAct = null;
   if (!itx) primary = nextBtn;
@@ -357,7 +362,7 @@ function renderLive() {
   }
 
   const planNav = inPlan ? `<div class="step-nav" style="margin-top:0.5rem">
-      <button class="rbtn" data-act="${state.phase === "slide" ? "seq_prev" : "seq_back"}" ${state.seqIndex < 0 ? "disabled" : ""}>◀ ${state.phase === "slide" ? "Previous" : "Back"}</button>
+      <button class="rbtn" data-act="${state.phase === "slide" || seq.some((st) => st.mode === "deck") ? "seq_prev" : "seq_back"}" ${state.seqIndex < 0 ? "disabled" : ""}>◀ ${state.phase === "slide" ? "Previous" : seq.some((st) => st.mode === "deck") && state.phase !== "deck" ? "Back to slides" : "Back"}</button>
       <button class="rbtn" data-act="seq_skip" ${nextStep ? "" : "disabled"}>Skip ⏭</button>
       <button class="rbtn warn" id="stopLive" ${itx ? "" : "disabled"}>⏹ Stop step</button>
     </div>` : "";

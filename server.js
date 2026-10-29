@@ -553,6 +553,13 @@ app.post("/api/login", async (req, res) => {
 /* My account · owner admin · subscriptions                           */
 /* ------------------------------------------------------------------ */
 
+// Checks a pasted deck link and turns it into the player link the board will use.
+app.post("/api/deck-check", (req, res) => {
+  const d = deckEmbed(req.body?.url);
+  if (!d) return res.status(400).json({ error: "bad_deck_link" });
+  res.json(d);
+});
+
 /* ---- slides: a teacher's PowerPoint / Google Slides, imported as one picture per slide ---- */
 
 app.post("/api/decks", async (req, res) => {
@@ -1088,8 +1095,40 @@ const STEP_MODES = new Set([
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
   "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "annotate", "image_drop",
-  "image_caption", "image_long", "slide",
+  "image_caption", "image_long", "slide", "deck",
 ]);
+
+// Live slides: the teacher's own deck, played by Google's / Microsoft's / Canva's player on the board.
+// Only these players are allowed on the classroom screen. Returns {provider, url} or null.
+function deckEmbed(raw) {
+  let s = String(raw || "").trim().slice(0, 2000);
+  const tag = s.match(/<iframe[^>]+src=["']([^"']+)["']/i); // pasted embed code → its link
+  if (tag) s = tag[1];
+  s = s.replace(/&amp;/g, "&");
+  let u;
+  try { u = new URL(s); } catch { return null; }
+  if (u.protocol !== "https:") return null;
+  const h = u.hostname.toLowerCase();
+  if (h === "docs.google.com") {
+    const g = u.pathname.match(/^\/presentation\/d\/(e\/[\w-]+|[\w-]{20,})/);
+    return g ? { provider: "google", url: `https://docs.google.com/presentation/d/${g[1]}/embed?start=false&loop=false&delayms=3000` } : null;
+  }
+  if (h === "onedrive.live.com") {
+    if (!u.searchParams.get("resid") && !u.searchParams.get("cid")) return null;
+    u.pathname = "/embed";
+    if (!u.searchParams.get("em")) u.searchParams.set("em", "2");
+    return { provider: "microsoft", url: u.href };
+  }
+  if (/^[a-z0-9-]+(-my)?\.sharepoint\.com$/.test(h)) {
+    u.searchParams.set("action", "embedview");
+    return { provider: "microsoft", url: u.href };
+  }
+  if (h === "www.canva.com" || h === "canva.com") {
+    const c = u.pathname.match(/^\/design\/([\w-]+)\/([\w-]+)\//);
+    return c ? { provider: "canva", url: `https://www.canva.com/design/${c[1]}/${c[2]}/view?embed` } : null;
+  }
+  return null;
+}
 
 // A link students will be sent to: web addresses only, never javascript: and friends.
 function cleanUrl(u) {
@@ -1108,6 +1147,11 @@ function cleanUrl(u) {
 
 function sanitizeStep(it) {
   if (!it || typeof it !== "object" || !STEP_MODES.has(String(it.mode))) return null;
+  if (it.mode === "deck") {
+    const d = deckEmbed(it.url);
+    if (!d) return null;
+    return { mode: "deck", url: d.url, provider: d.provider, prompt: String(it.prompt || "").slice(0, 120) };
+  }
   if (it.mode === "slide") {
     // A slide just points at a stored picture; access is checked when it is shown.
     const n = (v) => (Number.isInteger(v) && v > 0 ? v : null);
@@ -2091,6 +2135,7 @@ function teacherState(session) {
     favs: session.favs || [],
     phase: session.phase,
     slide: session.phase === "slide" ? session.slide : null,
+    deck: session.phase === "deck" ? session.deck : null,
     timer: session.timer,
     focus: session.focus,
     showJoin: session.showJoin,
@@ -2160,6 +2205,10 @@ function projectorState(session) {
     joinHost: `${lanAddress()}:${PORT}`,
     phase: session.phase,
     slide: session.phase === "slide" ? session.slide : null,
+    deck: session.phase === "deck" ? session.deck : null,
+    // every live deck in this lesson, so the board can load them before they're needed (and keep them loaded)
+    lessonDecks: [...new Set((session.sequence || []).filter((st) => st.mode === "deck").map((st) => st.url))].slice(0, 4),
+    nextStepLabel: (() => { const st = session.sequence?.[session.seqIndex + 1]; return st ? (st.mode === "slide" ? `slide ${st.page}` : st.mode === "deck" ? "live slides" : st.mode) : null; })(),
     nextSlideImg: session.sequence?.[session.seqIndex + 1]?.mode === "slide" ? session.sequence[session.seqIndex + 1].img : null,
     timer: session.timer,
     focus: session.focus,
@@ -2841,8 +2890,12 @@ async function handle(ws, msg) {
     case "seq_prev": {
       // Clicker "back", like PowerPoint: show the previous slide, stepping over any activities in
       // between (they don't re-run). With no earlier slide it just steps back one.
-      let j = session.seqIndex - 1;
-      while (j >= 0 && session.sequence[j].mode !== "slide") j--;
+      const isBoard = (st) => st && (st.mode === "slide" || st.mode === "deck");
+      const cur = session.sequence[session.seqIndex];
+      const showingCur = (session.phase === "slide" && cur?.mode === "slide" && session.slide?.img === cur.img) || (session.phase === "deck" && cur?.mode === "deck");
+      // An activity launched on the spot during slides: "back" returns to those slides, as they were.
+      let j = isBoard(cur) && !showingCur ? session.seqIndex : session.seqIndex - 1;
+      while (j >= 0 && !isBoard(session.sequence[j])) j--;
       if (j >= 0) {
         session.seqIndex = j;
         session.skipped = session.skipped.filter((k) => k < j);
@@ -3043,6 +3096,18 @@ async function handle(ws, msg) {
 
 // A lesson step: a slide goes up on the board, anything else is launched as an activity.
 function runStep(session, step) {
+  if (step.mode === "deck") {
+    if (session.interaction) {
+      session.interaction.open = false;
+      session.history.push(session.interaction);
+      session.interaction = null;
+    }
+    session.focus = null;
+    session.slide = null;
+    session.deck = { url: step.url, provider: step.provider, title: step.prompt || "" };
+    session.phase = "deck";
+    return;
+  }
   if (step.mode !== "slide") return startInteraction(session, step);
   if (session.interaction) {
     session.interaction.open = false;
@@ -3055,7 +3120,7 @@ function runStep(session, step) {
 }
 
 function startInteraction(session, spec) {
-  session.slide = null;
+  session.slide = null; // a live deck stays loaded underneath (session.deck) so it resumes where it was
   if (session.interaction) session.history.push(session.interaction);
   const itx = newInteraction(session, spec);
   session.interaction = itx;

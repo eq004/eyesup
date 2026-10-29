@@ -126,6 +126,7 @@ function renderInner() {
 
   updateJoinBadge();
   updateToolsDock();
+  syncDecks();
 
   if (state.phase === "ended") {
     stage.innerHTML = bigState("🙌", "Great thinking today", "Recap complete.");
@@ -164,6 +165,12 @@ function renderInner() {
         </div>`
         )
         .join("")}</div>`;
+    return;
+  }
+
+  // Live slides: the deck plays in its own layer above the stage (see syncDecks).
+  if (state.phase === "deck" && state.deck && !state.focus && !state.showJoin) {
+    stage.innerHTML = "";
     return;
   }
 
@@ -1272,6 +1279,63 @@ document.addEventListener("keydown", (e) => {
   if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
   const fwd = ["ArrowRight", "ArrowDown", "PageDown", " ", "n", "N"];
   const back = ["ArrowLeft", "ArrowUp", "PageUp", "p", "P"];
+  if (state.phase === "deck" && deckShowing && (fwd.includes(e.key) || back.includes(e.key))) {
+    // The key landed on Eyes Up, not the slides: hand focus back to the deck rather than skipping ahead.
+    e.preventDefault();
+    deckFrames.get(deckShowing)?.focus();
+    deckHint("Slides selected — press again to move the slides");
+    return;
+  }
   if (fwd.includes(e.key)) { e.preventDefault(); send({ type: "next" }); }
   else if (back.includes(e.key)) { e.preventDefault(); send({ type: "seq_prev" }); }
 });
+
+
+/* Live slides: a teacher's real deck (Google Slides / PowerPoint Online / Canva player). Each deck gets
+   one frame that lives for the whole lesson — hidden, never reloaded — so after an activity the deck
+   is exactly where it was, animations and all. */
+const deckLayer = document.createElement("div");
+deckLayer.id = "deckLayer";
+deckLayer.innerHTML = `<button class="deck-next" id="deckNext" hidden></button><div class="deck-hint" id="deckHint" hidden></div>`;
+document.body.appendChild(deckLayer);
+const deckFrames = new Map(); // url -> iframe
+let deckShowing = null;
+function deckFrame(url) {
+  let f = deckFrames.get(url);
+  if (!f) {
+    if (deckFrames.size >= 4) return null;
+    f = document.createElement("iframe");
+    f.src = url;
+    f.title = "Live slides";
+    f.allow = "autoplay; fullscreen; encrypted-media; clipboard-write";
+    f.setAttribute("allowfullscreen", "");
+    f.referrerPolicy = "strict-origin-when-cross-origin";
+    deckLayer.appendChild(f);
+    deckFrames.set(url, f);
+  }
+  return f;
+}
+function deckHint(text) {
+  const h = document.getElementById("deckHint");
+  h.textContent = text;
+  h.hidden = false;
+  clearTimeout(deckHint.t);
+  deckHint.t = setTimeout(() => (h.hidden = true), 2200);
+}
+function syncDecks() {
+  if (!state) return;
+  (state.lessonDecks || []).forEach(deckFrame); // load ahead, so the deck is ready when the teacher gets to it
+  const showUrl = state.phase === "deck" && state.deck && !state.focus && !state.showJoin ? state.deck.url : null;
+  if (showUrl) deckFrame(showUrl);
+  const bar = document.querySelector(".bar");
+  deckLayer.style.top = `${bar ? bar.offsetHeight : 0}px`;
+  deckLayer.classList.toggle("on", !!showUrl);
+  for (const [url, f] of deckFrames) f.classList.toggle("on", url === showUrl);
+  const nb = document.getElementById("deckNext");
+  const label = state.nextStepLabel;
+  nb.hidden = !showUrl || !label;
+  if (label) nb.textContent = `Next: ${label === "live slides" ? "more slides" : label.startsWith("slide ") ? label : MODE_TAGS[label] || label} ▶`;
+  nb.onclick = () => send({ type: "next" });
+  if (showUrl && deckShowing !== showUrl) setTimeout(() => deckFrames.get(showUrl)?.focus(), 60); // clicker works straight away
+  deckShowing = showUrl;
+}

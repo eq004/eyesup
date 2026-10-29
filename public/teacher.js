@@ -2,6 +2,7 @@
 
 const MODES = {
   slide:         { icon: "📽", name: "Slide", hint: "A slide from your PowerPoint or Google Slides", opts: null },
+  deck:          { icon: "🎞", name: "Live slides", hint: "Your real Google Slides / PowerPoint / Canva deck, animations and all", opts: null },
   /* fast votes */
   multi_choice:  { icon: "🅰️", name: "Multiple Choice", hint: "Quiz question — reveal the answer after voting", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true },
   tick_boxes:    { icon: "☑️", name: "Tick the Boxes", hint: "Students tick every box that applies — the board keeps a tally", opts: { min: 2, max: 10, labels: "Box" } },
@@ -751,6 +752,22 @@ function renderLive() {
   const area = $("liveArea");
   const itx = state.interaction;
   $("liveSub").textContent = "";
+
+  if (!itx && state.phase === "deck" && state.deck) {
+    const seq = state.sequence || [];
+    const nextSt = seq[state.seqIndex + 1];
+    area.innerHTML = `<div class="live-empty">
+      <p class="big">🎞 Your live slides are on the board${state.deck.title ? ` — ${esc(state.deck.title)}` : ""}</p>
+      <p>Move through them with your clicker, the arrow keys, or by clicking the slides on the classroom screen — animations and videos play as normal.</p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center;margin-top:0.8rem">
+        <button class="btn" data-act="seq_prev">◀ Previous step</button>
+        <button class="btn primary" data-act="next" ${nextSt ? "" : "disabled"}>${nextSt ? `Next: ${esc(stepTag(nextSt))} ▶` : "End of lesson"}</button>
+      </div>
+      <p style="color:var(--muted);font-size:0.8rem;margin-top:0.7rem">Launch any activity whenever you like — when you come back, the slides are exactly where you left them.</p>
+    </div>`;
+    area.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => send({ type: b.dataset.act })));
+    return;
+  }
 
   if (!itx && state.phase === "slide" && state.slide) {
     const sl = state.slide;
@@ -1949,6 +1966,7 @@ async function openEditor(id, isNew) {
 
 function stepDetail(st) {
   const bits = [];
+  if (st.mode === "deck") return `<span>${{ google: "Google Slides", microsoft: "PowerPoint Online", canva: "Canva" }[st.provider] || "Slides"} · plays with animations · picks up where you left off</span>`;
   if (st.mode === "slide") return `<img class="slide-thumb" src="/api/slide/${st.img}?${authQuery()}" alt="slide ${st.page}" loading="lazy" /> <span>Slide ${st.page} of ${st.pages}</span>`;
   if (st.image) bits.push(`<img src="${st.image}" alt="" />`);
   if (st.mode === "match_up" && st.options) bits.push(st.options.map((o) => esc(o).replace(" = ", " ↔ ")).join(" · "));
@@ -1979,13 +1997,13 @@ function renderEditor(flashIndex) {
           <span class="step-num">${i + 1}</span>
           <div class="step-body">
             <div class="step-type">${stepTag(st)}</div>
-            <div class="step-q ${st.prompt || st.mode === "slide" ? "" : "aloud"}">${st.prompt ? esc(st.prompt) : st.mode === "slide" ? "" : "You'll ask this one aloud"}</div>
+            <div class="step-q ${st.prompt || st.mode === "slide" || st.mode === "deck" ? "" : "aloud"}">${st.prompt ? esc(st.prompt) : st.mode === "slide" || st.mode === "deck" ? "" : "You'll ask this one aloud"}</div>
             ${stepDetail(st) ? `<div class="step-extra">${stepDetail(st)}</div>` : ""}
           </div>
           <div class="step-actions">
             <button class="btn" data-up="${i}" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
             <button class="btn" data-down="${i}" title="Move down" ${i === steps.length - 1 ? "disabled" : ""}>↓</button>
-            ${st.mode === "slide" ? "" : `<button class="btn" data-edit-step="${i}">✎ Edit</button>`}
+            ${st.mode === "slide" || st.mode === "deck" ? "" : `<button class="btn" data-edit-step="${i}">✎ Edit</button>`}
             <button class="btn" data-dup-step="${i}" title="Duplicate this step">⧉</button>
             <button class="btn danger-ghost" data-del-step="${i}" title="Delete this step">🗑</button>
           </div>
@@ -1996,6 +2014,7 @@ function renderEditor(flashIndex) {
       <button class="btn primary big" id="addActivityBtn">＋ Add an activity</button>
       <button class="btn" id="pasteQuizPlanBtn">📋 Paste a quiz</button>
       <button class="btn" id="addSlidesBtn" title="PowerPoint: File → Save as → PDF. Google Slides: File → Download → PDF.">📽 Add slides (PDF)</button>
+      <button class="btn" id="addDeckBtn" title="Play your real Google Slides, PowerPoint Online or Canva deck — animations and videos included">🎞 Add live slides (link)</button>
       <input type="file" id="slidesFile" accept="application/pdf,image/png,image/jpeg" multiple hidden />
     </div>
     <p class="editor-help" style="margin-top:0.4rem;font-size:0.8rem">📽 <b>Using PowerPoint or Google Slides?</b> Save your slides as a PDF (PowerPoint: File → Save As → PDF · Google Slides: File → Download → PDF) and add it here. Each slide becomes a step — drag activities in between them.</p>
@@ -2012,6 +2031,7 @@ function renderEditor(flashIndex) {
   $("addActivityBtn").onclick = () => openActivityPicker({ kind: "plan-add" });
   $("pasteQuizPlanBtn").onclick = () => $("pasteQuizBtn").click();
   $("addSlidesBtn").onclick = () => $("slidesFile").click();
+  $("addDeckBtn").onclick = () => openDeckSheet();
   $("slidesFile").onchange = (e) => { const files = [...e.target.files]; e.target.value = ""; if (files.length) importSlides(files); };
   $("teachThisBtn").onclick = async () => { const id = editing.id; await leaveEditor(); teachPlan(id); };
   $("deletePlanBtn").onclick = async () => {
@@ -2203,6 +2223,51 @@ $("activityBack").onclick = () => {
 $("activityClose").onclick = () => closeComposer();
 $("activityOverlay").onclick = (e) => { if (e.target === $("activityOverlay")) closeComposer(); };
 if ($("closeComposer")) $("closeComposer").onclick = closeComposer;
+
+/* ---------------- live slides: paste a deck link ---------------- */
+
+function openDeckSheet() {
+  if (!editing) return;
+  const wrap = document.createElement("div");
+  wrap.className = "overlay show";
+  wrap.innerHTML = `<div class="sheet" style="max-width:560px">
+    <h2 style="font-family:var(--font-display)">🎞 Add live slides</h2>
+    <p style="color:var(--ink-soft);margin-top:0.3rem">Your real deck plays on the classroom screen — animations, transitions and videos included. Launch activities whenever you like; the slides wait exactly where you left them.</p>
+    <details class="deck-how" open><summary><b>Google Slides</b></summary><p>Share → General access: <b>Anyone with the link</b> → <b>Copy link</b>. Paste it below.</p></details>
+    <details class="deck-how"><summary><b>PowerPoint</b></summary><p>Open the deck in <b>PowerPoint for the web</b> (OneDrive) → File → Share → <b>Embed</b> → copy the embed code. Paste it below. (Your school account may need to allow embedding.)</p></details>
+    <details class="deck-how"><summary><b>Canva</b></summary><p>Share → <b>Embed</b> → copy the smart embed link. Paste it below.</p></details>
+    <textarea id="deckLink" rows="3" placeholder="Paste the link or embed code here" style="width:100%;margin-top:0.8rem;border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font:inherit;font-size:0.9rem"></textarea>
+    <input id="deckName" maxlength="80" placeholder="Name (optional), e.g. Fractions slides" style="width:100%;margin-top:0.5rem;border:1.5px solid var(--line);border-radius:10px;padding:0.6rem 0.9rem;font:inherit" />
+    <p id="deckErr" style="color:var(--red);font-size:0.85rem;margin-top:0.5rem;display:none"></p>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.9rem">
+      <button class="btn" id="deckCancel">Cancel</button>
+      <button class="btn primary" id="deckAdd">Add to lesson</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const close = () => wrap.remove();
+  wrap.onclick = (e) => { if (e.target === wrap) close(); };
+  wrap.querySelector("#deckCancel").onclick = close;
+  wrap.querySelector("#deckLink").focus();
+  wrap.querySelector("#deckAdd").onclick = async () => {
+    const err = wrap.querySelector("#deckErr");
+    try {
+      const r = await fetch("/api/deck-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: wrap.querySelector("#deckLink").value }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      const name = wrap.querySelector("#deckName").value.trim() || { google: "Google Slides", microsoft: "PowerPoint", canva: "Canva slides" }[d.provider];
+      const at = editing.steps.length;
+      editing.steps.push({ mode: "deck", url: d.url, provider: d.provider, prompt: name });
+      scheduleSave();
+      renderEditor(at);
+      close();
+      toast("🎞 Live slides added — drag them where you want them");
+    } catch {
+      err.textContent = "That link isn't one Eyes Up can play. Use a Google Slides share link, a PowerPoint “Embed” code from PowerPoint for the web, or a Canva embed link.";
+      err.style.display = "block";
+    }
+  };
+}
 
 /* ---------------- slides: PDF (or slide pictures) → one step per slide ---------------- */
 
@@ -2424,7 +2489,7 @@ function renderLessonStrip() {
         <div class="ls-next-type">${stepTag(nextSt)}</div>
         <div class="ls-next-q ${nextSt.prompt ? "" : "aloud"}">${nextSt.prompt ? esc(nextSt.prompt) : "Ask this one aloud"}</div>
       </div>
-      <button class="btn primary big" data-strip="next">${idx < 0 ? "▶ Start the lesson" : nextSt.mode === "slide" ? `▶ Show slide ${nextSt.page}` : `▶ Launch step ${upcoming + 1}`}</button>
+      <button class="btn primary big" data-strip="next">${idx < 0 ? "▶ Start the lesson" : nextSt.mode === "slide" ? `▶ Show slide ${nextSt.page}` : nextSt.mode === "deck" ? "▶ Show live slides" : `▶ Launch step ${upcoming + 1}`}</button>
       ${nav}`;
   } else {
     nextBlock = `
