@@ -106,6 +106,23 @@ if (process.env.DATABASE_URL) {
     `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS teacher_name text`,
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS favs text`,
     `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS share_key text`,
+    // Slides imported from PowerPoint / Google Slides (as a PDF): one picture per slide.
+    `CREATE TABLE IF NOT EXISTS slide_decks (
+      id serial PRIMARY KEY,
+      teacher_id int NOT NULL,
+      title text NOT NULL DEFAULT '',
+      pages int NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS slide_images (
+      id serial PRIMARY KEY,
+      deck_id int NOT NULL,
+      page int NOT NULL,
+      mime text NOT NULL,
+      data bytea NOT NULL,
+      UNIQUE (deck_id, page)
+    )`,
+    `CREATE INDEX IF NOT EXISTS slide_images_deck ON slide_images (deck_id)`,
     // Accounts as a business: an owner, a status, and a plan.
     //   plan: free (complimentary, no end) · trial · paid (own subscription) · school (covered by a licence)
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS email text`,
@@ -358,7 +375,7 @@ app.use((req, res, next) => {
 const smallJson = express.json({ limit: "16kb" });
 const planJson = express.json({ limit: "12mb" }); // saved lessons can include pictures
 // Stripe signs the exact bytes it sends, so its webhook must stay unparsed.
-app.use((req, res, next) => (req.path === "/api/stripe/webhook" ? next() : (req.path.startsWith("/api/plans") ? planJson : smallJson)(req, res, next)));
+app.use((req, res, next) => (req.path === "/api/stripe/webhook" ? next() : (req.path.startsWith("/api/plans") || req.path.startsWith("/api/decks") ? planJson : smallJson)(req, res, next)));
 app.use(express.static(path.join(__dirname, "public")));
 
 // Friendly routes
@@ -535,6 +552,73 @@ app.post("/api/login", async (req, res) => {
 /* ------------------------------------------------------------------ */
 /* My account · owner admin · subscriptions                           */
 /* ------------------------------------------------------------------ */
+
+/* ---- slides: a teacher's PowerPoint / Google Slides, imported as one picture per slide ---- */
+
+app.post("/api/decks", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  const pages = parseInt(req.body?.pages, 10);
+  if (!Number.isInteger(pages) || pages < 1 || pages > 120) return res.status(400).json({ error: "bad_pages" });
+  try {
+    const { rows } = await db.query(`INSERT INTO slide_decks (teacher_id, title, pages) VALUES ($1, $2, $3) RETURNING id`, [t.id, String(req.body?.title || "Slides").slice(0, 80), pages]);
+    res.json({ id: rows[0].id });
+  } catch (e) {
+    console.error("deck create failed:", e.message);
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+app.post("/api/decks/:id/slides", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  const page = parseInt(req.body?.page, 10);
+  const m = String(req.body?.image || "").match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!m || !Number.isInteger(page) || page < 1 || page > 120) return res.status(400).json({ error: "bad_slide" });
+  if (m[2].length > 4_000_000) return res.status(413).json({ error: "too_big" });
+  try {
+    const own = await db.query(`SELECT id FROM slide_decks WHERE id = $1 AND teacher_id = $2`, [req.params.id, t.id]);
+    if (!own.rows[0]) return res.status(404).json({ error: "not_found" });
+    const { rows } = await db.query(
+      `INSERT INTO slide_images (deck_id, page, mime, data) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (deck_id, page) DO UPDATE SET mime = $3, data = $4 RETURNING id`,
+      [own.rows[0].id, page, m[1], Buffer.from(m[2], "base64")]
+    );
+    res.json({ img: rows[0].id });
+  } catch (e) {
+    console.error("slide upload failed:", e.message);
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+// A slide picture: for its owner (signed in), or for the screens of a class that owner is running.
+app.get("/api/slide/:img", async (req, res) => {
+  if (!db) return res.status(404).end();
+  try {
+    const { rows } = await db.query(
+      `SELECT i.mime, i.data, d.teacher_id FROM slide_images i JOIN slide_decks d ON d.id = i.deck_id WHERE i.id = $1`,
+      [parseInt(req.params.img, 10) || 0]
+    );
+    const r = rows[0];
+    if (!r) return res.status(404).end();
+    let allowed = false;
+    if (req.query.code) {
+      const s = sessions.get(String(req.query.code).toUpperCase());
+      allowed = !!s && s.phase !== "ended" && s.teacherId === r.teacher_id;
+    }
+    if (!allowed && req.query.t) {
+      const t = await teacherFromToken(String(req.query.t)).catch(() => null);
+      allowed = !!t && t.id === r.teacher_id;
+    }
+    if (!allowed) return res.status(403).end();
+    res.set("Cache-Control", "private, max-age=86400");
+    res.type(r.mime).send(r.data);
+  } catch {
+    res.status(500).end();
+  }
+});
 
 // The phone remote asks: "is my class running right now?" — one tap instead of typing a code.
 app.get("/api/my-session", async (req, res) => {
@@ -996,7 +1080,7 @@ app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
 
 /* ---- saved lessons (plan ahead, teach again and again) ---- */
 
-const MAX_STEPS = 40;
+const MAX_STEPS = 150; // slides count as steps, so decks need room
 const STEP_MODES = new Set([
   "multi_choice", "poll", "tick_boxes", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley",
   "scale", "example_nonexample", "word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze", "short_answer",
@@ -1004,7 +1088,7 @@ const STEP_MODES = new Set([
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
   "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "annotate", "image_drop",
-  "image_caption", "image_long",
+  "image_caption", "image_long", "slide",
 ]);
 
 // A link students will be sent to: web addresses only, never javascript: and friends.
@@ -1024,6 +1108,12 @@ function cleanUrl(u) {
 
 function sanitizeStep(it) {
   if (!it || typeof it !== "object" || !STEP_MODES.has(String(it.mode))) return null;
+  if (it.mode === "slide") {
+    // A slide just points at a stored picture; access is checked when it is shown.
+    const n = (v) => (Number.isInteger(v) && v > 0 ? v : null);
+    if (!n(it.img) || !n(it.deck)) return null;
+    return { mode: "slide", img: it.img, deck: it.deck, page: n(it.page) || 1, pages: n(it.pages) || 1, prompt: String(it.prompt || "").slice(0, 120) };
+  }
   return {
     mode: String(it.mode),
     prompt: String(it.prompt || "").slice(0, 300),
@@ -2000,6 +2090,7 @@ function teacherState(session) {
     teacherName: session.teacherName || null,
     favs: session.favs || [],
     phase: session.phase,
+    slide: session.phase === "slide" ? session.slide : null,
     timer: session.timer,
     focus: session.focus,
     showJoin: session.showJoin,
@@ -2068,6 +2159,8 @@ function projectorState(session) {
     title: session.title,
     joinHost: `${lanAddress()}:${PORT}`,
     phase: session.phase,
+    slide: session.phase === "slide" ? session.slide : null,
+    nextSlideImg: session.sequence?.[session.seqIndex + 1]?.mode === "slide" ? session.sequence[session.seqIndex + 1].img : null,
     timer: session.timer,
     focus: session.focus,
     showJoin: session.showJoin,
@@ -2577,7 +2670,7 @@ async function handle(ws, msg) {
   /* ---- teacher actions ---- */
 
   // Room tools a teacher can also drive from the board's corner dock.
-  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "show_results", "hide_results", "reveal_random", "clear_peek"]);
+  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "show_results", "hide_results", "reveal_random", "clear_peek", "next", "seq_prev"]);
   if (ws.meta.role !== "teacher" && !(ws.meta.role === "projector" && BOARD_ACTIONS.has(type))) {
     // The projector often runs on an interactive whiteboard: allow
     // tap-to-spotlight and the corner tools straight from the board — and only those.
@@ -2711,6 +2804,7 @@ async function handle(ws, msg) {
         session.history.push(session.interaction);
         session.interaction = null;
       }
+      session.slide = null;
       session.phase = "eyesup";
       break;
     }
@@ -2739,8 +2833,23 @@ async function handle(ws, msg) {
       if (session.seqIndex + 1 < session.sequence.length) {
         session.seqIndex += 1;
         session.skipped = session.skipped.filter((k) => k !== session.seqIndex);
-        startInteraction(session, session.sequence[session.seqIndex]);
+        runStep(session, session.sequence[session.seqIndex]);
         markPlanTaught(session);
+      }
+      break;
+    }
+    case "seq_prev": {
+      // Clicker "back", like PowerPoint: show the previous slide, stepping over any activities in
+      // between (they don't re-run). With no earlier slide it just steps back one.
+      let j = session.seqIndex - 1;
+      while (j >= 0 && session.sequence[j].mode !== "slide") j--;
+      if (j >= 0) {
+        session.seqIndex = j;
+        session.skipped = session.skipped.filter((k) => k < j);
+        runStep(session, session.sequence[j]);
+      } else if (session.seqIndex >= 0) {
+        session.skipped = session.skipped.filter((k) => k !== session.seqIndex);
+        session.seqIndex -= 1;
       }
       break;
     }
@@ -2749,7 +2858,7 @@ async function handle(ws, msg) {
       if (Number.isInteger(i) && i >= 0 && i < session.sequence.length) {
         session.seqIndex = i;
         session.skipped = session.skipped.filter((k) => k !== i);
-        startInteraction(session, session.sequence[i]);
+        runStep(session, session.sequence[i]);
         markPlanTaught(session);
       }
       break;
@@ -2932,7 +3041,21 @@ async function handle(ws, msg) {
   broadcast(session);
 }
 
+// A lesson step: a slide goes up on the board, anything else is launched as an activity.
+function runStep(session, step) {
+  if (step.mode !== "slide") return startInteraction(session, step);
+  if (session.interaction) {
+    session.interaction.open = false;
+    session.history.push(session.interaction);
+    session.interaction = null;
+  }
+  session.focus = null;
+  session.slide = { img: step.img, deck: step.deck, page: step.page, pages: step.pages, title: step.prompt || "" };
+  session.phase = "slide";
+}
+
 function startInteraction(session, spec) {
+  session.slide = null;
   if (session.interaction) session.history.push(session.interaction);
   const itx = newInteraction(session, spec);
   session.interaction = itx;

@@ -155,6 +155,12 @@ function render(force) {
   }
 
   if (!itx) {
+    if (state.phase === "slide") {
+      return show(`
+        <div class="big-emoji">📽</div>
+        <div class="state-title">Eyes on the board</div>
+        <p class="state-sub">Your teacher is showing a slide. This screen will light up when it's your turn.</p>`);
+    }
     if (state.phase === "eyesup") {
       return show(`
         <div class="big-emoji">👀</div>

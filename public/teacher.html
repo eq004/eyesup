@@ -203,6 +203,11 @@
   .step-q.aloud { color: var(--muted); font-style: italic; font-weight: 600; }
   .step-extra { color: var(--ink-soft); font-size: 0.85rem; margin-top: 0.3rem; overflow-wrap: anywhere; }
   .step-extra img { max-height: 60px; border-radius: 6px; border: 1px solid var(--line); vertical-align: middle; }
+  .step-extra img.slide-thumb { max-height: 84px; margin-right: 0.4rem; box-shadow: 0 1px 3px rgba(14,36,69,0.12); }
+  .live-slide { display: flex; gap: 1.2rem; align-items: center; flex-wrap: wrap; padding: 0.4rem 0; }
+  .live-slide img { width: min(420px, 100%); border-radius: 10px; border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .live-slide .big { font-size: 1.15rem; font-weight: 800; }
+  .slide-progress { position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); z-index: 80; background: var(--navy); color: #fff; padding: 0.8rem 1.3rem; border-radius: 999px; font-weight: 700; box-shadow: var(--shadow-lift); }
   .step-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; justify-content: flex-end; }
   .step-actions .btn { padding: 0.38rem 0.62rem; font-size: 0.84rem; }
   .steps-empty { border: 2px dashed var(--line); border-radius: var(--radius); padding: 2rem; text-align: center; color: var(--ink-soft); background: var(--surface); }

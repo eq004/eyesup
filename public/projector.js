@@ -167,6 +167,18 @@ function renderInner() {
     return;
   }
 
+  // A slide from the teacher's deck fills the board.
+  if (state.phase === "slide" && state.slide) {
+    const sl = state.slide;
+    const src = `/api/slide/${sl.img}?code=${encodeURIComponent(state.code)}`;
+    const cur = document.getElementById("slideImg");
+    if (cur && cur.dataset.img === String(sl.img)) return; // already showing — don't flash
+    stage.innerHTML = `<div class="slide-stage"><img id="slideImg" data-img="${sl.img}" src="${src}" alt="slide ${sl.page} of ${sl.pages}" />
+      <div class="slide-count">${sl.page} / ${sl.pages}</div></div>`;
+    if (state.nextSlideImg) new Image().src = `/api/slide/${state.nextSlideImg}?code=${encodeURIComponent(state.code)}`; // next one ready before the click
+    return;
+  }
+
   if (state.phase === "eyesup" || (!itx && state.phase !== "lobby")) {
     stage.innerHTML = bigState("👀", "Eyes up", "Back to the room. Let's talk about it.");
     return;
@@ -1252,3 +1264,14 @@ function renderCodeEntry(failed) {
 
 if (!code) renderCodeEntry(false);
 connect();
+
+
+/* Presenter clicker / keyboard: the same keys PowerPoint uses move through the lesson. */
+document.addEventListener("keydown", (e) => {
+  if (!state || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
+  const fwd = ["ArrowRight", "ArrowDown", "PageDown", " ", "n", "N"];
+  const back = ["ArrowLeft", "ArrowUp", "PageUp", "p", "P"];
+  if (fwd.includes(e.key)) { e.preventDefault(); send({ type: "next" }); }
+  else if (back.includes(e.key)) { e.preventDefault(); send({ type: "seq_prev" }); }
+});

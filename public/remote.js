@@ -17,6 +17,7 @@ let userSummaryWanted = false;
 /* ---------------- mode config (mirrors the dashboard) ---------------- */
 
 const MODES = {
+  slide:         { icon: "📽", name: "Slide" },
   multi_choice:  { icon: "🅰️", name: "Multi Choice", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true },
   tick_boxes:    { icon: "☑️", name: "Tick the Boxes", opts: { min: 2, max: 10, labels: "Box" } },
   poll:          { icon: "📊", name: "Poll", opts: { min: 2, max: 5, labels: "Option" } },
@@ -323,6 +324,11 @@ function renderLive() {
           ${itx.resultsVisible ? "" : `<span>🙈 board hidden</span>`}
         </div>
       </div>`;
+  } else if (state.phase === "slide" && state.slide) {
+    const sl = state.slide;
+    status = `<div class="status"><div class="mode">📽 Slide ${sl.page} of ${sl.pages}${inPlan ? ` · step ${state.seqIndex + 1} of ${seq.length}` : ""}</div>
+      <img src="/api/slide/${sl.img}?${authQuery()}" alt="slide ${sl.page}" style="width:100%;border-radius:10px;margin-top:0.5rem;background:#fff" />
+      ${sl.title ? `<div class="meta"><span>${esc(sl.title)}</span></div>` : ""}</div>`;
   } else {
     status = `<div class="status"><div class="q">${state.phase === "eyesup" ? "👀 Eyes up — the room is talking" : "🎤 Nothing on the board"}</div>
       ${n ? `<div class="meta"><span>${n} student${n === 1 ? "" : "s"} in</span></div>` : `<div class="meta"><span>Waiting for students to join · code <b>${esc(state.code)}</b></span></div>`}</div>`;
@@ -330,7 +336,7 @@ function renderLive() {
 
   // --- the one button for this moment
   const nextBtn = nextStep
-    ? `<button class="rbtn primary-act" data-act="next">▶ ${state.seqIndex < 0 ? "Start the lesson" : `Next: step ${nextI + 1} of ${seq.length}`}<small>${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(cut(nextStep.prompt, 44)) : ""}</small></button>`
+    ? `<button class="rbtn primary-act" data-act="next">▶ ${state.seqIndex < 0 ? "Start the lesson" : nextStep.mode === "slide" ? `Next slide (${nextStep.page} of ${nextStep.pages})` : `Next: step ${nextI + 1} of ${seq.length}`}<small>${nextStep.mode === "slide" ? esc(cut(nextStep.prompt || "", 44)) : `${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " — " + esc(cut(nextStep.prompt, 44)) : ""}`}</small></button>`
     : `<button class="rbtn primary-act" data-goto="launch">🚀 Ask something<small>pick an activity</small></button>`;
   let primary, primaryAct = null;
   if (!itx) primary = nextBtn;
@@ -351,7 +357,7 @@ function renderLive() {
   }
 
   const planNav = inPlan ? `<div class="step-nav" style="margin-top:0.5rem">
-      <button class="rbtn" data-act="seq_back" ${state.seqIndex < 0 ? "disabled" : ""}>◀ Back</button>
+      <button class="rbtn" data-act="${state.phase === "slide" ? "seq_prev" : "seq_back"}" ${state.seqIndex < 0 ? "disabled" : ""}>◀ ${state.phase === "slide" ? "Previous" : "Back"}</button>
       <button class="rbtn" data-act="seq_skip" ${nextStep ? "" : "disabled"}>Skip ⏭</button>
       <button class="rbtn warn" id="stopLive" ${itx ? "" : "disabled"}>⏹ Stop step</button>
     </div>` : "";
@@ -664,7 +670,7 @@ function renderPlan() {
         return `
         <div class="seq-item ${wasSkipped ? "skipped" : i < idx ? "done" : ""} ${i === idx ? "current" : ""}">
           <span class="sq-n">${wasSkipped ? "⏭" : i < idx ? "✓" : i + 1}</span>
-          <span class="sq-t" title="${esc(st.prompt || "")}">${modeName(st.mode, st.counterKind)}${st.prompt ? " — " + esc(st.prompt) : ""}</span>
+          <span class="sq-t" title="${esc(st.prompt || "")}">${st.mode === "slide" ? `📽 Slide ${st.page}${st.prompt ? " — " + esc(st.prompt) : ""}` : `${modeName(st.mode, st.counterKind)}${st.prompt ? " — " + esc(st.prompt) : ""}`}</span>
           ${i === idx + 1 ? `<span style="font-size:0.7rem;color:#8ab2f0;font-weight:800;white-space:nowrap">up next</span>` : i === idx ? `<span style="font-size:0.7rem;color:#8ab2f0;font-weight:800;white-space:nowrap">now</span>` : `<button class="ghost" data-point="${i}" title="Make this the next step">Next</button>`}
           <button data-jump="${i}" title="Run this step now">▶ Run</button>
         </div>`;

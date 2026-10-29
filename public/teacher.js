@@ -1,6 +1,7 @@
 /* Eyes Up — teacher dashboard */
 
 const MODES = {
+  slide:         { icon: "📽", name: "Slide", hint: "A slide from your PowerPoint or Google Slides", opts: null },
   /* fast votes */
   multi_choice:  { icon: "🅰️", name: "Multiple Choice", hint: "Quiz question — reveal the answer after voting", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true },
   tick_boxes:    { icon: "☑️", name: "Tick the Boxes", hint: "Students tick every box that applies — the board keeps a tally", opts: { min: 2, max: 10, labels: "Box" } },
@@ -750,6 +751,26 @@ function renderLive() {
   const area = $("liveArea");
   const itx = state.interaction;
   $("liveSub").textContent = "";
+
+  if (!itx && state.phase === "slide" && state.slide) {
+    const sl = state.slide;
+    const seq = state.sequence || [];
+    const nextSt = seq[state.seqIndex + 1];
+    area.innerHTML = `<div class="live-slide">
+      <img src="/api/slide/${sl.img}?${authQuery()}" alt="slide ${sl.page}" />
+      <div>
+        <p class="big">📽 Slide ${sl.page} of ${sl.pages}</p>
+        ${sl.title ? `<p>${esc(sl.title)}</p>` : ""}
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.7rem">
+          <button class="btn" data-act="seq_prev">◀ Previous</button>
+          <button class="btn primary" data-act="next" ${nextSt ? "" : "disabled"}>${nextSt ? (nextSt.mode === "slide" ? "Next slide ▶" : `Next: ${esc(stepTag(nextSt))} ▶`) : "End of lesson"}</button>
+        </div>
+        <p style="color:var(--muted);font-size:0.8rem;margin-top:0.7rem">Tip: your presenter clicker, or the arrow keys on the classroom-screen computer, move through the lesson too.</p>
+      </div>
+    </div>`;
+    area.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => send({ type: b.dataset.act })));
+    return;
+  }
 
   if (!itx) {
     const msg =
@@ -1928,6 +1949,7 @@ async function openEditor(id, isNew) {
 
 function stepDetail(st) {
   const bits = [];
+  if (st.mode === "slide") return `<img class="slide-thumb" src="/api/slide/${st.img}?${authQuery()}" alt="slide ${st.page}" loading="lazy" /> <span>Slide ${st.page} of ${st.pages}</span>`;
   if (st.image) bits.push(`<img src="${st.image}" alt="" />`);
   if (st.mode === "match_up" && st.options) bits.push(st.options.map((o) => esc(o).replace(" = ", " ↔ ")).join(" · "));
   else if (st.options && st.options.length)
@@ -1948,7 +1970,7 @@ function renderEditor(flashIndex) {
       <span class="save-state" id="saveState"></span>
     </div>
     <input class="plan-title" id="planTitle" maxlength="80" placeholder="Name this lesson, e.g. Year 4 Fractions recap" value="${esc(editing.title)}" />
-    <p class="editor-help">Add activities in the order you'll teach them. In class you'll launch them one at a time.${steps.length > 1 ? " <b>Drag a step</b> to change the order." : ""}</p>
+    <p class="editor-help">Add activities — and your slides — in the order you'll teach them. In class, ▶ Next (or your presenter clicker) moves through them one at a time.${steps.length > 1 ? " <b>Drag a step</b> to change the order." : ""}</p>
     ${steps.length
       ? `<ol class="step-list">${steps
           .map((st, i) => `
@@ -1957,13 +1979,13 @@ function renderEditor(flashIndex) {
           <span class="step-num">${i + 1}</span>
           <div class="step-body">
             <div class="step-type">${stepTag(st)}</div>
-            <div class="step-q ${st.prompt ? "" : "aloud"}">${st.prompt ? esc(st.prompt) : "You'll ask this one aloud"}</div>
+            <div class="step-q ${st.prompt || st.mode === "slide" ? "" : "aloud"}">${st.prompt ? esc(st.prompt) : st.mode === "slide" ? "" : "You'll ask this one aloud"}</div>
             ${stepDetail(st) ? `<div class="step-extra">${stepDetail(st)}</div>` : ""}
           </div>
           <div class="step-actions">
             <button class="btn" data-up="${i}" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
             <button class="btn" data-down="${i}" title="Move down" ${i === steps.length - 1 ? "disabled" : ""}>↓</button>
-            <button class="btn" data-edit-step="${i}">✎ Edit</button>
+            ${st.mode === "slide" ? "" : `<button class="btn" data-edit-step="${i}">✎ Edit</button>`}
             <button class="btn" data-dup-step="${i}" title="Duplicate this step">⧉</button>
             <button class="btn danger-ghost" data-del-step="${i}" title="Delete this step">🗑</button>
           </div>
@@ -1973,7 +1995,10 @@ function renderEditor(flashIndex) {
     <div class="add-row">
       <button class="btn primary big" id="addActivityBtn">＋ Add an activity</button>
       <button class="btn" id="pasteQuizPlanBtn">📋 Paste a quiz</button>
+      <button class="btn" id="addSlidesBtn" title="PowerPoint: File → Save as → PDF. Google Slides: File → Download → PDF.">📽 Add slides (PDF)</button>
+      <input type="file" id="slidesFile" accept="application/pdf,image/png,image/jpeg" multiple hidden />
     </div>
+    <p class="editor-help" style="margin-top:0.4rem;font-size:0.8rem">📽 <b>Using PowerPoint or Google Slides?</b> Save your slides as a PDF (PowerPoint: File → Save As → PDF · Google Slides: File → Download → PDF) and add it here. Each slide becomes a step — drag activities in between them.</p>
     <div class="editor-foot">
       <button class="btn dark big" id="teachThisBtn" ${steps.length ? "" : "disabled"}>▶ Teach this lesson</button>
       <span style="color:var(--muted);font-size:0.85rem">${steps.length} activit${steps.length === 1 ? "y" : "ies"} · saves automatically</span>
@@ -1986,6 +2011,8 @@ function renderEditor(flashIndex) {
   $("planTitle").oninput = () => { editing.title = $("planTitle").value; scheduleSave(); };
   $("addActivityBtn").onclick = () => openActivityPicker({ kind: "plan-add" });
   $("pasteQuizPlanBtn").onclick = () => $("pasteQuizBtn").click();
+  $("addSlidesBtn").onclick = () => $("slidesFile").click();
+  $("slidesFile").onchange = (e) => { const files = [...e.target.files]; e.target.value = ""; if (files.length) importSlides(files); };
   $("teachThisBtn").onclick = async () => { const id = editing.id; await leaveEditor(); teachPlan(id); };
   $("deletePlanBtn").onclick = async () => {
     if (!confirm(`Delete “${editing.title || "Untitled lesson"}”?\n\nThe plan is removed for good.`)) return;
@@ -2177,6 +2204,104 @@ $("activityClose").onclick = () => closeComposer();
 $("activityOverlay").onclick = (e) => { if (e.target === $("activityOverlay")) closeComposer(); };
 if ($("closeComposer")) $("closeComposer").onclick = closeComposer;
 
+/* ---------------- slides: PDF (or slide pictures) → one step per slide ---------------- */
+
+let pdfjsReady = null;
+function loadPdfJs() {
+  if (pdfjsReady) return pdfjsReady;
+  pdfjsReady = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "/vendor/pdfjs/pdf.min.js"; // pdf.js 3.11.174 (Apache-2.0), served by Eyes Up so school filters can't block it
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.js";
+      resolve(window.pdfjsLib);
+    };
+    s.onerror = () => { pdfjsReady = null; reject(new Error("pdf_lib")); };
+    document.head.appendChild(s);
+  });
+  return pdfjsReady;
+}
+const SLIDE_PX = 1600; // long edge — crisp on a projector, small enough to load instantly
+function canvasFor(w, h) {
+  const k = Math.min(1, SLIDE_PX / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  return { c, g, k };
+}
+async function pdfToSlides(file, progress) {
+  const lib = await loadPdfJs();
+  const pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const n = Math.min(pdf.numPages, 120);
+  const out = [];
+  for (let i = 1; i <= n; i++) {
+    const page = await pdf.getPage(i);
+    const v1 = page.getViewport({ scale: 1 });
+    const scale = Math.min(SLIDE_PX / v1.width, SLIDE_PX / v1.height);
+    const vp = page.getViewport({ scale });
+    const { c, g } = canvasFor(vp.width, vp.height);
+    await page.render({ canvasContext: g, viewport: page.getViewport({ scale: scale * (c.width / vp.width) }) }).promise;
+    out.push(c.toDataURL("image/jpeg", 0.85));
+    progress(`Reading your slides… ${i} of ${n}`);
+  }
+  return out;
+}
+function imageToSlide(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { const { c, g } = canvasFor(img.naturalWidth, img.naturalHeight); g.drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(img.src); resolve(c.toDataURL("image/jpeg", 0.85)); };
+    img.onerror = () => reject(new Error("bad_image"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function importSlides(files) {
+  if (!editing) return;
+  const box = document.createElement("div");
+  box.className = "slide-progress";
+  document.body.appendChild(box);
+  const progress = (t) => (box.textContent = t);
+  try {
+    progress("Getting your slides ready…");
+    let images = [];
+    const pdfs = files.filter((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
+    for (const f of pdfs) images.push(...(await pdfToSlides(f, progress)));
+    const pics = files.filter((f) => f.type.startsWith("image/")).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    for (let i = 0; i < pics.length; i++) { progress(`Reading your slides… ${i + 1} of ${pics.length}`); images.push(await imageToSlide(pics[i])); }
+    images = images.slice(0, 120);
+    if (!images.length) throw new Error("no_slides");
+    if (editing.steps.length + images.length > 150) throw new Error("too_many");
+    const title = (pdfs[0]?.name || "Slides").replace(/\.[a-z0-9]+$/i, "").slice(0, 60);
+    const post = async (url, body) => {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), ...body }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "upload_failed");
+      return d;
+    };
+    const deck = await post("/api/decks", { title, pages: images.length });
+    const steps = [];
+    for (let i = 0; i < images.length; i++) {
+      progress(`Saving slide ${i + 1} of ${images.length}…`);
+      const { img } = await post(`/api/decks/${deck.id}/slides`, { page: i + 1, image: images[i] });
+      steps.push({ mode: "slide", img, deck: deck.id, page: i + 1, pages: images.length, prompt: title });
+    }
+    const at = editing.steps.length;
+    editing.steps.push(...steps);
+    scheduleSave();
+    renderEditor(at);
+    toast(`📽 ${steps.length} slide${steps.length === 1 ? "" : "s"} added — drag activities in between them`);
+  } catch (e) {
+    toast({
+      pdf_lib: "Couldn't load the PDF reader — check the internet connection and try again",
+      no_slides: "No slides found — choose a PDF of your slides",
+      too_many: "That's more slides than one lesson can hold — split the deck into two lessons",
+      too_big: "One of those slides is too large — try saving the PDF again at a smaller size",
+    }[e.message] || "Couldn't add those slides — try again");
+  } finally {
+    box.remove();
+  }
+}
+
 function editStep(i) {
   const st = editing.steps[i];
   openActivityPicker({ kind: "plan-edit", index: i });
@@ -2299,7 +2424,7 @@ function renderLessonStrip() {
         <div class="ls-next-type">${stepTag(nextSt)}</div>
         <div class="ls-next-q ${nextSt.prompt ? "" : "aloud"}">${nextSt.prompt ? esc(nextSt.prompt) : "Ask this one aloud"}</div>
       </div>
-      <button class="btn primary big" data-strip="next">${idx < 0 ? "▶ Start the lesson" : `▶ Launch step ${upcoming + 1}`}</button>
+      <button class="btn primary big" data-strip="next">${idx < 0 ? "▶ Start the lesson" : nextSt.mode === "slide" ? `▶ Show slide ${nextSt.page}` : `▶ Launch step ${upcoming + 1}`}</button>
       ${nav}`;
   } else {
     nextBlock = `
@@ -2338,7 +2463,7 @@ function renderLessonStrip() {
         <span class="ls-chip ${cls}" title="Step ${i + 1}: ${esc(MODES[keyForStep(st)]?.name || st.mode)}${st.prompt ? " — " + esc(st.prompt) : ""}${wasSkipped ? " (skipped)" : ""}">
           <button class="ls-run" data-jump="${i}" title="Run step ${i + 1} now">
             <span class="n">${badge}</span><span>${stepIcon(st)}</span>
-            <span class="t">${st.prompt ? esc(st.prompt) : esc(MODES[keyForStep(st)]?.name || st.mode)}</span>
+            <span class="t">${st.mode === "slide" ? `Slide ${st.page}` : st.prompt ? esc(st.prompt) : esc(MODES[keyForStep(st)]?.name || st.mode)}</span>
           </button>
           ${i !== idx + 1 ? `<button class="ls-point" data-point="${i}" title="Make step ${i + 1} the next one (without running it)">▸</button>` : ""}
         </span>`;
