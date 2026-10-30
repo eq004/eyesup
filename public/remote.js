@@ -361,8 +361,15 @@ function renderLive() {
     </div>`;
   }
 
+  // Slides waiting underneath an activity? Give the way back its own big, unmissable button.
+  const isBoardStep = (st) => st && (st.mode === "slide" || st.mode === "deck");
+  const slidesUp = state.phase === "slide" || state.phase === "deck";
+  const slidesBehind = !slidesUp && seq.slice(0, Math.max(0, state.seqIndex) + 1).some(isBoardStep);
+  const backToSlides = slidesBehind
+    ? `<button class="rbtn back-slides" data-act="seq_prev">🎞 Back to the slides<small>${seq.slice(0, state.seqIndex + 1).some((st) => st.mode === "deck") ? "they're exactly where you left them" : "returns to your last slide"}</small></button>`
+    : "";
   const planNav = inPlan ? `<div class="step-nav" style="margin-top:0.5rem">
-      <button class="rbtn" data-act="${state.phase === "slide" || seq.some((st) => st.mode === "deck") ? "seq_prev" : "seq_back"}" ${state.seqIndex < 0 ? "disabled" : ""}>◀ ${state.phase === "slide" ? "Previous" : seq.some((st) => st.mode === "deck") && state.phase !== "deck" ? "Back to slides" : "Back"}</button>
+      <button class="rbtn" data-act="${slidesUp ? "seq_prev" : "seq_back"}" ${state.seqIndex < 0 ? "disabled" : ""}>◀ ${slidesUp ? "Previous" : "Back"}</button>
       <button class="rbtn" data-act="seq_skip" ${nextStep ? "" : "disabled"}>Skip ⏭</button>
       <button class="rbtn warn" id="stopLive" ${itx ? "" : "disabled"}>⏹ Stop step</button>
     </div>` : "";
@@ -370,6 +377,7 @@ function renderLive() {
   main.innerHTML = `
     ${status}
     ${primary}
+    ${backToSlides}
     <button class="rbtn ${itx ? "eyes-sm" : "eyes"}" data-act="eyes_up">👀 EYES UP${itx ? `<small>clears the board — all eyes on you</small>` : ""}</button>
     ${controls}
     ${itx && nextStep && primary !== nextBtn ? `<button class="rbtn" data-act="next">▶ Next: step ${nextI + 1} — ${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " · " + esc(cut(nextStep.prompt, 30)) : ""}</button>` : ""}
