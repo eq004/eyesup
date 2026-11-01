@@ -1221,9 +1221,10 @@ async function loadLessonsList(attempt) {
       ? data.lessons
           .map((l) => {
             const when = new Date(l.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-            const href = `/report?lesson=${l.id}${authQuery() ? `&${authQuery()}` : ""}`;
+            const href = `/data?lesson=${l.id}`;
+            const name = l.title || (l.first_prompt ? (l.first_prompt.length > 70 ? l.first_prompt.slice(0, 68).trimEnd() + "…" : l.first_prompt) : "Untitled lesson");
             return `<a href="${href}" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:10px;padding:0.65rem 0.9rem;margin-bottom:0.5rem;background:var(--paper)">
-              <b>${esc(l.title || "Untitled lesson")}</b> <span style="color:var(--muted);font-size:0.8rem">· ${esc(l.code)}</span><br/>
+              <b>${esc(name)}</b> <span style="color:var(--muted);font-size:0.8rem">· ${esc(l.code)}</span><br/>
               <span style="color:var(--ink-soft);font-size:0.82rem">${esc(when)} — ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions</span>
             </a>`;
           })

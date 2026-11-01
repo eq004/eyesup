@@ -978,7 +978,9 @@ app.get("/api/lessons", async (req, res) => {
       `SELECT id, code, title, created_at, teacher_name,
               summary->>'participatedCount' AS participated,
               summary->>'joinedCount' AS joined,
-              summary->>'interactionCount' AS interactions
+              summary->>'interactionCount' AS interactions,
+              (SELECT e->>'prompt' FROM jsonb_array_elements(summary->'items') e
+                WHERE coalesce(e->>'prompt', '') <> '' AND e->>'mode' NOT IN ('link', 'slide', 'deck') LIMIT 1) AS first_prompt
        FROM lessons
        WHERE teacher_id = $1 OR teacher_id IS NULL
        ORDER BY created_at DESC LIMIT 200`,
@@ -2322,6 +2324,37 @@ function markMatch(attempt, target) {
 }
 
 // One readable line per response, for the per-student export.
+// Students are people, not connections: a re-joined phone must not
+// become a second student. Names compare case- and space-insensitively.
+const canonName = (n) => String(n || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+// Right or wrong, per student, for the modes that have an answer key:
+// true / false, or null when the activity has nothing to mark. `score`
+// is the partial credit where one activity holds several answers.
+function markOf(itx, p) {
+  if (!p) return { ok: null };
+  if (CHOICE_MODES.has(itx.mode)) return { ok: Number.isInteger(itx.correct) ? p.choice === itx.correct : null };
+  if (itx.mode === "put_in_order") {
+    const order = p.order || [];
+    const right = order.filter((o, i) => o === i).length;
+    return { ok: right === itx.options.length, score: `${right}/${itx.options.length}` };
+  }
+  if (itx.mode === "match_up") {
+    const right = (p.matches || []).filter((m, i) => m === i).length;
+    return { ok: right === itx.pairs.length, score: `${right}/${itx.pairs.length}` };
+  }
+  if (itx.mode === "spelling") {
+    const right = itx.words.filter((w, i) => markMatch((p.answers || [])[i], w)).length;
+    return { ok: right === itx.words.length, score: `${right}/${itx.words.length}` };
+  }
+  if (itx.cloze) {
+    const right = itx.cloze.answers.filter((w, i) => markMatch((p.fills || [])[i], w)).length;
+    return { ok: right === itx.cloze.answers.length, score: `${right}/${itx.cloze.answers.length}` };
+  }
+  if ((itx.mode === "working" || itx.mode === "counters") && itx.expected) return { ok: markMatch(p.answer, itx.expected) };
+  return { ok: null };
+}
+
 function describePayload(itx, p) {
   if (WORD_MODES.has(itx.mode)) return (p.words || []).join(", ");
   if (itx.mode === "post_its") return (p.notes || []).join("  |  ");
@@ -2401,8 +2434,12 @@ function buildSummary(session, { withImages = false } = {}) {
   const all = [...session.history];
   if (session.interaction) all.push(session.interaction);
 
+  // Counted by name, not by connection, so a student who re-joined from
+  // a second tab is one student in every number below.
+  const roster = new Map(); // canonical -> name as first typed
+  for (const [, n] of session.everJoined) if (n !== "👁 Preview" && !roster.has(canonName(n))) roster.set(canonName(n), n);
   const participants = new Set();
-  for (const itx of all) for (const sid of itx.responses.keys()) participants.add(sid);
+  for (const itx of all) for (const r of itx.responses.values()) if (r.name !== "👁 Preview") participants.add(canonName(r.name));
 
   const items = all.map((itx) => {
     const agg = aggregate(session, itx);
@@ -2414,11 +2451,17 @@ function buildSummary(session, { withImages = false } = {}) {
     item.anonymous = anon;
     item.students = [...itx.responses.values()]
       .filter((r) => r.name !== "👁 Preview")
-      .map((r) => ({ name: anon ? null : r.name, response: describePayload(itx, r.payload) }))
+      .map((r) => {
+        const row = { name: anon ? null : r.name, response: describePayload(itx, r.payload) };
+        const m = markOf(itx, r.payload);
+        if (m.ok !== null) { row.ok = m.ok; if (m.score) row.score = m.score; }
+        return row;
+      })
       .sort((a, b) => String(a.name).localeCompare(String(b.name)));
     if (!anon) {
-      item.noResponse = [...session.everJoined.entries()]
-        .filter(([id, n]) => n !== "👁 Preview" && !itx.responses.has(id))
+      const answered = new Set([...itx.responses.values()].map((r) => canonName(r.name)));
+      item.noResponse = [...roster.entries()]
+        .filter(([k]) => !answered.has(k))
         .map(([, n]) => n)
         .sort();
     }
@@ -2497,6 +2540,14 @@ function buildSummary(session, { withImages = false } = {}) {
     return item;
   });
 
+  // A question launched, closed and launched again leaves an empty first
+  // copy behind. Flag those so the reports can fold them away.
+  items.forEach((it, i) => {
+    if ((it.responses || 0) > 1 || it.mode === "link" || it.mode === "slide" || it.mode === "deck") return;
+    const twin = items.find((o, j) => j !== i && o.mode === it.mode && (o.prompt || "") === (it.prompt || "") && (o.responses || 0) > (it.responses || 0));
+    if (twin) it.ghost = true;
+  });
+
   // Confidence headline: % of latest confidence-check who chose got-it / nearly.
   let confidence = null;
   const confChecks = all.filter((i) => i.mode === "confidence");
@@ -2532,9 +2583,10 @@ function buildSummary(session, { withImages = false } = {}) {
     type: "summary",
     title: session.title,
     teacherName: session.teacherName || null,
-    joinedCount: session.everJoined.size,
+    joinedCount: roster.size,
     participatedCount: participants.size,
     interactionCount: all.length,
+    roster: [...roster.values()].sort(),
     confidence,
     commonWords,
     items,

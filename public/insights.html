@@ -56,6 +56,7 @@
     <span class="wordmark inverted"><svg class="logo-eyes" viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="var(--eyeball)"/><circle cx="97.5" cy="19" r="3.6" fill="var(--eyeball)"/></svg><span class="logo-text">eyes up</span><span class="logo-sub" id="pageKind">· Lesson dashboard</span></span>
   </header>
   <div class="wrap" id="wrap"><div class="gate muted">Loading…</div></div>
+  <script src="/lesson-view.js"></script>
   <script src="/insights-render.js"></script>
   <script>
     const wrap = document.getElementById("wrap");
@@ -98,10 +99,10 @@
         : "";
       const nResp = (s.items || []).reduce((a, it) => a + (it.responses || 0), 0);
       wrap.innerHTML = `
-        <h1 class="title">${s.title ? esc(s.title) : "Lesson dashboard"}</h1>
+        <h1 class="title">${esc(window.LV ? LV.title(s) : (s.title || "Lesson dashboard"))}</h1>
         <div class="lmeta">${[when, s.teacherName ? (teacherView ? esc(s.teacherName) : `Shared by ${esc(s.teacherName)}`) : ""].filter(Boolean).join(" · ")}</div>
         <div class="stats">
-          <div class="st"><b>${(s.items || []).length}</b><span>activities</span></div>
+          <div class="st"><b>${window.LV ? LV.shown(LV.normalise(s)).length : (s.items || []).length}</b><span>activities</span></div>
           <div class="st"><b>${nResp}</b><span>responses</span></div>
           <div class="st"><b>${s.participatedCount ?? "—"}/${s.joinedCount ?? "—"}</b><span>students participated</span></div>
         </div>

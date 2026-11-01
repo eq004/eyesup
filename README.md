@@ -64,7 +64,9 @@ Teachers can optionally pre-build a short sequence (e.g. One Word → Short Answ
 
 **Finish & summarise** produces a deliberately simple recap: who participated, the confidence picture, commonly remembered words, and what each interaction gathered — enough to decide what to reteach, no analytics rabbit hole.
 
-**Export as PDF** (button on the summary, or `/report?code=XXXX` directly) opens a clean print-styled lesson report — headline stats, common words, and every interaction with its distributions and answers — and saves via the browser's print dialog ("Save as PDF").
+**Export as PDF** (button on the summary, or `/report?code=XXXX` directly) opens a clean print-styled lesson report — headline stats, common words, and every interaction with its distributions and named answers (once, with ✓/✗ where the activity had a right answer) — and saves via the browser's print dialog ("Save as PDF").
+
+**Lesson results** (📚 Past lessons → a lesson, or 📈 Data → click a lesson; `/data?lesson=ID`) is the one place for a stored lesson: **✨ Snapshot** (plain-English takeaways, who got more wrong than right, visuals), **👥 By student** (one row per student — answered, right — click a name for every answer they gave, printable on its own) and **📊 By activity** (every activity with named answers and marks, Question Sets as a grid). The export row offers 🖨 Print / PDF, 📊 Spreadsheet (CSV: one row per student, one column per activity, opens in Excel/Sheets), 🖼 Pictures (ZIP) and 🔗 Share link (view-only, names hidden). Students are counted by name, so a re-joined phone is one student; a question launched by mistake and launched again is folded away as an "empty re-launch"; untitled lessons are named after their first question and can be renamed with the ✎.
 
 **Autosave**: sessions live in server memory, but the dashboard continuously snapshots the full session summary into the teacher's browser (localStorage, last 10 sessions) a few seconds after every change. If the server restarts or the host sleeps before exporting, the report page transparently recovers from that autosave (with a "recovered" banner) — open it on the computer that ran the dashboard.
 

@@ -115,22 +115,41 @@
   function answerList(it, showNames) {
     let rows;
     if (showNames && it.students?.length) {
-      rows = it.students.map((s) => ({ who: s.name, text: s.response }));
+      rows = it.students.map((s) => ({ who: s.name, text: s.response, ok: s.ok, score: s.score }));
     } else if (it.answers?.length) {
       rows = it.answers.map((a) => ({ who: null, text: a }));
     } else return "";
     const id = "ins" + Math.random().toString(36).slice(2, 8);
-    const li = (r) => `<li>${r.who ? `<b class="who">${esc(r.who)}</b>` : ""}${esc(r.text || "—")}</li>`;
+    const li = (r) => `<li>${r.who ? `<b class="who">${esc(r.who)}</b>` : ""}${window.LV ? LV.mark(r) : ""}${esc(r.text || "—")}${r.score && r.ok !== true ? ` <small style="color:#74829a">(${esc(r.score)})</small>` : ""}</li>`;
     const head = rows.slice(0, 6).map(li).join("");
     const rest = rows.slice(6).map(li).join("");
     return `<ul class="ins-list">${head}${rest ? `<span class="ins-rest" id="${id}" style="display:none">${rest}</span>` : ""}</ul>
       ${rest ? `<button class="ins-more" data-more="${id}">Show all ${rows.length} →</button>` : ""}`;
   }
 
+  function questionGrid(it, showNames) {
+    const qs = it.questions || [];
+    const rows = showNames && it.students?.length ? it.students.map((s) => ({ who: s.name, parts: LV.parts(s.response) })) : (it.answers || []).map((a) => ({ who: null, parts: LV.parts(a) }));
+    if (!qs.length || !rows.length) return "";
+    return `<div class="lv-grid"><table><thead><tr>${showNames ? "<th>Student</th>" : ""}${qs.map((q, k) => `<th>Q${k + 1} · ${esc(q)}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map((r) => `<tr>${showNames ? `<td>${esc(r.who)}</td>` : ""}${qs.map((_, k) => `<td>${esc(r.parts[k] || "—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  }
+
+  // "· 18 of 23 right" when the activity had an answer key.
+  function rightRate(it) {
+    const marked = (it.students || []).filter((x) => x.ok === true || x.ok === false);
+    if (!marked.length) return "";
+    const right = marked.filter((x) => x.ok).length;
+    const pct = Math.round((right / marked.length) * 100);
+    return ` · <b style="color:${pct >= 70 ? "#1f6b46" : pct >= 40 ? "#8a5a10" : "#8f2f2f"}">${right} of ${marked.length} right</b>`;
+  }
+
   function card(it, i, showNames) {
     const [icon, name] = meta(it);
     let body = "";
-    if (it.mode === "smiley" && it.distribution) {
+    if (it.mode === "question_set" && window.LV && (it.questions || []).length) {
+      body = questionGrid(it, showNames);
+    } else if (it.mode === "smiley" && it.distribution) {
       const total = it.distribution.reduce((a, d) => a + d.count, 0) || 1;
       const maxN = Math.max(1, ...it.distribution.map((d) => d.count));
       body = `<div class="ins-smiley">${it.distribution
@@ -163,13 +182,13 @@
     } else if (it.sketchCount != null) {
       body = `<p style="color:#435169">${it.sketchCount} ${["image_drop", "image_caption", "image_long"].includes(it.mode) ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted${showNames ? " — no stored pictures for this activity." : "."}</p>`;
     }
-    const answers = ["smiley"].includes(it.mode) || it.words ? "" : answerList(it, showNames);
+    const answers = ["smiley"].includes(it.mode) || it.words || (it.mode === "question_set" && body) ? "" : answerList(it, showNames);
     const extraAnswers = (it.words || it.mode === "smiley") && showNames && it.students?.length ? answerList(it, showNames) : "";
     return `<div class="ins-card">
       <div class="ins-head">
         <span class="ins-tag">${icon} ${esc(name)}</span>
         <span class="ins-q">${it.prompt ? esc(it.prompt) : "<i>asked aloud</i>"}</span>
-        <span class="ins-n">${it.responses} response${it.responses === 1 ? "" : "s"}</span>
+        <span class="ins-n">${it.responses} response${it.responses === 1 ? "" : "s"}${rightRate(it)}</span>
       </div>
       <div class="ins-body">${body}${answers}${extraAnswers}</div>
     </div>`;
@@ -183,12 +202,21 @@
       document.head.appendChild(st);
     }
     const showNames = !!opts.showNames;
+    if (window.LV) { LV.normalise(s); LV.css(); }
+    const items = window.LV ? LV.shown(s, opts.ghosts) : (s.items || []);
+    const ghosts = s.ghostCount || 0;
+    const ghostNote = ghosts && !opts.ghosts
+      ? `<p class="lv-ghosts">${ghosts === 1 ? "1 empty re-launch" : `${ghosts} empty re-launches`} of a question hidden (asked again later). <button data-ghosts>Show anyway</button></p>`
+      : ghosts && opts.ghosts ? `<p class="lv-ghosts">Showing empty re-launches too. <button data-ghosts>Hide them</button></p>` : "";
     container.innerHTML = `
       ${opts.note ? `<p class="ins-note">${opts.note}</p>` : ""}
-      ${(s.items || []).map((it, i) => card(it, i, showNames)).join("") || `<p class="ins-note">Nothing captured in this lesson.</p>`}`;
+      ${ghostNote}
+      ${items.map((it) => card(it, (s.items || []).indexOf(it), showNames)).join("") || `<p class="ins-note">Nothing captured in this lesson.</p>`}`;
     container.querySelectorAll("[data-more]").forEach((b) => (b.onclick = () => {
       document.getElementById(b.dataset.more).style.display = "inline";
       b.remove();
     }));
+    const g = container.querySelector("[data-ghosts]");
+    if (g) g.onclick = () => window.renderInsights(container, s, { ...opts, ghosts: !opts.ghosts });
   };
 })();

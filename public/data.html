@@ -217,11 +217,47 @@
   .snap-ai p { margin: 0 0 0.5rem; font-size: 0.92rem; line-height: 1.45; }
   .snap-ai .ai-text ul { margin: 0.2rem 0 0.6rem 1.2rem; padding: 0; font-size: 0.92rem; line-height: 1.45; }
   .snap-ai .ai-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; font-size: 0.78rem; margin-top: 0.4rem; flex-wrap: wrap; }
+  .snap.inline { box-shadow: none; padding: 0; width: auto; border-radius: 0; }
+  .snap-heat i.on { background: var(--accent); border-color: var(--accent); }
+  .snap-heat i.ok { background: #2f9e6a; border-color: #2f9e6a; }
+  .snap-heat i.no { background: #c95c5c; border-color: #c95c5c; }
+  /* lesson results card */
+  .dhead { display: flex; flex-direction: column; gap: 0.15rem; }
+  .dtitle { display: flex; align-items: center; gap: 0.4rem; font-size: 1.25rem !important; }
+  .edit-btn { border: none; background: none; cursor: pointer; color: var(--muted); font-size: 0.95rem; padding: 0.1rem 0.3rem; border-radius: 6px; }
+  .edit-btn:hover { background: var(--paper); color: var(--accent); }
+  input.rename { font: inherit; font-size: 1.1rem; font-weight: 800; border: 2px solid var(--accent); border-radius: 8px; padding: 0.15rem 0.5rem; min-width: 18rem; }
+  .export-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.6rem 0.8rem; border-radius: 12px; background: var(--paper); margin-bottom: 1.1rem; }
+  .xbtn { font: inherit; font-size: 0.84rem; font-weight: 800; text-decoration: none; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line); border-radius: 9px; padding: 0.4rem 0.8rem; cursor: pointer; }
+  .xbtn:hover { border-color: var(--accent); color: var(--accent); }
+  .lbar .lab .lt { display: block; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: var(--ink-soft); }
+  /* by student */
+  tr.srow { cursor: pointer; }
+  tr.srow:hover td { background: var(--paper); }
+  tr.srow.open td { background: var(--accent-soft); }
+  tr.sdetail td { padding: 0 0 1rem; background: var(--paper); }
+  .spanel { padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); margin: 0.4rem 0.2rem 0; }
+  .spanel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.7rem; }
+  .slist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+  .slist li { display: grid; grid-template-columns: minmax(10rem, 2fr) 3fr; gap: 0.3rem 1rem; padding: 0.45rem 0.6rem; border-radius: 10px; background: var(--paper); font-size: 0.9rem; align-items: start; }
+  .slist li.miss { opacity: 0.6; }
+  .slist .sq { font-weight: 700; color: var(--ink-soft); }
+  .slist .sa { overflow-wrap: anywhere; }
+  .slist .spics { grid-column: 1 / -1; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .slist .spics img { height: 90px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+  .sqs { border-collapse: collapse; font-size: 0.85rem; }
+  .sqs td { padding: 0.15rem 0.6rem 0.15rem 0; vertical-align: top; }
+  .sqs td:first-child { color: var(--muted); white-space: nowrap; }
+  @media (max-width: 640px) { .slist li { grid-template-columns: 1fr; } }
   @media print {
-    body.snap-open > *:not(.snap-overlay) { display: none !important; }
-    .snap-overlay { position: static; background: none; padding: 0; backdrop-filter: none; }
-    .snap { box-shadow: none; width: 100%; }
-    .snap-actions { display: none; }
+    header, .no-print, .export-row, .dtabs, .search, .edit-btn { display: none !important; }
+    body.print-snap .tiles, body.print-snap .card:not(.detail-card) { display: none !important; }
+    body.print-student .tiles, body.print-student .card:not(.detail-card), body.print-student .detail-card > .sub, body.print-student .stab thead, body.print-student .stab tr:not(.print-me), body.print-student .detail-card > p { display: none !important; }
+    body.print-student .stab, body.print-student .stab tbody, body.print-student tr.sdetail, body.print-student tr.sdetail td { display: block; width: 100%; padding: 0; background: none; }
+    .card, .detail-card { box-shadow: none; border: none; padding: 0; }
+    .spanel { border: none; margin: 0; padding: 0; }
+    .snap-grid { grid-template-columns: repeat(2, 1fr); }
+    .snap-vis, .slist li { break-inside: avoid; }
   }
   .share-btn {
     border: none;
@@ -252,6 +288,7 @@
     <a href="/teacher">← Back to dashboard</a>
   </header>
   <div class="wrap" id="wrap"><div class="gate muted">Loading your data…</div></div>
+  <script src="/lesson-view.js"></script>
   <script src="/insights-render.js"></script>
   <script src="/data.js"></script>
   <p class="made-with">Eyes Up by <a href="https://peakyou.com.au" target="_blank" rel="noopener">PeakYou</a></p>
