@@ -112,27 +112,63 @@
       .join("");
   }
 
-  function answerList(it, showNames) {
+  function answerList(it, showNames, i, edit) {
     let rows;
     if (showNames && it.students?.length) {
       rows = it.students.map((s) => ({ who: s.name, text: s.response, ok: s.ok, score: s.score }));
+      if (edit && !it.anonymous) rows.forEach((r) => (r.btn = LV.markButtons(i, r.who, r, LV.byHand(it, r.who))));
     } else if (it.answers?.length) {
       rows = it.answers.map((a) => ({ who: null, text: a }));
     } else return "";
     const id = "ins" + Math.random().toString(36).slice(2, 8);
-    const li = (r) => `<li>${r.who ? `<b class="who">${esc(r.who)}</b>` : ""}${window.LV ? LV.mark(r) : ""}${esc(r.text || "—")}${r.score && r.ok !== true ? ` <small style="color:#74829a">(${esc(r.score)})</small>` : ""}</li>`;
+    const li = (r) => `<li>${r.who ? `<b class="who">${esc(r.who)}</b>` : ""}${r.btn || (window.LV ? LV.mark(r) : "")}${esc(r.text || "—")}${r.score && r.ok !== true ? ` <small style="color:#74829a">(${esc(r.score)})</small>` : ""}</li>`;
     const head = rows.slice(0, 6).map(li).join("");
     const rest = rows.slice(6).map(li).join("");
     return `<ul class="ins-list">${head}${rest ? `<span class="ins-rest" id="${id}" style="display:none">${rest}</span>` : ""}</ul>
       ${rest ? `<button class="ins-more" data-more="${id}">Show all ${rows.length} →</button>` : ""}`;
   }
 
-  function questionGrid(it, showNames) {
+  function questionGrid(it, showNames, i, edit) {
     const qs = it.questions || [];
-    const rows = showNames && it.students?.length ? it.students.map((s) => ({ who: s.name, parts: LV.parts(s.response) })) : (it.answers || []).map((a) => ({ who: null, parts: LV.parts(a) }));
+    const rows = showNames && it.students?.length ? it.students.map((s) => ({ who: s.name, parts: LV.parts(s.response), ok: s.ok, score: s.score })) : (it.answers || []).map((a) => ({ who: null, parts: LV.parts(a) }));
     if (!qs.length || !rows.length) return "";
-    return `<div class="lv-grid"><table><thead><tr>${showNames ? "<th>Student</th>" : ""}${qs.map((q, k) => `<th>Q${k + 1} · ${esc(q)}</th>`).join("")}</tr></thead>
-      <tbody>${rows.map((r) => `<tr>${showNames ? `<td>${esc(r.who)}</td>` : ""}${qs.map((_, k) => `<td>${esc(r.parts[k] || "—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    const marked = rows.some((r) => r.ok === true || r.ok === false) || edit;
+    const cell = (r) => edit ? LV.markButtons(i, r.who, r, LV.byHand(it, r.who)) : LV.mark(r);
+    return `<div class="lv-grid"><table><thead><tr>${showNames ? "<th>Student</th>" : ""}${qs.map((q, k) => `<th>Q${k + 1} · ${esc(q)}</th>`).join("")}${showNames && marked ? "<th>Mark</th>" : ""}</tr></thead>
+      <tbody>${rows.map((r) => `<tr>${showNames ? `<td>${esc(r.who)}</td>` : ""}${qs.map((_, k) => `<td>${esc(r.parts[k] || "—")}</td>`).join("")}${showNames && marked ? `<td style="white-space:nowrap">${cell(r)}${r.score ? `<small style="color:#74829a">${esc(r.score)}</small>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
+  }
+
+  // The answer-key editor a teacher opens on an activity after the lesson.
+  function keyEditor(it, i) {
+    const kind = LV.keyKind(it);
+    if (!kind) return "";
+    const after = it.marked ? `<span class="lv-after">✎ marked after the lesson</span>` : "";
+    const hint = `<small>Capital letters, spaces and punctuation don't matter. Tap ✓ or ✗ beside any student to overrule.</small>`;
+    let summary = "", body = "";
+    if (kind === "choice") {
+      const labels = (it.distribution || []).map((d) => d.label.replace(/\s✓$/, ""));
+      const right = it.key?.label ?? (it.distribution || []).find((d) => /\s✓$/.test(d.label))?.label.replace(/\s✓$/, "");
+      summary = right ? `✎ Right answer: ${esc(right)}` : "✎ Set the right answer";
+      body = `<b style="flex-basis:100%">Which answer was right?</b>${labels.map((l) => `<button type="button" class="lv-chip ${l === right ? "on" : ""}" data-keychip="${i}" data-label="${esc(l)}">${esc(l)}</button>`).join("")}
+        <small>Tap the one that was right${it.key ? " · tap it again to clear" : ""}. Tap ✓ or ✗ beside any student to overrule.</small>`;
+    } else if (kind === "text") {
+      const acc = it.key?.accept || [];
+      summary = acc.length ? `✎ Accepted: ${esc(acc.join(", "))}` : "✎ Set the accepted answer";
+      body = `<form data-keyform="${i}" style="display:contents"><b style="flex-basis:100%">What counts as right?</b>
+        <input name="accept" value="${esc(acc.join(", "))}" placeholder="e.g. Canberra, ACT — commas separate alternatives" />
+        <button class="lv-save">Save</button>${acc.length ? `<button type="button" class="lv-clear" data-keyclear="${i}">Clear</button>` : ""}${hint}</form>`;
+    } else if (kind === "set") {
+      const parts = it.key?.parts || [];
+      const n = parts.filter(Boolean).length;
+      summary = n ? `✎ Answer key set for ${n} of ${(it.questions || []).length} questions` : "✎ Set the answers";
+      body = `<form data-keyform="${i}" data-set="1" style="display:contents"><b style="flex-basis:100%">What counts as right? (leave a question blank to skip it)</b>
+        ${(it.questions || []).map((q, k) => `<label><span>Q${k + 1} · ${esc(q)}</span><input name="p${k}" value="${esc((parts[k] || []).join(", "))}" placeholder="commas separate alternatives" /></label>`).join("")}
+        <button class="lv-save">Save</button>${n ? `<button type="button" class="lv-clear" data-keyclear="${i}">Clear</button>` : ""}${hint}</form>`;
+    } else {
+      summary = "✎ Mark by hand";
+      body = `<small style="flex-basis:100%">There's no answer key for this kind of activity. Tap ✓ or ✗ beside each student to mark it yourself.</small>`;
+    }
+    return `<details class="lv-key no-print" data-keybox="${i}"><summary>${summary}${after}</summary><div class="lv-keybody">${body}</div></details>`;
   }
 
   // "· 18 of 23 right" when the activity had an answer key.
@@ -144,11 +180,11 @@
     return ` · <b style="color:${pct >= 70 ? "#1f6b46" : pct >= 40 ? "#8a5a10" : "#8f2f2f"}">${right} of ${marked.length} right</b>`;
   }
 
-  function card(it, i, showNames) {
+  function card(it, i, showNames, edit) {
     const [icon, name] = meta(it);
     let body = "";
     if (it.mode === "question_set" && window.LV && (it.questions || []).length) {
-      body = questionGrid(it, showNames);
+      body = questionGrid(it, showNames, i, edit);
     } else if (it.mode === "smiley" && it.distribution) {
       const total = it.distribution.reduce((a, d) => a + d.count, 0) || 1;
       const maxN = Math.max(1, ...it.distribution.map((d) => d.count));
@@ -182,15 +218,17 @@
     } else if (it.sketchCount != null) {
       body = `<p style="color:#435169">${it.sketchCount} ${["image_drop", "image_caption", "image_long"].includes(it.mode) ? "image" : "drawing"}${it.sketchCount === 1 ? "" : "s"} submitted${showNames ? " — no stored pictures for this activity." : "."}</p>`;
     }
-    const answers = ["smiley"].includes(it.mode) || it.words || (it.mode === "question_set" && body) ? "" : answerList(it, showNames);
-    const extraAnswers = (it.words || it.mode === "smiley") && showNames && it.students?.length ? answerList(it, showNames) : "";
+    const answers = ["smiley"].includes(it.mode) || it.words || (it.mode === "question_set" && body) ? "" : answerList(it, showNames, i, edit);
+    const extraAnswers = (it.words || it.mode === "smiley") && showNames && it.students?.length ? answerList(it, showNames, i, edit) : "";
+    const editor = edit && window.LV ? keyEditor(it, i) : "";
+    const afterNote = !edit && it.marked ? ` <span class="lv-after">✎ marked after the lesson</span>` : "";
     return `<div class="ins-card">
       <div class="ins-head">
         <span class="ins-tag">${icon} ${esc(name)}</span>
         <span class="ins-q">${it.prompt ? esc(it.prompt) : "<i>asked aloud</i>"}</span>
-        <span class="ins-n">${it.responses} response${it.responses === 1 ? "" : "s"}${rightRate(it)}</span>
+        <span class="ins-n">${it.responses} response${it.responses === 1 ? "" : "s"}${rightRate(it)}${afterNote}</span>
       </div>
-      <div class="ins-body">${body}${answers}${extraAnswers}</div>
+      <div class="ins-body">${editor}${body}${answers}${extraAnswers}</div>
     </div>`;
   }
 
@@ -211,7 +249,7 @@
     container.innerHTML = `
       ${opts.note ? `<p class="ins-note">${opts.note}</p>` : ""}
       ${ghostNote}
-      ${items.map((it) => card(it, (s.items || []).indexOf(it), showNames)).join("") || `<p class="ins-note">Nothing captured in this lesson.</p>`}`;
+      ${items.map((it) => card(it, (s.items || []).indexOf(it), showNames, !!opts.edit)).join("") || `<p class="ins-note">Nothing captured in this lesson.</p>`}`;
     container.querySelectorAll("[data-more]").forEach((b) => (b.onclick = () => {
       document.getElementById(b.dataset.more).style.display = "inline";
       b.remove();

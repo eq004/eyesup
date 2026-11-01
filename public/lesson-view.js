@@ -150,6 +150,17 @@
     return { total: counted.length, markable, rows };
   }
 
+  // Which kind of answer key an activity can take after the lesson.
+  const KEY_CHOICE = new Set(["multi_choice", "true_false", "this_or_that", "picture_vote", "poll", "example_nonexample"]);
+  const KEY_TEXT = new Set(["short_answer", "predict", "exit_ticket", "retrieval_sprint", "spot_mistake", "teach_back", "give_example",
+    "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response", "working", "counters", "maths_board", "image_caption", "image_long", "one_word"]);
+  const keyKind = (it) => it.anonymous || SKIP.has(it.mode) ? null : KEY_CHOICE.has(it.mode) ? "choice" : it.mode === "question_set" ? "set" : KEY_TEXT.has(it.mode) ? "text" : "hand";
+
+  // ✓ / ✗ a teacher can tap to mark one student's answer by hand.
+  const markButtons = (i, name, x, byHand) => `<span class="mkb" data-mark="${i}" data-name="${esc(canonical(name))}" title="${byHand ? "Marked by hand — tap the lit one to undo" : "Tap to mark right or wrong"}">
+      <button type="button" data-v="1" class="${x?.ok === true ? "on" : ""}" aria-label="Right">✓</button><button type="button" data-v="0" class="${x?.ok === false ? "on" : ""}" aria-label="Not right">✗</button></span>`;
+  const byHand = (it, name) => !!(it.manual && Object.prototype.hasOwnProperty.call(it.manual, canonical(name)));
+
   const mark = (x) => x?.ok === true ? `<span class="lv-ok" title="Right">✓</span>` : x?.ok === false ? `<span class="lv-no" title="Not right">✗</span>` : "";
   const label = (it, i, names) => `${i + 1}. ${names?.(it.mode, it.counterKind) || it.mode}${it.prompt ? ` — ${it.prompt}` : ""}`;
 
@@ -196,7 +207,26 @@
   .lv-grid th, .lv-grid td { text-align:left; padding:0.35rem 0.5rem; border-bottom:1px solid #e5eaf2; vertical-align:top; }
   .lv-grid th { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:#74829a; }
   .lv-grid td:first-child { font-weight:700; white-space:nowrap; }
-  @media print { .lv-ghosts { display:none !important; } }`;
+  .mkb { display:inline-flex; border:1px solid #d5dce8; border-radius:7px; overflow:hidden; margin-right:0.4rem; vertical-align:middle; }
+  .mkb button { font:inherit; font-size:0.74rem; font-weight:800; line-height:1.3; padding:0.08rem 0.42rem; border:none; background:#fff; color:#b3bccb; cursor:pointer; }
+  .mkb button + button { border-left:1px solid #e5eaf2; }
+  .mkb button:hover { background:#f2f5fa; color:#435169; }
+  .mkb button.on[data-v="1"] { background:#e3f4ea; color:#1f6b46; } .mkb button.on[data-v="0"] { background:#f9e3e3; color:#8f2f2f; }
+  .lv-key { margin:0.2rem 0 0.8rem; font-size:0.86rem; border:1px dashed #cfd7e4; border-radius:10px; background:#fbfcfe; }
+  .lv-key summary { cursor:pointer; padding:0.5rem 0.8rem; font-weight:700; color:#1d3f78; list-style:none; }
+  .lv-key summary::-webkit-details-marker { display:none; }
+  .lv-key summary .lv-after { margin-left:0.5rem; }
+  .lv-key .lv-keybody { padding:0 0.8rem 0.7rem; display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; }
+  .lv-key .lv-keybody small { flex-basis:100%; color:#74829a; }
+  .lv-chip { font:inherit; font-size:0.84rem; font-weight:700; padding:0.3rem 0.7rem; border-radius:999px; border:1.5px solid #cfd7e4; background:#fff; color:#243655; cursor:pointer; }
+  .lv-chip:hover { border-color:#1d3f78; } .lv-chip.on { background:#e3f4ea; border-color:#1f6b46; color:#1f6b46; }
+  .lv-key input { font:inherit; font-size:0.86rem; padding:0.35rem 0.55rem; border:1.5px solid #cfd7e4; border-radius:8px; min-width:12rem; flex:1 1 14rem; }
+  .lv-key label { display:flex; flex-direction:column; gap:0.15rem; font-weight:700; flex:1 1 12rem; }
+  .lv-key label span { font-size:0.74rem; color:#74829a; }
+  .lv-key .lv-save { font:inherit; font-weight:800; padding:0.35rem 0.8rem; border-radius:8px; border:none; background:#1d3f78; color:#fff; cursor:pointer; }
+  .lv-key .lv-clear { font:inherit; font-weight:700; padding:0.35rem 0.6rem; border-radius:8px; border:1px solid #cfd7e4; background:#fff; color:#74829a; cursor:pointer; }
+  .lv-after { display:inline-block; font-size:0.72rem; font-weight:700; color:#8a5a10; background:#fff3dc; border-radius:6px; padding:0.05rem 0.4rem; vertical-align:middle; }
+  @media print { .lv-ghosts, .lv-key { display:none !important; } .mkb { border:none; } .mkb button:not(.on) { display:none; } .mkb button.on { border-radius:6px; } }`;
   function css() {
     if (document.getElementById("lv-css")) return;
     const st = document.createElement("style");
@@ -205,5 +235,5 @@
     document.head.appendChild(st);
   }
 
-  window.LV = { esc, canonical, normalise, shown, title, students, mark, csv, download, parts, css, SKIP };
+  window.LV = { esc, canonical, normalise, shown, title, students, mark, markButtons, byHand, keyKind, csv, download, parts, css, SKIP };
 })();

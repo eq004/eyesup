@@ -388,6 +388,7 @@ function renderReport(s, recovered) {
       if (marked.length) who = `<p class="who-note" style="font-weight:700;color:var(--ink-soft)">${marked.filter((x) => x.ok).length} of ${marked.length} right</p>` + who;
       if (it.noResponse && it.noResponse.length)
         who += `<p class="who-note">No response: ${it.noResponse.map(esc).join(", ")}</p>`;
+      if (it.marked) who += `<p class="who-note">✎ Marked after the lesson.</p>`;
     }
     return `<div class="itx${it.images && it.images.length ? " has-gallery" : ""}">
       <span class="mode">${idx + 1} · ${it.mode === "counters" && it.counterKind === "base10" ? "Tens & Ones" : MODE_NAMES[it.mode] || esc(it.mode)}</span>

@@ -1390,6 +1390,8 @@ app.post("/api/lessons/:id/edit", async (req, res) => {
     const promptEdits = (Array.isArray(req.body.prompts) ? req.body.prompts : []).filter(
       (e) => Number.isInteger(e?.i) && typeof e?.prompt === "string"
     );
+    // Marks made after the lesson: { i, key?: {...}|null, manual?: { name: true|false|null } }
+    const markEdits = (Array.isArray(req.body.marks) ? req.body.marks : []).filter((e) => Number.isInteger(e?.i)).slice(0, 50);
 
     // If this session is still live in memory, edit it at the source so the
     // next autosave carries the changes rather than overwriting them.
@@ -1400,10 +1402,18 @@ app.post("/api/lessons/:id/edit", async (req, res) => {
       for (const e of promptEdits) {
         if (all[e.i]) all[e.i].prompt = e.prompt.trim().slice(0, 300);
       }
+      for (const e of markEdits) {
+        const itx = all[e.i];
+        if (!itx) continue;
+        // Keep the teacher's marks on the live interaction so every autosave carries them.
+        const probe = mergeMarks({ mode: itx.mode, key: itx.retro?.key, manual: itx.retro?.manual, students: [] }, e);
+        itx.retro = { key: probe.key, manual: probe.manual };
+        if (!itx.retro.key && !itx.retro.manual) delete itx.retro;
+      }
       if (live.persistTimer) { clearTimeout(live.persistTimer); live.persistTimer = null; }
       await persistNow(live);
       broadcast(live);
-      return res.json({ ok: true });
+      return res.json({ ok: true, summary: buildSummary(live) });
     }
 
     const summary = row.summary;
@@ -1411,10 +1421,13 @@ app.post("/api/lessons/:id/edit", async (req, res) => {
     for (const e of promptEdits) {
       if (summary.items?.[e.i]) summary.items[e.i].prompt = e.prompt.trim().slice(0, 300);
     }
+    for (const e of markEdits) {
+      if (summary.items?.[e.i]) mergeMarks(summary.items[e.i], e);
+    }
     await db.query(`UPDATE lessons SET title = $1, summary = $2, saved_at = now() WHERE id = $3`, [
       newTitle !== null ? newTitle : row.title, summary, row.id,
     ]);
-    res.json({ ok: true });
+    res.json({ ok: true, summary });
   } catch (e) {
     res.status(500).json({ error: "db_error" });
   }
@@ -2355,6 +2368,110 @@ function markOf(itx, p) {
   return { ok: null };
 }
 
+/* ---- Marking after the lesson ----
+   A teacher can set the right answer once the lesson is over (item.key) and
+   overrule any one student's mark by hand (item.manual, keyed by name).
+   Marks are recomputed from the stored answer text, so this works on lessons
+   saved long before it existed. row.ok0 keeps the mark made live, so a key
+   can be cleared again. */
+const KEY_CHOICE = new Set(["multi_choice", "true_false", "this_or_that", "picture_vote", "poll", "example_nonexample"]);
+const KEY_TEXT = new Set([...[...TEXT_MODES].filter((m) => !ANON_MODES.has(m)), "working", "counters", "maths_board", "image_caption", "image_long", "one_word"]);
+const keyKind = (mode) => KEY_CHOICE.has(mode) ? "choice" : mode === "question_set" ? "set" : KEY_TEXT.has(mode) ? "text" : null;
+
+// Clean a key sent by the teacher's page, or null to clear it.
+function cleanKey(mode, key) {
+  if (key === null || key === undefined) return null;
+  const kind = keyKind(mode);
+  const str = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");
+  const list = (v) => (Array.isArray(v) ? v.map((x) => str(x, 120)).filter(Boolean).slice(0, 12) : []);
+  if (kind === "choice") { const label = str(key.label, 200); return label ? { label } : null; }
+  if (kind === "text") { const accept = list(key.accept); return accept.length ? { accept } : null; }
+  if (kind === "set") {
+    const parts = (Array.isArray(key.parts) ? key.parts : []).slice(0, 20).map((p) => { const l = list(p); return l.length ? l : null; });
+    return parts.some(Boolean) ? { parts } : null;
+  }
+  return null;
+}
+
+// The part of a stored answer line that an answer key applies to.
+function answerTextOf(item, row) {
+  const r = String(row.response || "");
+  if (item.mode === "example_nonexample") return r.split(" — ")[0];
+  if (item.mode === "working" || item.mode === "counters") {
+    const tail = r.includes("  →  ") ? r.split("  →  ").pop() : r;
+    return tail.replace(/ [✓✗]$/, "").trim();
+  }
+  if (item.mode === "maths_board") return r.replace(/^\(board\)\s*/, "").trim();
+  if (item.mode === "image_caption" || item.mode === "image_long") return r.replace(/^\((?:\d+ images|image)\)\s*/, "").trim();
+  return r;
+}
+const anyMatch = (answer, accept) => (accept || []).some((a) => markMatch(answer, a));
+
+function keyMark(item, row) {
+  const key = item.key;
+  if (!key) return null;
+  const kind = keyKind(item.mode);
+  if (kind === "choice") return typeof key.label === "string" ? { ok: answerTextOf(item, row) === key.label } : null;
+  if (kind === "set") {
+    const parts = String(row.response || "").split(/\s{2,}\|\s{2,}/).map((p) => p.replace(/^Q\d+:\s*/, ""));
+    const keyed = (key.parts || []).map((acc, k) => ({ acc, k })).filter(({ acc }) => Array.isArray(acc) && acc.length);
+    if (!keyed.length) return null;
+    const right = keyed.filter(({ acc, k }) => anyMatch(parts[k], acc)).length;
+    return { ok: right === keyed.length, score: `${right}/${keyed.length}` };
+  }
+  if (kind === "text" && Array.isArray(key.accept) && key.accept.length) return { ok: anyMatch(answerTextOf(item, row), key.accept) };
+  return null;
+}
+
+// Recompute every student's mark on one stored item: live mark, then the
+// teacher's key, then any hand mark. Safe to run any number of times.
+function applyMarks(item) {
+  const manual = item.manual || {};
+  for (const row of item.students || []) {
+    if (row.ok0 === undefined) row.ok0 = row.ok === undefined ? null : row.ok;
+    if (row.score0 === undefined) row.score0 = row.score === undefined ? null : row.score;
+    let ok = row.ok0, score = row.score0;
+    const km = keyMark(item, row);
+    if (km) { ok = km.ok; score = km.score ?? null; }
+    const k = canonName(row.name);
+    if (row.name && Object.prototype.hasOwnProperty.call(manual, k)) ok = manual[k];
+    if (ok === true || ok === false) row.ok = ok; else delete row.ok;
+    if (score) row.score = score; else delete row.score;
+  }
+  // The answer bars follow the key; dist0 keeps the labels as they were live.
+  const kind = keyKind(item.mode);
+  if (Array.isArray(item.distribution) && (kind === "choice" || kind === "text")) {
+    if (!item.dist0) item.dist0 = item.distribution.map((d) => d.label);
+    item.distribution.forEach((d, j) => {
+      const live = item.dist0[j] ?? d.label;
+      if (!item.key) { d.label = live; return; }
+      const base = live.replace(/ [✓✗]$/, "");
+      const ok = kind === "choice" ? base === item.key.label : anyMatch(base, item.key.accept);
+      d.label = base + (ok ? " ✓" : kind === "text" ? " ✗" : "");
+    });
+  }
+  item.marked = !!(item.key || Object.keys(manual).length);
+  return item;
+}
+
+// Merge a marks edit from the teacher's page into an item's key / hand marks.
+function mergeMarks(item, e) {
+  if (Object.prototype.hasOwnProperty.call(e, "key")) {
+    const k = cleanKey(item.mode, e.key);
+    if (k) item.key = k; else delete item.key;
+  }
+  if (e.manual && typeof e.manual === "object") {
+    const manual = { ...(item.manual || {}) };
+    for (const [name, v] of Object.entries(e.manual).slice(0, 200)) {
+      const k = canonName(name).slice(0, 80);
+      if (!k) continue;
+      if (v === true || v === false) manual[k] = v; else delete manual[k];
+    }
+    if (Object.keys(manual).length) item.manual = manual; else delete item.manual;
+  }
+  return applyMarks(item);
+}
+
 function describePayload(itx, p) {
   if (WORD_MODES.has(itx.mode)) return (p.words || []).join(", ");
   if (itx.mode === "post_its") return (p.notes || []).join("  |  ");
@@ -2536,6 +2653,11 @@ function buildSummary(session, { withImages = false } = {}) {
       item.staff = itx.staff;
       item.tunes = [...itx.responses.values()].filter((r) => r.name !== "👁 Preview").map((r) => ({ name: r.name, tune: r.payload })).slice(0, 60);
       item.answers = item.tunes.map((t) => tuneLetters(t.tune));
+    }
+    if (itx.retro) {
+      if (itx.retro.key) item.key = itx.retro.key;
+      if (itx.retro.manual) item.manual = itx.retro.manual;
+      applyMarks(item);
     }
     return item;
   });

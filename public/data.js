@@ -292,7 +292,7 @@ function studentPanel(x, r, total) {
           const txt = it.mode === "question_set" && it.questions?.length
             ? `<table class="sqs">${it.questions.map((q, k) => `<tr><td>${esc(q)}</td><td>${esc(LV.parts(a.response)[k] || "—")}</td></tr>`).join("")}</table>`
             : esc(a.response || "—");
-          return `<li>${head}<span class="sa">${LV.mark(a)}${txt}${a.score && a.ok !== true ? ` <small class="muted">(${esc(a.score)})</small>` : ""}</span>${pics}</li>`;
+          return `<li>${head}<span class="sa">${LV.keyKind(it) ? LV.markButtons(i, r.name, a, LV.byHand(it, r.name)) : LV.mark(a)}${txt}${a.score && a.ok !== true ? ` <small class="muted">(${esc(a.score)})</small>` : ""}</span>${pics}</li>`;
         })
         .join("")}</ol>
     </div>`;
@@ -302,7 +302,7 @@ function studentPanel(x, r, total) {
 
 function renderActivities(x) {
   return `
-      <div class="sub">Every activity in order, with each student's answer${x.summary.items?.some((it) => it.markable) ? " and whether it was right" : ""}.</div>
+      <div class="sub">Every activity in order, with each student's answer${x.summary.items?.some((it) => it.markable) ? " and whether it was right" : ""}. Open <b>✎</b> on an activity to set the right answer now — every page, print and spreadsheet updates to match.</div>
       <div id="insBox"></div>`;
 }
 
@@ -684,6 +684,75 @@ function renameLesson(x) {
   input.onblur = () => finish(true);
 }
 
+/* ---------- Marking after the lesson ---------- */
+
+// Save an answer key or a hand mark; the server re-marks the whole lesson and
+// sends the result back, so every tab, print and spreadsheet follows.
+async function saveMarks(x, edit) {
+  const res = await fetch(`/api/lessons/${x.meta.id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: token, marks: [edit] }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.summary) throw new Error(data.error || "save failed");
+  // Keep what the archive doesn't store (pictures, the lesson name shown on this page).
+  const old = x.summary;
+  (data.summary.items || []).forEach((it, i) => { if (old.items?.[i]?.images) it.images = old.items[i].images; });
+  data.summary.title = data.summary.title || old.title;
+  x.summary = LV.normalise(data.summary);
+  const openKey = [...document.querySelectorAll("details.lv-key[open]")].map((d) => d.dataset.keybox);
+  refreshDetail();
+  openKey.forEach((k) => { const d = document.querySelector(`details.lv-key[data-keybox="${k}"]`); if (d) d.open = true; });
+}
+
+const splitAccept = (v) => String(v || "").split(",").map((s) => s.trim()).filter(Boolean);
+
+function bindMarking(x) {
+  const root = document.getElementById("detail");
+  if (!root || root._marking) return;
+  root._marking = true;
+  const fail = () => alert("Couldn't save that mark — check you're signed in and try again.");
+  root.addEventListener("click", async (e) => {
+    const cur = current();
+    if (!cur) return;
+    const mb = e.target.closest(".mkb button");
+    if (mb) {
+      e.stopPropagation();
+      const box = mb.closest(".mkb");
+      const i = Number(box.dataset.mark), name = box.dataset.name;
+      const v = mb.classList.contains("on") ? null : mb.dataset.v === "1"; // tap the lit one to undo
+      try { await saveMarks(cur, { i, manual: { [name]: v } }); } catch { fail(); }
+      return;
+    }
+    const chip = e.target.closest("[data-keychip]");
+    if (chip) {
+      const i = Number(chip.dataset.keychip);
+      const key = chip.classList.contains("on") ? null : { label: chip.dataset.label };
+      try { await saveMarks(cur, { i, key }); } catch { fail(); }
+      return;
+    }
+    const clr = e.target.closest("[data-keyclear]");
+    if (clr) {
+      try { await saveMarks(cur, { i: Number(clr.dataset.keyclear), key: null }); } catch { fail(); }
+    }
+  });
+  root.addEventListener("submit", async (e) => {
+    const form = e.target.closest("form[data-keyform]");
+    if (!form) return;
+    e.preventDefault();
+    const cur = current();
+    if (!cur) return;
+    const i = Number(form.dataset.keyform);
+    let key;
+    if (form.dataset.set) {
+      const it = cur.summary.items[i];
+      const parts = (it.questions || []).map((_, k) => { const l = splitAccept(form.elements["p" + k]?.value); return l.length ? l : null; });
+      key = parts.some(Boolean) ? { parts } : null;
+    } else {
+      const accept = splitAccept(form.elements.accept.value);
+      key = accept.length ? { accept } : null;
+    }
+    try { await saveMarks(cur, { i, key }); } catch { fail(); }
+  });
+}
+
 function printOnly(cls, el) {
   document.body.classList.add(cls);
   if (el) el.classList.add("print-me");
@@ -700,7 +769,8 @@ function bindDetail() {
     refreshDetail();
   }));
   const insBox = document.getElementById("insBox");
-  if (insBox) renderInsights(insBox, x.summary, { showNames: true });
+  if (insBox) renderInsights(insBox, x.summary, { showNames: true, edit: true });
+  bindMarking(x);
   const sb = document.getElementById("shareBtn");
   if (sb) sb.onclick = () => shareLesson(x);
   const rb = document.getElementById("renameBtn");
