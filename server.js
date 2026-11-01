@@ -364,7 +364,13 @@ function persistSession(session) {
 const app = express();
 app.set("trust proxy", 1); // Render sits directly in front; req.ip is then the real client
 app.disable("x-powered-by");
+// Once the site has its own address (e.g. eyesup.peakyou.com.au), set CANONICAL_HOST and every
+// visit to the old onrender.com address is sent there. Dormant until the env var exists.
+const CANONICAL_HOST = (process.env.CANONICAL_HOST || "").trim().toLowerCase();
 app.use((req, res, next) => {
+  if (CANONICAL_HOST && req.hostname && req.hostname.toLowerCase() !== CANONICAL_HOST && !req.hostname.startsWith("localhost") && req.method === "GET" && !req.path.startsWith("/api/")) {
+    return res.redirect(301, `https://${CANONICAL_HOST}${req.originalUrl}`);
+  }
   res.set("X-Content-Type-Options", "nosniff");
   res.set("X-Frame-Options", "SAMEORIGIN");
   res.set("Referrer-Policy", "strict-origin-when-cross-origin");
