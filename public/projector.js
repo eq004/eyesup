@@ -1015,7 +1015,7 @@ function renderMatches(agg) {
       const cls = pct >= 70 ? "c-green" : pct >= 40 ? "c-amber" : "c-red";
       return `
       <div class="pbar ${cls}">
-        <div class="top"><span>${esc(m.left)} <span style="color:var(--chalk-dim)">↔</span> ${esc(m.right)}</span><span class="pct">${pct}% matched it</span></div>
+        <div class="top"><span>${m.image ? `<img class="opt-pic" src="${m.image}" alt="" />` : ""}${esc(m.left)} <span style="color:var(--chalk-dim)">↔</span> ${esc(m.right)}</span><span class="pct">${pct}% matched it</span></div>
         <div class="track"><div class="fill" style="width:${pct}%"></div></div>
       </div>`;
     })
@@ -1207,7 +1207,7 @@ function renderBars(itx, agg) {
       const dim = answered && i !== agg.correct ? "opacity:0.45" : "";
       return `
       <div class="pbar ${cls}" style="${dim}">
-        <div class="top"><span>${letter(i)}${esc(o)}${answered && i === agg.correct ? " ✓" : ""}</span><span class="pct">${n} · ${pct}%</span></div>
+        <div class="top"><span>${itx.optionImages?.[i] ? `<img class="opt-pic" src="${itx.optionImages[i]}" alt="" />` : ""}${letter(i)}${esc(o)}${answered && i === agg.correct ? " ✓" : ""}</span><span class="pct">${n} · ${pct}%</span></div>
         <div class="track"><div class="fill" style="width:${total ? (n / max) * 100 : 0}%"></div></div>
       </div>`;
     })
@@ -1221,7 +1221,7 @@ function renderRanked(agg) {
       (r, i) => `
     <div class="rank-row" style="animation-delay:${i * 0.08}s">
       <span class="pos">${r.position}</span>
-      <span style="flex:1;text-align:left">${esc(r.label)}</span>
+      <span style="flex:1;text-align:left">${r.image ? `<img class="opt-pic" src="${r.image}" alt="" />` : ""}${esc(r.label)}</span>
       ${r.correctPct != null ? `<span class="pct-badge">${r.correctPct}% placed it here</span>` : ""}
     </div>`
     )

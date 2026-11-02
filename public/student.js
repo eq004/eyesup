@@ -110,7 +110,10 @@ function connect() {
     const code = sessionStorage.getItem("eyesup_code");
     const sid = sessionStorage.getItem("eyesup_sid");
     const name = sessionStorage.getItem("eyesup_name");
-    if (code && sid) ws.send(JSON.stringify({ type: "student_join", code, studentId: sid, name }));
+    // Back after a refresh: pick the seat up again — unless this link points at a different room.
+    const q = new URLSearchParams(location.search);
+    const urlCode = (q.get("code") || q.get("c") || "").toUpperCase();
+    if (code && sid && (!urlCode || urlCode === code || urlCode.length === 5)) ws.send(JSON.stringify({ type: "student_join", code, studentId: sid, name }));
   };
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
@@ -129,11 +132,15 @@ function connect() {
         return;
       }
       const tried = pendingJoin || { code: sessionStorage.getItem("eyesup_code") || "", name: sessionStorage.getItem("eyesup_name") || "" };
+      const silent = !pendingJoin; // the automatic re-join after a refresh, not a tap
       pendingJoin = null;
       clearTimeout(pendingTimer);
       sessionStorage.removeItem("eyesup_code");
       sessionStorage.removeItem("eyesup_sid");
       const code = msg.code || tried.code || "";
+      // Yesterday's room is gone but this link points at a new one: just open the new one.
+      const urlCode = (new URLSearchParams(location.search).get("code") || new URLSearchParams(location.search).get("c") || "").toUpperCase();
+      if (silent && urlCode && urlCode !== code) { renderJoin(false, { code: urlCode }); return; }
       const why = msg.error === "session_ended" ? "That class has finished. Ask your teacher for a new code."
         : msg.error === "slow_down" ? "Lots of people are joining at once — wait a few seconds, then tap Join again."
         : `No class found with the code ${code || "you typed"}. Check the code on the board and try again.`;
@@ -469,13 +476,15 @@ function renderInteraction(itx) {
     const huge = ["this_or_that", "true_false"].includes(itx.mode) ? "huge" : "";
     const letter = (i) =>
       itx.mode === "multi_choice" ? `<b style="color:var(--accent-ink);margin-right:0.45rem">${String.fromCharCode(65 + i)}</b>` : "";
-    show(`${h}${itx.imageUrl ? `<img class="prompt-img" src="${itx.imageUrl}" alt="vote on this image" />` : ""}${itx.options
+    const pics = itx.optionImages || [];
+    const anyPic = pics.some(Boolean);
+    show(`${h}${itx.imageUrl ? `<img class="prompt-img" src="${itx.imageUrl}" alt="vote on this image" />` : ""}<div class="choices ${anyPic ? "pics" : ""}">${itx.options
       .map(
-        (o, i) => `<button class="btn choice ${huge}" data-i="${i}">
-          ${letter(i)}${emojis ? emojis[i] + " " : ""}${esc(o)}
+        (o, i) => `<button class="btn choice ${anyPic ? "" : huge}" data-i="${i}">
+          ${pics[i] ? `<img class="opt-img" src="${pics[i]}" alt="" />` : ""}<span>${letter(i)}${emojis ? emojis[i] + " " : ""}${esc(o)}</span>
         </button>`
       )
-      .join("")}
+      .join("")}</div>
       <p class="hint">Tap to answer — it sends straight away.</p>`, () => {
       screenEl.querySelectorAll("[data-i]").forEach(
         (b) => (b.onclick = () => submit({ choice: +b.dataset.i }))
@@ -519,7 +528,7 @@ function renderInteraction(itx) {
           (optIdx, pos) => `
         <div class="rank-item">
           <span class="pos">${pos + 1}</span>
-          <span class="label">${esc(itx.options[optIdx])}</span>
+          <span class="label">${itx.optionImages?.[optIdx] ? `<img class="opt-img sm" src="${itx.optionImages[optIdx]}" alt="" />` : ""}${esc(itx.options[optIdx])}</span>
           <button data-up="${pos}" ${pos === 0 ? "disabled" : ""}>↑</button>
           <button data-down="${pos}" ${pos === rankOrder.length - 1 ? "disabled" : ""}>↓</button>
         </div>`
@@ -633,7 +642,7 @@ function renderInteraction(itx) {
         .map(
           (p, i) => `
         <div class="match-row">
-          <span class="term">${esc(p.left)}</span>
+          <span class="term">${itx.pairImages?.[i] ? `<img class="opt-img sm" src="${itx.pairImages[i]}" alt="" />` : ""}${esc(p.left)}</span>
           <select data-m="${i}">
             <option value="">choose…</option>
             ${matchShuffle.map((j) => `<option value="${j}">${esc(itx.pairs[j].right)}</option>`).join("")}

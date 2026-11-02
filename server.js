@@ -482,7 +482,7 @@ app.get("/insights", (_req, res) => res.sendFile(path.join(__dirname, "public/in
 // broadcasts stay light — clients just get a URL.
 app.get("/api/image/:code/:id", (req, res) => {
   const session = sessions.get(String(req.params.code || "").toUpperCase());
-  const dataUrl = session?.images.get(Number(req.params.id));
+  const dataUrl = session?.images.get(Number(req.params.id)) ?? session?.images.get(String(req.params.id));
   const m = dataUrl?.match(/^data:(image\/\w+);base64,(.+)$/);
   if (!m) return res.status(404).end();
   res.set("Cache-Control", "public, max-age=3600");
@@ -1206,7 +1206,16 @@ function sanitizeStep(it) {
       typeof it.image === "string" && it.image.startsWith("data:image/") && it.image.length < 900000
         ? it.image
         : undefined,
+    // Picture answers: one small picture per option / per match-up term (or null).
+    optionImages: cleanPics(it.optionImages),
+    pairImages: cleanPics(it.pairImages),
   };
+}
+
+function cleanPics(list) {
+  if (!Array.isArray(list)) return undefined;
+  const out = list.slice(0, 10).map((x) => (typeof x === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(x) && x.length < 300000 ? x : null));
+  return out.some(Boolean) ? out : undefined;
 }
 
 async function markPlanTaught(session) {
@@ -1798,8 +1807,19 @@ function isRevealMode(mode) {
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, trace }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, trace, optionImages, pairImages }) {
   session.counter += 1;
+  // Picture answers: each option's picture is parked in the room and sent as a link.
+  const picUrls = (list, tag) => {
+    if (!Array.isArray(list) || !list.some(Boolean)) return null;
+    const urls = list.slice(0, 10).map((x, i) => {
+      if (!(typeof x === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(x) && x.length < 300000)) return null;
+      const key = `${session.counter}${tag}${i}`;
+      session.images.set(key, x);
+      return `/api/image/${session.code}/${key}`;
+    });
+    return urls.some(Boolean) ? urls : null;
+  };
   let opts = null;
   let pairs = null;
   if (FIXED_OPTIONS[mode]) opts = FIXED_OPTIONS[mode];
@@ -1892,6 +1912,8 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     // Link step: the website students are sent to.
     link: mode === "link" && cleanUrl(url) ? { url: cleanUrl(url), label: String(linkLabel || "").trim().slice(0, 60) } : null,
     imageUrl,
+    optionImages: OPTION_MODES.has(mode) ? picUrls(optionImages, "o") : null,
+    pairImages: mode === "match_up" ? picUrls(pairImages, "p") : null,
     correct: correctIdx,
     words, // spelling
     cloze, // cloze passage {parts, answers}
@@ -2012,7 +2034,7 @@ function aggregate(session, itx) {
   if (itx.mode === "tick_boxes") {
     const counts = itx.options.map(() => 0);
     for (const r of responses) for (const i of r.payload.picks || []) if (i < counts.length) counts[i] += 1;
-    return { ...base, options: itx.options, counts, tally: true };
+    return { ...base, options: itx.options, optionImages: itx.optionImages, counts, tally: true };
   }
 
   if (CHOICE_MODES.has(itx.mode)) {
@@ -2022,7 +2044,7 @@ function aggregate(session, itx) {
       if (Number.isInteger(i) && i >= 0 && i < counts.length) counts[i] += 1;
     }
     // The correct answer only reaches screens after the teacher reveals it.
-    return { ...base, options: itx.options, counts, correct: itx.answerRevealed ? itx.correct : null };
+    return { ...base, options: itx.options, optionImages: itx.optionImages, counts, correct: itx.answerRevealed ? itx.correct : null };
   }
 
   if (ORDER_MODES.has(itx.mode)) {
@@ -2041,6 +2063,7 @@ function aggregate(session, itx) {
     const ranked = itx.options
       .map((label, i) => ({
         label,
+        image: itx.optionImages?.[i] || null,
         avg: total ? sums[i] / total : i,
         // For put_in_order the entered order IS the correct order.
         correctPct: itx.mode === "put_in_order" && total ? Math.round((correctAt[i] / total) * 100) : null,
@@ -2098,7 +2121,7 @@ function aggregate(session, itx) {
     }
     return {
       ...base,
-      matches: itx.pairs.map((p, i) => ({ left: p.left, right: p.right, correct: correctCounts[i] })),
+      matches: itx.pairs.map((p, i) => ({ left: p.left, right: p.right, image: itx.pairImages?.[i] || null, correct: correctCounts[i] })),
     };
   }
 
@@ -2112,7 +2135,7 @@ function aggregate(session, itx) {
     const revealed = [...itx.responses.entries()]
       .filter(([, r]) => r.revealed && r.payload.text)
       .map(([sid, r]) => ({ text: r.payload.text, choiceLabel: itx.options[r.payload.choice], name: nm(r), sid }));
-    return { ...base, options: itx.options, counts, revealed };
+    return { ...base, options: itx.options, optionImages: itx.optionImages, counts, revealed };
   }
 
   if (itx.fields) {
@@ -2298,8 +2321,8 @@ function teacherState(session) {
           id: itx.id,
           mode: itx.mode,
           prompt: itx.prompt,
-          options: itx.options,
-          pairs: itx.pairs,
+          options: itx.options, optionImages: itx.optionImages,
+          pairs: itx.pairs, pairImages: itx.pairImages,
           fields: itx.fields,
           words: itx.words,
           cloze: itx.cloze,
@@ -2366,7 +2389,7 @@ function projectorState(session) {
           id: itx.id,
           mode: itx.mode,
           prompt: itx.prompt,
-          options: itx.options,
+          options: itx.options, optionImages: itx.optionImages,
           imageUrl: itx.imageUrl, trace: itx.trace,
           counterKind: itx.counterKind,
           open: itx.open,
@@ -2405,8 +2428,8 @@ function studentState(session, student) {
             id: itx.id,
             mode: itx.mode,
             prompt: itx.prompt,
-            options: itx.options,
-            pairs: itx.pairs,
+            options: itx.options, optionImages: itx.optionImages,
+            pairs: itx.pairs, pairImages: itx.pairImages,
             fields: itx.fields,
             multi: itx.multi,
             imageUrl: itx.imageUrl, trace: itx.trace,

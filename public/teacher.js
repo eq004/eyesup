@@ -4,12 +4,12 @@ const MODES = {
   slide:         { icon: "📽", name: "Slide", hint: "A slide from your PowerPoint or Google Slides", opts: null },
   deck:          { icon: "🎞", name: "Live slides", hint: "Your real Google Slides / PowerPoint / Canva deck, animations and all", opts: null },
   /* fast votes */
-  multi_choice:  { icon: "🅰️", name: "Multiple Choice", hint: "Quiz question — reveal the answer after voting", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true },
+  multi_choice:  { icon: "🅰️", name: "Multiple Choice", hint: "Quiz question — reveal the answer after voting", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true, picOpts: true },
   tick_boxes:    { icon: "☑️", name: "Tick the Boxes", hint: "Students tick every box that applies — the board keeps a tally", opts: { min: 2, max: 10, labels: "Box" } },
-  poll:          { icon: "📊", name: "Poll",          hint: "2–5 options, live results",       opts: { min: 2, max: 5, labels: "Option" } },
+  poll:          { icon: "📊", name: "Poll",          hint: "2–5 options, live results",       opts: { min: 2, max: 5, labels: "Option" }, picOpts: true },
   agree_disagree:{ icon: "⚖️", name: "Agree / Disagree", hint: "Agree · Unsure · Disagree",    opts: null },
   true_false:    { icon: "✅", name: "True or False", hint: "Two buttons, instant",            opts: null },
-  this_or_that:  { icon: "⚡", name: "This or That",  hint: "Two big options, fast",           opts: { min: 2, max: 2, labels: "Choice" } },
+  this_or_that:  { icon: "⚡", name: "This or That",  hint: "Two big options, fast",           opts: { min: 2, max: 2, labels: "Choice" }, picOpts: true },
   confidence:    { icon: "🎯", name: "Confidence",    hint: "Got it · Nearly · Confused",      opts: null },
   example_nonexample: { icon: "↔️", name: "Example / Non-example", hint: "Which fits the concept — and why?", opts: { min: 2, max: 2, labels: "Item" } },
   smiley:        { icon: "😊", name: "Smiley Review", hint: "5 faces, happiest to saddest — one tap", opts: null,
@@ -69,9 +69,9 @@ const MODES = {
   muddiest_point:{ icon: "🌫️", name: "Muddiest Point", hint: "Anonymous — least clear thing", opts: null },
   ask_question:  { icon: "❓", name: "Ask a Question", hint: "Anonymous — what's still fuzzy?", opts: null },
   /* arrange & match */
-  ranking:       { icon: "🔢", name: "Ranking",       hint: "Class orders by importance",      opts: { min: 2, max: 6, labels: "Item" } },
-  put_in_order:  { icon: "🪜", name: "Put in Order",  hint: "Sequence steps or events — enter them in the CORRECT order", opts: { min: 2, max: 6, labels: "Step" } },
-  match_up:      { icon: "🧩", name: "Match Up",      hint: "Match terms to definitions or examples", pairs: { min: 2, max: 6 } },
+  ranking:       { icon: "🔢", name: "Ranking",       hint: "Class orders by importance",      opts: { min: 2, max: 6, labels: "Item" }, picOpts: true },
+  put_in_order:  { icon: "🪜", name: "Put in Order",  hint: "Sequence steps or events — enter them in the CORRECT order", opts: { min: 2, max: 6, labels: "Step" }, picOpts: true },
+  match_up:      { icon: "🧩", name: "Match Up",      hint: "Match terms to definitions or examples — or pictures to words", pairs: { min: 2, max: 6 }, picOpts: true },
   venn:          { icon: "◉", name: "Venn Diagram",   hint: "Sort ideas into two overlapping circles", opts: { min: 2, max: 2, labels: "Circle" },
                    ph: "The sorting question, e.g. “Which features belong where?”", multiOpt: true },
   /* practise & test */
@@ -374,6 +374,56 @@ function loadComposerImage(file, cb) {
   reader.readAsDataURL(file);
 }
 
+// Picture answers: a small picture per option, kept beside its text box.
+let composerOptImgs = [];
+function loadOptionImage(file, cb) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 480 / img.width, 480 / img.height);
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * s);
+      c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      cb(c.toDataURL("image/jpeg", 0.8));
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+function picButton(i) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "opt-pic";
+  b.dataset.pic = String(i);
+  b.title = "Add a picture for this option";
+  b.innerHTML = "🖼";
+  b.onclick = () => {
+    if (composerOptImgs[i]) { composerOptImgs[i] = null; showOptThumb(i); return; } // tap again to remove
+    const f = document.createElement("input");
+    f.type = "file"; f.accept = "image/*";
+    f.onchange = () => { if (f.files[0]) loadOptionImage(f.files[0], (d) => { composerOptImgs[i] = d; showOptThumb(i); }); };
+    f.click();
+  };
+  return b;
+}
+function showOptThumb(i) {
+  const b = $("composerOpts").querySelector(`.opt-pic[data-pic="${i}"]`);
+  if (!b) return;
+  const d = composerOptImgs[i];
+  b.innerHTML = d ? `<img src="${d}" alt="" />` : "🖼";
+  b.title = d ? "Picture added — click to remove it" : "Add a picture for this option";
+  b.classList.toggle("has", !!d);
+}
+function picRow(inp, i) {
+  const row = document.createElement("div");
+  row.className = "opt-row";
+  row.appendChild(picButton(i));
+  row.appendChild(inp);
+  return row;
+}
+
 function setComposerImage(dataUrl) {
   composerImage = dataUrl;
   const p = $("imgPreview");
@@ -396,6 +446,7 @@ function openComposer(key, keepImage) {
   prompt.placeholder = m.ph || "Type the question — or leave blank and just ask it aloud";
   const opts = $("composerOpts");
   opts.innerHTML = "";
+  composerOptImgs = [];
   if (m.opts) {
     for (let i = 0; i < m.opts.max; i++) {
       const inp = document.createElement("input");
@@ -403,7 +454,14 @@ function openComposer(key, keepImage) {
       inp.maxLength = m.opts.maxLen || 80;
       inp.placeholder = `${m.opts.labels} ${i + 1}${i < m.opts.min ? "" : " (optional)"}`;
       inp.dataset.opt = "1";
-      opts.appendChild(inp);
+      if (m.picOpts) opts.appendChild(picRow(inp, i));
+      else opts.appendChild(inp);
+    }
+    if (m.picOpts) {
+      const note = document.createElement("p");
+      note.style.cssText = "margin:0.4rem 0 0;font-size:0.78rem;color:var(--muted)";
+      note.textContent = "🖼 adds a picture to an option — students tap the picture. A short word beside it keeps the results readable.";
+      opts.appendChild(note);
     }
   }
   if (m.imageUpload) {
@@ -537,6 +595,7 @@ function openComposer(key, keepImage) {
         <input type="text" maxlength="60" data-left="1" placeholder="Term ${i + 1}${i < m.pairs.min ? "" : " (optional)"}" />
         <span class="pair-eq">↔</span>
         <input type="text" maxlength="60" data-right="1" placeholder="Its match" />`;
+      if (m.picOpts) row.insertBefore(picButton(i), row.querySelector(".pair-eq"));
       opts.appendChild(row);
     }
   }
@@ -570,10 +629,19 @@ function readComposer() {
   }
   let options = null;
   let correct = null;
+  let optionImages, pairImages;
   if (m.opts) {
-    options = [...$("composerOpts").querySelectorAll("input[data-opt]")]
-      .map((i) => i.value.trim())
-      .filter(Boolean);
+    const texts = [...$("composerOpts").querySelectorAll("input[data-opt]")].map((i) => i.value.trim());
+    if (m.picOpts && composerOptImgs.some(Boolean)) {
+      // A picture can stand alone; it gets a short label so results stay readable.
+      options = []; optionImages = [];
+      texts.forEach((t, i) => {
+        const img = composerOptImgs[i] || null;
+        if (!t && !img) return;
+        options.push(t || `Picture ${options.length + 1}`);
+        optionImages.push(img);
+      });
+    } else options = texts.filter(Boolean);
     if (options.length < m.opts.min) {
       toast(`Needs at least ${m.opts.min} options`);
       return null;
@@ -648,7 +716,16 @@ function readComposer() {
   const key = m.tuneUI ? ($("keySel") ? parseInt($("keySel").value, 10) : 0) : undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, trace, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key };
+  if (m.pairs && m.picOpts && composerOptImgs.some(Boolean)) {
+    // Pictures sit on the left-hand term of each complete pair.
+    const rows = [...$("composerOpts").querySelectorAll(".pair-row")];
+    pairImages = [];
+    rows.forEach((r, i) => {
+      if (r.querySelector("[data-left]").value.trim() && r.querySelector("[data-right]").value.trim()) pairImages.push(composerOptImgs[i] || null);
+    });
+    if (!pairImages.some(Boolean)) pairImages = undefined;
+  }
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, trace, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, optionImages, pairImages };
 }
 
 /* ---------------- rendering ---------------- */
@@ -2078,9 +2155,10 @@ function stepDetail(st) {
   if (st.mode === "deck") return `<span>${{ google: "Google Slides", microsoft: "PowerPoint Online", canva: "Canva" }[st.provider] || "Slides"} · plays with animations · picks up where you left off</span>`;
   if (st.mode === "slide") return `<img class="slide-thumb" src="/api/slide/${st.img}?${authQuery()}" alt="slide ${st.page}" loading="lazy" /> <span>Slide ${st.page} of ${st.pages}</span>`;
   if (st.image) bits.push(`<img src="${st.image}" alt="" />`);
-  if (st.mode === "match_up" && st.options) bits.push(st.options.map((o) => esc(o).replace(" = ", " ↔ ")).join(" · "));
+  const thumb = (list, i) => (list?.[i] ? `<img src="${list[i]}" alt="" style="height:28px;width:28px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:0.2rem" />` : "");
+  if (st.mode === "match_up" && st.options) bits.push(st.options.map((o, i) => thumb(st.pairImages, i) + esc(o).replace(" = ", " ↔ ")).join(" · "));
   else if (st.options && st.options.length)
-    bits.push(st.options.map((o, i) => `${esc(o)}${st.correct === i ? " ✓" : ""}`).join(" · "));
+    bits.push(st.options.map((o, i) => `${thumb(st.optionImages, i)}${esc(o)}${st.correct === i ? " ✓" : ""}`).join(" · "));
   if (st.passage) bits.push(`“${esc(st.passage.slice(0, 110))}${st.passage.length > 110 ? "…" : ""}”`);
   if (st.expected) bits.push(`Answer: <b>${esc(st.expected)}</b>`);
   if (st.trace) bits.push(`✍️ Trace <b>${esc(st.trace)}</b>`);
@@ -2494,6 +2572,10 @@ function fillComposer(st) {
     st.options.forEach((o, i) => { if (boxes[i]) boxes[i].value = o; });
   }
   if (m.hasCorrect && $("correctSel")) $("correctSel").value = Number.isInteger(st.correct) ? String(st.correct) : "";
+  if (m.picOpts) {
+    composerOptImgs = [...(st.optionImages || st.pairImages || [])];
+    composerOptImgs.forEach((_, i) => showOptThumb(i));
+  }
   if (m.pairs && st.options) {
     const rows = [...$("composerOpts").querySelectorAll(".pair-row")];
     st.options.forEach((o, i) => {
