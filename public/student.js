@@ -87,14 +87,26 @@ function esc(s) {
 const PREVIEW = new URLSearchParams(location.search).get("preview") === "1";
 const PREVIEW_CODE = (new URLSearchParams(location.search).get("code") || "").toUpperCase();
 
+// A join the student tapped before the socket was ready (slow Wi-Fi, phone
+// just woken, server waking up). It goes the moment the socket opens, and the
+// screen says what is happening instead of sitting still.
+let pendingJoin = null;
+let pendingTimer = null;
+let reconnectTimer = null;
+let failedConnects = 0;
+
 function connect() {
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return; // already connecting / open
+  clearTimeout(reconnectTimer);
   ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
   ws.onopen = () => {
+    failedConnects = 0;
     $("conn").textContent = "";
     if (PREVIEW && PREVIEW_CODE) {
       ws.send(JSON.stringify({ type: "student_join", code: PREVIEW_CODE, name: "👁 Preview" }));
       return;
     }
+    if (pendingJoin) { ws.send(JSON.stringify({ type: "student_join", ...pendingJoin })); return; }
     const code = sessionStorage.getItem("eyesup_code");
     const sid = sessionStorage.getItem("eyesup_sid");
     const name = sessionStorage.getItem("eyesup_name");
@@ -104,6 +116,8 @@ function connect() {
     const msg = JSON.parse(e.data);
     if (msg.type === "joined") {
       joined = true;
+      pendingJoin = null;
+      clearTimeout(pendingTimer);
       sessionStorage.setItem("eyesup_sid", msg.studentId);
       sessionStorage.setItem("eyesup_code", msg.code);
       return;
@@ -114,9 +128,16 @@ function connect() {
         show(`<div class="big-emoji">👁</div><p class="state-sub">No live session for this code — start one on the dashboard.</p>`);
         return;
       }
+      const tried = pendingJoin || { code: sessionStorage.getItem("eyesup_code") || "", name: sessionStorage.getItem("eyesup_name") || "" };
+      pendingJoin = null;
+      clearTimeout(pendingTimer);
       sessionStorage.removeItem("eyesup_code");
       sessionStorage.removeItem("eyesup_sid");
-      render();
+      const code = msg.code || tried.code || "";
+      const why = msg.error === "session_ended" ? "That class has finished. Ask your teacher for a new code."
+        : msg.error === "slow_down" ? "Lots of people are joining at once — wait a few seconds, then tap Join again."
+        : `No class found with the code ${code || "you typed"}. Check the code on the board and try again.`;
+      renderJoin(true, { code: msg.error === "no_session" ? "" : code, name: tried.name, message: why });
       return;
     }
     if (msg.type === "state") {
@@ -126,11 +147,19 @@ function connect() {
     }
   };
   ws.onclose = () => {
-    $("conn").textContent = "reconnecting…";
-    setTimeout(connect, 1200);
+    failedConnects += 1;
+    $("conn").textContent = failedConnects >= 3 ? "Can't reach the class right now — check Wi-Fi or mobile data. Still trying…" : "reconnecting…";
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connect, Math.min(1200 * failedConnects, 5000));
   };
 }
 const send = (obj) => ws && ws.readyState === 1 && ws.send(JSON.stringify(obj));
+
+// Phone woke up, tab came back, Wi-Fi returned: don't wait for the timer.
+const wakeUp = () => { if (!ws || ws.readyState > 1) connect(); };
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") wakeUp(); });
+window.addEventListener("online", wakeUp);
+window.addEventListener("pageshow", wakeUp);
 
 /* ---------------- render ---------------- */
 
@@ -1632,18 +1661,39 @@ function renderInteraction(itx) {
 
 /* ---------------- join screen ---------------- */
 
-function renderJoin(forceFullForm) {
+function renderJoin(forceFullForm, opts = {}) {
   const params = new URLSearchParams(location.search);
-  const preset = (params.get("code") || "").toUpperCase();
+  const preset = opts.code !== undefined ? opts.code : (params.get("code") || "").toUpperCase();
   // The device remembers who you are — next lesson is one tap.
-  const savedName = localStorage.getItem("eyesup_name") || "";
+  const savedName = opts.name !== undefined ? opts.name : localStorage.getItem("eyesup_name") || "";
+
+  const say = (text, kind) => {
+    const el = $("joinMsg");
+    if (!el) return;
+    el.textContent = text;
+    el.className = "join-msg " + (kind || "");
+  };
 
   const doJoin = (c, n) => {
-    if (c.length !== 4) return;
-    if (n) localStorage.setItem("eyesup_name", n);
+    if (c.length !== 4) { say("Type the 4-letter class code from the board.", "warn"); $("codeInput")?.focus(); return; }
+    if (!n) { say("Type your first name so your teacher knows it's you.", "warn"); $("nameInput")?.focus(); return; }
+    localStorage.setItem("eyesup_name", n);
     sessionStorage.setItem("eyesup_name", n);
     sessionStorage.removeItem("eyesup_sid");
-    send({ type: "student_join", code: c, name: n });
+    pendingJoin = { code: c, name: n };
+    const btn = $("joinBtn") || $("quickJoin");
+    if (btn) { btn.disabled = true; btn.textContent = "Joining…"; }
+    say("", "");
+    if (ws && ws.readyState === 1) send({ type: "student_join", ...pendingJoin });
+    else { say("Connecting to your class…", ""); connect(); }
+    // Nothing back after a few seconds: say so, keep trying, offer a tap.
+    clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(() => {
+      if (!pendingJoin) return;
+      say("Still trying to reach your class… check Wi-Fi or mobile data. Tap Join to try again.", "warn");
+      if (btn) { btn.disabled = false; btn.textContent = "Join"; }
+      if (ws && ws.readyState === 1) send({ type: "student_join", ...pendingJoin }); else connect();
+    }, 7000);
   };
 
   if (preset && savedName && !forceFullForm) {
@@ -1652,6 +1702,7 @@ function renderJoin(forceFullForm) {
       <div class="state-title" style="font-size:1.7rem">Ready to join</div>
       <button class="btn send" id="quickJoin" style="margin-top:1.4rem;font-size:1.2rem">Join as ${esc(savedName)} →</button>
       <button class="change-link" id="notMe">Not ${esc(savedName)}? Change name</button>
+      <p class="join-msg" id="joinMsg"></p>
       <p class="hint">Class code ${esc(preset)}</p>`, () => {
       $("quickJoin").onclick = () => doJoin(preset, savedName);
       $("notMe").onclick = () => renderJoin(true);
@@ -1664,8 +1715,9 @@ function renderJoin(forceFullForm) {
     <div class="state-title" style="font-size:1.7rem">Join your class</div>
     <input type="text" id="codeInput" placeholder="CLASS CODE" maxlength="4" value="${esc(preset)}"
       style="margin-top:1.2rem;text-transform:uppercase;text-align:center;letter-spacing:0.35em;font-weight:800;font-size:1.4rem" />
-    <input type="text" id="nameInput" placeholder="First name" maxlength="24" value="${forceFullForm ? "" : esc(savedName)}" style="margin-top:0.6rem;text-align:center" />
+    <input type="text" id="nameInput" placeholder="First name" maxlength="24" value="${forceFullForm && opts.name === undefined ? "" : esc(savedName)}" style="margin-top:0.6rem;text-align:center" />
     <button class="btn send" id="joinBtn">Join</button>
+    <p class="join-msg ${opts.message ? "warn" : ""}" id="joinMsg">${esc(opts.message || "")}</p>
     <p class="hint">No account. No downloads. You're just here to think.</p>
     <p style="text-align:center;margin-top:1.2rem">Eyes Up <a class="by-peakyou" href="https://peakyou.com.au" target="_blank" rel="noopener">by <b>PeakYou</b></a></p>`, () => {
     const code = $("codeInput"), name = $("nameInput");

@@ -14,6 +14,7 @@ const crypto = require("crypto");
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
+const Marks = require("./lib/marks"); // marking, shared with the results pages
 
 // The address other devices in the room (iPads, phones) can reach us on.
 function lanAddress() {
@@ -391,6 +392,7 @@ app.get("/projector", (_req, res) => res.sendFile(path.join(__dirname, "public/p
 app.get("/report", (_req, res) => res.sendFile(path.join(__dirname, "public/report.html")));
 app.get("/remote", (_req, res) => res.sendFile(path.join(__dirname, "public/remote.html")));
 app.get("/data", (_req, res) => res.sendFile(path.join(__dirname, "public/data.html")));
+app.get("/marks.js", (_req, res) => res.sendFile(path.join(__dirname, "lib/marks.js")));
 
 // Health check — also what an uptime pinger should hit: touching the
 // database keeps both the free web service and Supabase from going idle.
@@ -1406,9 +1408,8 @@ app.post("/api/lessons/:id/edit", async (req, res) => {
         const itx = all[e.i];
         if (!itx) continue;
         // Keep the teacher's marks on the live interaction so every autosave carries them.
-        const probe = mergeMarks({ mode: itx.mode, key: itx.retro?.key, manual: itx.retro?.manual, students: [] }, e);
-        itx.retro = { key: probe.key, manual: probe.manual };
-        if (!itx.retro.key && !itx.retro.manual) delete itx.retro;
+        const retro = mergeRetro(itx.mode, itx.retro, e);
+        if (retro) itx.retro = retro; else delete itx.retro;
       }
       if (live.persistTimer) { clearTimeout(live.persistTimer); live.persistTimer = null; }
       await persistNow(live);
@@ -1548,8 +1549,14 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 20 * 1024 * 1024 }); // six print-size photos fit; anything bigger is dropped
 // A room code is four letters — stop a bot from joining rooms by the hundred.
 const wsHits = new Map();
-function wsLimited(ws, bucket, max, windowMs) {
-  const key = `${bucket}:${ws.ip || "?"}`;
+// Abuse brakes only. A whole school usually sits behind ONE public address, and a
+// class of 30 phones re-joins on every reconnect, so per-address caps must be
+// generous — a classroom must never be told to slow down. Per-socket caps catch
+// a single runaway client.
+let nextSockId = 1;
+function wsLimited(ws, bucket, max, windowMs, perSocket = false) {
+  if (perSocket && !ws.sockId) ws.sockId = nextSockId++;
+  const key = perSocket ? `${bucket}@${ws.sockId}` : `${bucket}:${ws.ip || "?"}`;
   const now = Date.now();
   const list = (wsHits.get(key) || []).filter((ts) => now - ts < windowMs);
   list.push(now);
@@ -2326,20 +2333,11 @@ function broadcast(session) {
 
 // Forgiving compare for auto-marking: case/space-insensitive; numbers
 // compare numerically ("0.50" matches ".5").
-function markMatch(attempt, target) {
-  const a = String(attempt || "").trim().toLowerCase();
-  const t = String(target || "").trim().toLowerCase();
-  if (!a) return false;
-  if (a === t) return true;
-  const na = Number(a.replace(",", "."));
-  const nt = Number(t.replace(",", "."));
-  return Number.isFinite(na) && Number.isFinite(nt) && Math.abs(na - nt) < 1e-9;
-}
+const { markMatch, canonName, applyMarks, mergeRetro, mergeMarks } = Marks;
 
 // One readable line per response, for the per-student export.
 // Students are people, not connections: a re-joined phone must not
 // become a second student. Names compare case- and space-insensitively.
-const canonName = (n) => String(n || "").trim().toLowerCase().replace(/\s+/g, " ");
 
 // Right or wrong, per student, for the modes that have an answer key:
 // true / false, or null when the activity has nothing to mark. `score`
@@ -2366,110 +2364,6 @@ function markOf(itx, p) {
   }
   if ((itx.mode === "working" || itx.mode === "counters") && itx.expected) return { ok: markMatch(p.answer, itx.expected) };
   return { ok: null };
-}
-
-/* ---- Marking after the lesson ----
-   A teacher can set the right answer once the lesson is over (item.key) and
-   overrule any one student's mark by hand (item.manual, keyed by name).
-   Marks are recomputed from the stored answer text, so this works on lessons
-   saved long before it existed. row.ok0 keeps the mark made live, so a key
-   can be cleared again. */
-const KEY_CHOICE = new Set(["multi_choice", "true_false", "this_or_that", "picture_vote", "poll", "example_nonexample"]);
-const KEY_TEXT = new Set([...[...TEXT_MODES].filter((m) => !ANON_MODES.has(m)), "working", "counters", "maths_board", "image_caption", "image_long", "one_word"]);
-const keyKind = (mode) => KEY_CHOICE.has(mode) ? "choice" : mode === "question_set" ? "set" : KEY_TEXT.has(mode) ? "text" : null;
-
-// Clean a key sent by the teacher's page, or null to clear it.
-function cleanKey(mode, key) {
-  if (key === null || key === undefined) return null;
-  const kind = keyKind(mode);
-  const str = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");
-  const list = (v) => (Array.isArray(v) ? v.map((x) => str(x, 120)).filter(Boolean).slice(0, 12) : []);
-  if (kind === "choice") { const label = str(key.label, 200); return label ? { label } : null; }
-  if (kind === "text") { const accept = list(key.accept); return accept.length ? { accept } : null; }
-  if (kind === "set") {
-    const parts = (Array.isArray(key.parts) ? key.parts : []).slice(0, 20).map((p) => { const l = list(p); return l.length ? l : null; });
-    return parts.some(Boolean) ? { parts } : null;
-  }
-  return null;
-}
-
-// The part of a stored answer line that an answer key applies to.
-function answerTextOf(item, row) {
-  const r = String(row.response || "");
-  if (item.mode === "example_nonexample") return r.split(" — ")[0];
-  if (item.mode === "working" || item.mode === "counters") {
-    const tail = r.includes("  →  ") ? r.split("  →  ").pop() : r;
-    return tail.replace(/ [✓✗]$/, "").trim();
-  }
-  if (item.mode === "maths_board") return r.replace(/^\(board\)\s*/, "").trim();
-  if (item.mode === "image_caption" || item.mode === "image_long") return r.replace(/^\((?:\d+ images|image)\)\s*/, "").trim();
-  return r;
-}
-const anyMatch = (answer, accept) => (accept || []).some((a) => markMatch(answer, a));
-
-function keyMark(item, row) {
-  const key = item.key;
-  if (!key) return null;
-  const kind = keyKind(item.mode);
-  if (kind === "choice") return typeof key.label === "string" ? { ok: answerTextOf(item, row) === key.label } : null;
-  if (kind === "set") {
-    const parts = String(row.response || "").split(/\s{2,}\|\s{2,}/).map((p) => p.replace(/^Q\d+:\s*/, ""));
-    const keyed = (key.parts || []).map((acc, k) => ({ acc, k })).filter(({ acc }) => Array.isArray(acc) && acc.length);
-    if (!keyed.length) return null;
-    const right = keyed.filter(({ acc, k }) => anyMatch(parts[k], acc)).length;
-    return { ok: right === keyed.length, score: `${right}/${keyed.length}` };
-  }
-  if (kind === "text" && Array.isArray(key.accept) && key.accept.length) return { ok: anyMatch(answerTextOf(item, row), key.accept) };
-  return null;
-}
-
-// Recompute every student's mark on one stored item: live mark, then the
-// teacher's key, then any hand mark. Safe to run any number of times.
-function applyMarks(item) {
-  const manual = item.manual || {};
-  for (const row of item.students || []) {
-    if (row.ok0 === undefined) row.ok0 = row.ok === undefined ? null : row.ok;
-    if (row.score0 === undefined) row.score0 = row.score === undefined ? null : row.score;
-    let ok = row.ok0, score = row.score0;
-    const km = keyMark(item, row);
-    if (km) { ok = km.ok; score = km.score ?? null; }
-    const k = canonName(row.name);
-    if (row.name && Object.prototype.hasOwnProperty.call(manual, k)) ok = manual[k];
-    if (ok === true || ok === false) row.ok = ok; else delete row.ok;
-    if (score) row.score = score; else delete row.score;
-  }
-  // The answer bars follow the key; dist0 keeps the labels as they were live.
-  const kind = keyKind(item.mode);
-  if (Array.isArray(item.distribution) && (kind === "choice" || kind === "text")) {
-    if (!item.dist0) item.dist0 = item.distribution.map((d) => d.label);
-    item.distribution.forEach((d, j) => {
-      const live = item.dist0[j] ?? d.label;
-      if (!item.key) { d.label = live; return; }
-      const base = live.replace(/ [✓✗]$/, "");
-      const ok = kind === "choice" ? base === item.key.label : anyMatch(base, item.key.accept);
-      d.label = base + (ok ? " ✓" : kind === "text" ? " ✗" : "");
-    });
-  }
-  item.marked = !!(item.key || Object.keys(manual).length);
-  return item;
-}
-
-// Merge a marks edit from the teacher's page into an item's key / hand marks.
-function mergeMarks(item, e) {
-  if (Object.prototype.hasOwnProperty.call(e, "key")) {
-    const k = cleanKey(item.mode, e.key);
-    if (k) item.key = k; else delete item.key;
-  }
-  if (e.manual && typeof e.manual === "object") {
-    const manual = { ...(item.manual || {}) };
-    for (const [name, v] of Object.entries(e.manual).slice(0, 200)) {
-      const k = canonName(name).slice(0, 80);
-      if (!k) continue;
-      if (v === true || v === false) manual[k] = v; else delete manual[k];
-    }
-    if (Object.keys(manual).length) item.manual = manual; else delete item.manual;
-  }
-  return applyMarks(item);
 }
 
 function describePayload(itx, p) {
@@ -2775,7 +2669,7 @@ async function handle(ws, msg) {
   /* ---- connection / identity ---- */
 
   if (type === "teacher_create") {
-    if (wsLimited(ws, "create", 30, 600000)) return safeSend(ws, { type: "error", error: "slow_down" });
+    if (wsLimited(ws, "create", 20, 60000, true) || wsLimited(ws, "create", 300, 600000)) return safeSend(ws, { type: "error", error: "slow_down" });
     const auth = await authTeacher(msg);
     if (!auth.ok) return safeSend(ws, { type: "error", error: auth.error });
     if (auth.teacher) {
@@ -2822,10 +2716,11 @@ async function handle(ws, msg) {
   }
 
   if (type === "student_join") {
-    if (wsLimited(ws, "join", 40, 600000)) return safeSend(ws, { type: "error", error: "slow_down" });
-    const session = sessions.get(String(msg.code || "").toUpperCase());
-    if (!session || session.phase === "ended")
-      return safeSend(ws, { type: "error", error: "no_session" });
+    if (wsLimited(ws, "join", 30, 60000, true) || wsLimited(ws, "join", 3000, 600000)) return safeSend(ws, { type: "error", error: "slow_down" });
+    const code = String(msg.code || "").toUpperCase();
+    const session = sessions.get(code);
+    if (!session) return safeSend(ws, { type: "error", error: "no_session", code });
+    if (session.phase === "ended") return safeSend(ws, { type: "error", error: "session_ended", code });
     let student;
     // Rejoin after a refresh keeps identity (and any submitted answers).
     if (msg.studentId && session.students.has(msg.studentId) === false && session.everJoined.has(msg.studentId)) {
