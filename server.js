@@ -158,6 +158,16 @@ if (process.env.DATABASE_URL) {
     // Students can now send several pictures per activity: the old
     // one-picture-per-student rule gives way to one row per picture.
     `ALTER TABLE lesson_images ADD COLUMN IF NOT EXISTS img_index int NOT NULL DEFAULT 0`,
+    // A teacher's classes: a name, a fixed 5-letter class code (for the QR sticker) and the students' names.
+    `CREATE TABLE IF NOT EXISTS classes (
+      id serial PRIMARY KEY,
+      teacher_id int NOT NULL,
+      name text NOT NULL,
+      code text NOT NULL UNIQUE,
+      roster jsonb NOT NULL DEFAULT '[]',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
     `DO $$ DECLARE c text; BEGIN
        SELECT conname INTO c FROM pg_constraint
         WHERE conrelid = 'lesson_images'::regclass AND contype = 'u' AND cardinality(conkey) = 4;
@@ -393,6 +403,7 @@ app.get("/report", (_req, res) => res.sendFile(path.join(__dirname, "public/repo
 app.get("/remote", (_req, res) => res.sendFile(path.join(__dirname, "public/remote.html")));
 app.get("/data", (_req, res) => res.sendFile(path.join(__dirname, "public/data.html")));
 app.get("/marks.js", (_req, res) => res.sendFile(path.join(__dirname, "lib/marks.js")));
+app.get("/class-sticker", (_req, res) => res.sendFile(path.join(__dirname, "public/class-sticker.html")));
 
 // Health check — also what an uptime pinger should hit: touching the
 // database keeps both the free web service and Supabase from going idle.
@@ -1221,6 +1232,104 @@ const planSummary = (r) => ({
   timesTaught: r.times_taught,
 });
 
+/* ---- Classes: a name, a fixed class code and the students' names, so the
+   join page can show "tap your name" and a QR sticker works all year. ---- */
+const CLASS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // 5 letters, no I/O; room codes are 4, so the two never clash
+async function newClassCode() {
+  for (let tries = 0; tries < 20; tries++) {
+    let code = "";
+    for (let i = 0; i < 5; i++) code += CLASS_CODE_ALPHABET[crypto.randomInt(CLASS_CODE_ALPHABET.length)];
+    const { rows } = await db.query(`SELECT 1 FROM classes WHERE code = $1`, [code]);
+    if (!rows.length) return code;
+  }
+  throw new Error("no class code");
+}
+const cleanRoster = (list) => {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : String(list || "").split(/\r?\n|,/))
+    .map((n) => String(n || "").replace(/\s+/g, " ").trim().slice(0, 24))
+    .filter((n) => n && !seen.has(canonName(n)) && seen.add(canonName(n)))
+    .slice(0, 60);
+};
+const classRow = (r) => ({ id: r.id, name: r.name, code: r.code, roster: r.roster || [], updatedAt: r.updated_at });
+
+app.get("/api/classes", async (req, res) => {
+  if (!db) return res.json({ storage: false, classes: [] });
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(`SELECT * FROM classes WHERE teacher_id = $1 ORDER BY lower(name)`, [t.id]);
+    res.json({ storage: true, classes: rows.map(classRow) });
+  } catch { res.status(500).json({ error: "db_error" }); }
+});
+
+app.post("/api/classes", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authHttp(res, req.body?.t);
+  if (!t) return;
+  const name = String(req.body?.name || "").trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: "name_required" });
+  const roster = cleanRoster(req.body?.roster);
+  try {
+    let row;
+    if (Number.isInteger(req.body?.id)) {
+      ({ rows: [row] } = await db.query(
+        `UPDATE classes SET name = $1, roster = $2, updated_at = now() WHERE id = $3 AND teacher_id = $4 RETURNING *`,
+        [name, JSON.stringify(roster), req.body.id, t.id]
+      ));
+      if (!row) return res.status(404).json({ error: "not_found" });
+    } else {
+      const { rows } = await db.query(`SELECT count(*)::int AS n FROM classes WHERE teacher_id = $1`, [t.id]);
+      if (rows[0].n >= 30) return res.status(400).json({ error: "too_many_classes" });
+      const code = await newClassCode();
+      ({ rows: [row] } = await db.query(
+        `INSERT INTO classes (teacher_id, name, code, roster) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [t.id, name, code, JSON.stringify(roster)]
+      ));
+    }
+    // A room already using this class picks the new names up straight away.
+    for (const s of sessions.values()) if (s.classId === row.id) { s.className = row.name; s.roster = row.roster; broadcast(s); }
+    res.json({ ok: true, class: classRow(row) });
+  } catch { res.status(500).json({ error: "db_error" }); }
+});
+
+app.delete("/api/classes/:id", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  try {
+    const { rowCount } = await db.query(`DELETE FROM classes WHERE id = $1 AND teacher_id = $2`, [req.params.id, t.id]);
+    if (!rowCount) return res.status(404).json({ error: "not_found" });
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: "db_error" }); }
+});
+
+// The live room for a 4-letter room code or a 5-letter class code.
+function liveSessionFor(code) {
+  const c = String(code || "").toUpperCase();
+  const direct = sessions.get(c);
+  if (direct) return direct;
+  if (c.length === 5) return [...sessions.values()].find((s) => s.classCode === c && s.phase !== "ended") || null;
+  return null;
+}
+
+// What the join page needs before anyone joins: is the class live, what is
+// it called, and whose names to show as tiles. Public, like the join page.
+app.get("/api/join-info", async (req, res) => {
+  const code = String(req.query.code || "").toUpperCase().slice(0, 5);
+  const session = liveSessionFor(code);
+  const joined = (s) => [...new Set([...s.students.values()].map((x) => x.name).filter((n) => n && n !== "👁 Preview"))];
+  if (session && session.phase !== "ended")
+    return res.json({ live: true, code: session.code, className: session.className || null, roster: session.roster || [], joined: joined(session) });
+  if (code.length === 5 && db) {
+    try {
+      const { rows } = await db.query(`SELECT name, roster FROM classes WHERE code = $1`, [code]);
+      if (rows[0]) return res.json({ live: false, className: rows[0].name, roster: rows[0].roster || [] });
+    } catch { /* fall through */ }
+  }
+  res.json({ live: false });
+});
+
 app.get("/api/plans", async (req, res) => {
   if (!db) return res.json({ storage: false, plans: [] });
   const t = await authHttp(res, req.query.t);
@@ -1596,6 +1705,7 @@ function createSession(teacherWs) {
     projectors: new Set(),
     students: new Map(), // id -> {id, name, ws}
     everJoined: new Map(), // id -> name (for summary even after disconnects)
+    classId: null, className: null, classCode: null, roster: [], // the class this room is teaching, if the teacher picked one
     phase: "lobby", // lobby | interaction | eyesup | ended
     interaction: null,
     history: [],
@@ -2160,6 +2270,7 @@ function teacherState(session) {
     role: "teacher",
     code: session.code,
     title: session.title,
+    classId: session.classId, className: session.className, classCode: session.classCode, roster: session.roster,
     lanHost: `${lanAddress()}:${PORT}`, // so the dashboard can QR the phone remote locally
     storage: !!db, // lessons persist to Postgres
     teacherName: session.teacherName || null,
@@ -2233,6 +2344,7 @@ function projectorState(session) {
     role: "projector",
     code: session.code,
     title: session.title,
+    className: session.className,
     joinHost: `${lanAddress()}:${PORT}`,
     phase: session.phase,
     slide: session.phase === "slide" ? session.slide : null,
@@ -2285,6 +2397,7 @@ function studentState(session, student) {
     code: session.code,
     phase: session.phase,
     name: student.name,
+    className: session.className,
     submitted,
     interaction:
       itx && session.phase === "interaction"
@@ -2602,6 +2715,9 @@ function buildSummary(session, { withImages = false } = {}) {
     type: "summary",
     title: session.title,
     teacherName: session.teacherName || null,
+    classId: session.classId || undefined,
+    className: session.className || undefined,
+    classRoster: session.roster?.length ? session.roster : undefined,
     joinedCount: roster.size,
     participatedCount: participants.size,
     interactionCount: all.length,
@@ -2723,8 +2839,14 @@ async function handle(ws, msg) {
     // Every refused join is logged, so a "students couldn't get in" report can be checked in the server logs.
     const refuse = (error) => { console.warn(`join refused: ${error} code=${code} ip=${ws.ip}`); return safeSend(ws, { type: "error", error, code }); };
     if (wsLimited(ws, "join", 30, 60000, true) || wsLimited(ws, "join", 3000, 600000)) return refuse("slow_down");
-    const session = sessions.get(code);
+    const session = liveSessionFor(code); // a 4-letter room code, or the 5-letter class code on a sticker
     if (!session) return refuse("no_session");
+    // A shared iPad switching to the next child: the old seat on this socket goes.
+    if (ws.meta?.role === "student" && ws.meta.studentId) {
+      const prevRoom = sessions.get(ws.meta.code);
+      const prev = prevRoom?.students.get(ws.meta.studentId);
+      if (prev && prev.ws === ws) { prevRoom.students.delete(ws.meta.studentId); if (prevRoom !== session) broadcast(prevRoom); }
+    }
     if (session.phase === "ended") return refuse("session_ended");
     let student;
     // Rejoin after a refresh keeps identity (and any submitted answers).
@@ -3107,6 +3229,18 @@ async function handle(ws, msg) {
     }
     case "set_title": {
       session.title = String(msg.title || "").trim().slice(0, 80);
+      break;
+    }
+    case "set_class": {
+      // Teach this room to one of the teacher's classes: names become tap-to-join tiles.
+      if (!msg.classId) { session.classId = null; session.className = null; session.classCode = null; session.roster = []; break; }
+      if (!db || session.teacherId == null) break;
+      try {
+        const { rows } = await db.query(`SELECT * FROM classes WHERE id = $1 AND teacher_id = $2`, [msg.classId, session.teacherId]);
+        if (!rows[0]) break;
+        session.classId = rows[0].id; session.className = rows[0].name; session.classCode = rows[0].code; session.roster = rows[0].roster || [];
+        if (!session.title) session.title = rows[0].name;
+      } catch { /* keep as is */ }
       break;
     }
     case "set_favs": {

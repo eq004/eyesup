@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eyes Up — class sticker</title>
+<link rel="icon" href="/favicon.svg" />
+<script src="/vendor/qrcode.js"></script>
+<style>
+  :root { --navy:#0f1c30; --ink:#1b2437; --muted:#74829a; --line:#dde4ef; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Manrope", system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:#eef2f8; }
+  .bar { display:flex; gap:0.6rem; align-items:center; padding:0.8rem 1rem; background:var(--navy); color:#fff; }
+  .bar b { font-size:1.1rem; } .bar .sp { flex:1; }
+  .bar button, .bar select { font:inherit; font-weight:700; border:none; border-radius:10px; padding:0.5rem 0.9rem; background:#fff; color:var(--ink); cursor:pointer; }
+  .page { max-width:720px; margin:1.2rem auto; padding:0 1rem; }
+  .sticker { background:#fff; border:2px solid var(--line); border-radius:24px; padding:2rem; text-align:center; break-inside:avoid; }
+  .sticker h1 { margin:0 0 0.2rem; font-size:2.2rem; } .sticker .how { color:var(--muted); font-size:1.05rem; margin:0 0 1rem; }
+  .sticker .qr { width:min(70vw, 360px); margin:0 auto; } .sticker .qr svg { width:100%; height:auto; }
+  .sticker .code { margin-top:1rem; font-size:1rem; color:var(--muted); } .sticker .code b { display:inline-block; font-size:2rem; letter-spacing:0.35em; color:var(--ink); padding-left:0.35em; }
+  .sticker .brand { margin-top:1.2rem; font-weight:800; color:var(--navy); }
+  .small .sticker { padding:1.1rem; } .small .sticker h1 { font-size:1.5rem; } .small .sticker .qr { width:200px; } .small .sticker .code b { font-size:1.4rem; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  .note { color:var(--muted); font-size:0.9rem; margin:1rem 0; }
+  @media print { .bar, .note { display:none !important; } body { background:#fff; } .page { max-width:none; margin:0; padding:0.5cm; } }
+</style>
+</head>
+<body>
+  <div class="bar"><b>👁 Eyes Up</b> <span>class sticker</span><span class="sp"></span>
+    <select id="layout"><option value="one">One big sticker (A4)</option><option value="four">Four small stickers (A4)</option></select>
+    <button onclick="window.print()">🖨 Print</button></div>
+  <div class="page" id="page"></div>
+  <p class="note page">Stick it on the iPad, the desk or the door. Scanning always opens this class's live lesson, with your students' names ready to tap. Nothing private is on it.</p>
+<script>
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const code = (new URLSearchParams(location.search).get("c") || "").toUpperCase().slice(0, 5);
+  const url = location.origin + "/join?c=" + encodeURIComponent(code);
+  function sticker(name) {
+    let qr = "";
+    try { const q = qrcode(0, "M"); q.addData(url); q.make(); qr = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } catch {}
+    return '<div class="sticker"><h1>' + esc(name || "Our class") + '</h1><p class="how">Scan to join today\u2019s lesson</p>' +
+      '<div class="qr">' + qr + '</div><p class="code">or go to <b style="font-size:1.05rem;letter-spacing:0;padding:0">' + esc(location.host) + '/join</b> and type <b>' + esc(code) + '</b></p>' +
+      '<p class="brand">\uD83D\uDC41 Eyes Up</p></div>';
+  }
+  async function draw() {
+    let name = "";
+    try { const r = await fetch("/api/join-info?code=" + encodeURIComponent(code)); const j = await r.json(); name = j.className || ""; } catch {}
+    const four = document.getElementById("layout").value === "four";
+    document.body.classList.toggle("small", four);
+    document.getElementById("page").innerHTML = four ? '<div class="grid">' + [1, 2, 3, 4].map(() => sticker(name)).join("") + '</div>' : sticker(name);
+    document.title = (name ? name + " — " : "") + "Eyes Up class sticker";
+  }
+  document.getElementById("layout").onchange = draw;
+  if (code.length === 5) draw(); else document.getElementById("page").innerHTML = '<p class="note">No class code in this link.</p>';
+</script>
+</body>
+</html>

@@ -207,7 +207,7 @@ function renderDetail() {
     <div class="card detail-card">
       <div class="dhead">
         <h2 class="dtitle"><span id="dTitle">${esc(lessonTitle(x))}</span> <button class="edit-btn" id="renameBtn" title="Rename this lesson">✎</button></h2>
-        <div class="muted" style="font-size:0.85rem">${esc(when)} · ${s.participatedCount} of ${s.joinedCount} students took part${s.teacherName ? ` · ${esc(s.teacherName)}` : ""}</div>
+        <div class="muted" style="font-size:0.85rem">${esc(when)} · ${s.participatedCount} of ${s.joinedCount} students took part${s.className ? ` · 👥 ${esc(s.className)}` : ""}${s.teacherName ? ` · ${esc(s.teacherName)}` : ""}</div>
       </div>
       <div class="dtabs">
         <button class="dtab ${detailTab === "snap" ? "on" : ""}" data-dtab="snap">✨ Snapshot</button>

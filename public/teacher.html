@@ -745,8 +745,13 @@
       </div>
     </div>
     <div class="hrow classbar" id="classBar">
-      <input id="titleInput" placeholder="Class name, e.g. 4B Maths" maxlength="80"
-        title="Names this class — shows on the summary and PDF export" />
+      <select id="classSel" title="Which class is this? Their names become tap-to-join tiles on the join page" style="border:1px solid #c7d4e8;border-radius:10px;padding:0.4rem 0.6rem;background:#fff;font:inherit;font-size:0.9rem;font-weight:700;color:var(--ink);max-width:200px">
+        <option value="">👥 Class: none</option>
+        <option value="new">＋ New class…</option>
+      </select>
+      <button class="btn" id="classEdit" title="Edit this class's names, or print its QR sticker" style="display:none">✎</button>
+      <input id="titleInput" placeholder="Lesson name, e.g. Phonics week 4" maxlength="80"
+        title="Names this lesson — shows on the results and PDF export" />
       <button class="code-chip" id="codeChip" title="Click to copy the join link">
         <small>CODE</small> <span id="codeText">····</span>
       </button>
@@ -885,6 +890,24 @@
   </div>
 
   <!-- Summary overlay -->
+  <!-- Class editor: a name, the students' names, the QR sticker -->
+  <div class="overlay" id="classOverlay">
+    <div class="sheet" style="max-width:640px">
+      <h2 id="classHead">New class</h2>
+      <p style="color:var(--ink-soft);margin-top:0.3rem;font-size:0.92rem">Students tap their own name to join — no typing. The QR sticker works all year: it always leads to this class's live lesson.</p>
+      <input type="text" id="className" maxlength="60" placeholder="Class name, e.g. Kindergarten Blue" style="width:100%;margin-top:0.9rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.6rem 0.8rem;font:inherit;font-size:1rem" />
+      <textarea id="classRoster" rows="10" placeholder="One first name per line — paste straight from your roll.&#10;Amara&#10;Ben&#10;Chloe" style="width:100%;margin-top:0.6rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.6rem 0.8rem;font:inherit;font-size:0.95rem;resize:vertical"></textarea>
+      <p id="classCount" style="margin:0.4rem 0 0;font-size:0.8rem;color:var(--muted)"></p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-top:0.9rem">
+        <button class="btn primary big" id="classSave">Save class</button>
+        <a class="btn" id="classSticker" target="_blank" rel="noopener" style="display:none;text-decoration:none">🔳 Print QR sticker</a>
+        <span class="spacer" style="flex:1"></span>
+        <button class="btn danger-ghost" id="classDelete" style="display:none">Delete class</button>
+        <button class="btn" id="classClose">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="summaryOverlay">
     <div class="sheet" id="summarySheet"></div>
   </div>

@@ -199,7 +199,16 @@ function render(force) {
     return show(`
       <div class="big-emoji">🪑</div>
       <div class="state-title">You're in, ${esc(state.name)}</div>
-      <p class="state-sub">Eyes up — your teacher will send something to this screen when it's time.</p>`);
+      <p class="state-sub">Eyes up — your teacher will send something to this screen when it's time.</p>
+      <button class="change-link" id="switchStudent" style="display:block;margin:1.4rem auto 0;font-size:0.85rem">Not ${esc(state.name)}? Switch student</button>`, () => {
+      $("switchStudent").onclick = () => {
+        const code = state.code;
+        sessionStorage.removeItem("eyesup_sid");
+        sessionStorage.removeItem("eyesup_code");
+        joined = false; state = null; lastRenderKey = null;
+        renderJoin(true, { code, name: "" });
+      };
+    });
   }
 
   // interaction changed → reset local bits
@@ -1688,9 +1697,43 @@ function renderInteraction(itx) {
 
 /* ---------------- join screen ---------------- */
 
+/* Tap-your-name: when the room (or the class sticker that was scanned) has a
+   class list, the names are big tiles — no typing for five-year-olds. */
+const AVATARS = ["🦊", "🐼", "🐸", "🦁", "🐙", "🦋", "🐢", "🦉", "🐨", "🐬", "🦄", "🐝", "🦜", "🐞", "🐧", "🦒"];
+const HUES = [205, 150, 30, 340, 265, 90, 15, 185];
+const avatarOf = (name) => { let h = 0; for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return { emoji: AVATARS[h % AVATARS.length], hue: HUES[(h >> 4) % HUES.length] }; };
+let joinInfoTimer = null;
+
+async function fetchJoinInfo(code) {
+  try {
+    const r = await fetch(`/api/join-info?code=${encodeURIComponent(code)}`);
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+function renderTiles(code, info, doJoin) {
+  clearTimeout(joinInfoTimer);
+  const taken = new Set((info.joined || []).map((n) => n.trim().toLowerCase()));
+  const tiles = info.roster.map((n) => {
+    const { emoji, hue } = avatarOf(n);
+    const was = taken.has(n.trim().toLowerCase());
+    return `<button type="button" class="tile ${was ? "taken" : ""}" data-name="${esc(n)}" style="--c:hsl(${hue} 70% 90%)"><span class="av">${emoji}</span><span>${esc(n)}${was ? "<small>already joined — tap if that's you</small>" : ""}</span></button>`;
+  }).join("");
+  show(`
+    <div class="state-title" style="font-size:1.6rem;text-align:center">${info.live ? "Tap your name" : "Not started yet"}</div>
+    <p class="state-sub" style="text-align:center">${esc(info.className || "")}${info.live ? "" : " — this page will join you the moment your teacher starts."}</p>
+    <div class="tiles" ${info.live ? "" : 'style="opacity:0.45;pointer-events:none"'}>${tiles}</div>
+    <p class="join-msg" id="joinMsg"></p>
+    <button class="change-link" id="notListed" style="display:block;margin:1rem auto 0">My name isn't here</button>`, () => {
+    screenEl.querySelectorAll(".tile").forEach((b) => (b.onclick = () => doJoin(info.code || code, b.dataset.name)));
+    $("notListed").onclick = () => renderJoin(true, { code: info.code || code, name: "", plain: true });
+    if (!info.live) joinInfoTimer = setTimeout(async () => { const again = await fetchJoinInfo(code); if (again?.roster?.length) renderTiles(code, again, doJoin); else if (again?.live) renderJoin(false, { code: again.code }); }, 5000);
+  });
+}
+
 function renderJoin(forceFullForm, opts = {}) {
   const params = new URLSearchParams(location.search);
-  const preset = opts.code !== undefined ? opts.code : (params.get("code") || "").toUpperCase();
+  const preset = opts.code !== undefined ? opts.code : (params.get("code") || params.get("c") || "").toUpperCase();
   // The device remembers who you are — next lesson is one tap.
   const savedName = opts.name !== undefined ? opts.name : localStorage.getItem("eyesup_name") || "";
 
@@ -1702,7 +1745,7 @@ function renderJoin(forceFullForm, opts = {}) {
   };
 
   const doJoin = (c, n) => {
-    if (c.length !== 4) { say("Type the 4-letter class code from the board.", "warn"); $("codeInput")?.focus(); return; }
+    if (c.length !== 4 && c.length !== 5) { say("Type the 4-letter code from the board (or the 5-letter code on your class sticker).", "warn"); $("codeInput")?.focus(); return; }
     if (!n) { say("Type your first name so your teacher knows it's you.", "warn"); $("nameInput")?.focus(); return; }
     localStorage.setItem("eyesup_name", n);
     sessionStorage.setItem("eyesup_name", n);
@@ -1723,6 +1766,15 @@ function renderJoin(forceFullForm, opts = {}) {
     }, 7000);
   };
 
+  // A code we already know (QR, sticker, link): if that class has a name list, show the tiles.
+  if (preset && !opts.plain && !opts.message) {
+    fetchJoinInfo(preset).then((info) => {
+      if (!info) return;
+      if (info.roster?.length) renderTiles(preset, info, doJoin);
+      else if (!info.live && preset.length === 5) renderTiles(preset, { ...info, roster: [] }, doJoin);
+    });
+  }
+
   if (preset && savedName && !forceFullForm) {
     show(`
       <div class="big-emoji">🙋</div>
@@ -1740,7 +1792,7 @@ function renderJoin(forceFullForm, opts = {}) {
   show(`
     <div class="big-emoji">🙋</div>
     <div class="state-title" style="font-size:1.7rem">Join your class</div>
-    <input type="text" id="codeInput" placeholder="CLASS CODE" maxlength="4" value="${esc(preset)}"
+    <input type="text" id="codeInput" placeholder="CLASS CODE" maxlength="5" value="${esc(preset)}"
       style="margin-top:1.2rem;text-transform:uppercase;text-align:center;letter-spacing:0.35em;font-weight:800;font-size:1.4rem" />
     <input type="text" id="nameInput" placeholder="First name" maxlength="24" value="${forceFullForm && opts.name === undefined ? "" : esc(savedName)}" style="margin-top:0.6rem;text-align:center" />
     <button class="btn send" id="joinBtn">Join</button>
@@ -1749,6 +1801,12 @@ function renderJoin(forceFullForm, opts = {}) {
     <p style="text-align:center;margin-top:1.2rem">Eyes Up <a class="by-peakyou" href="https://peakyou.com.au" target="_blank" rel="noopener">by <b>PeakYou</b></a></p>`, () => {
     const code = $("codeInput"), name = $("nameInput");
     (preset ? name : code).focus();
+    // Typed a code whose class has a name list? Switch to the tiles.
+    if (!opts.plain) code.oninput = () => {
+      const v = code.value.trim().toUpperCase();
+      if (v.length < 4) return;
+      fetchJoinInfo(v).then((info) => { if (info?.roster?.length && $("codeInput")?.value.trim().toUpperCase() === v) renderTiles(v, info, doJoin); });
+    };
     const go = () => doJoin(code.value.trim().toUpperCase(), name.value.trim());
     $("joinBtn").onclick = go;
     [code, name].forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter") go(); }));

@@ -674,6 +674,9 @@ function render() {
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
   $("qrToggle").textContent = state.showJoin ? "🔳 QR is up" : "🔳 QR";
   $("studentCount").textContent = state.students.length;
+  if ($("classSel") && $("classSel").value !== String(state.classId || "")) renderClassSel();
+  if ($("classEdit")) $("classEdit").style.display = state.classId ? "" : "none";
+  applyRememberedClass();
   const favsKey = JSON.stringify(state.favs || []);
   if (favsKey !== render._favsKey) {
     render._favsKey = favsKey;
@@ -1260,6 +1263,96 @@ async function loadLessonsList(attempt) {
 $("closeLessons").onclick = () => $("lessonsOverlay").classList.remove("show");
 
 $("titleInput").addEventListener("change", () => send({ type: "set_title", title: $("titleInput").value }));
+
+/* ---------------- classes: names become tap-to-join tiles ---------------- */
+
+let classes = [];
+let classAppliedFor = null; // room code the remembered class was applied to
+const rememberedClass = () => { try { return Number(localStorage.getItem("eyesup_class_id")) || null; } catch { return null; } };
+
+async function loadClasses() {
+  try {
+    const res = await fetch(`/api/classes?${authQuery()}`);
+    const data = await res.json();
+    classes = data.classes || [];
+  } catch { classes = []; }
+  renderClassSel();
+}
+
+function renderClassSel() {
+  const sel = $("classSel");
+  if (!sel) return;
+  const cur = state?.classId || "";
+  sel.innerHTML = `<option value="">👥 Class: none</option>` +
+    classes.map((c) => `<option value="${c.id}">👥 ${esc(c.name)} (${c.roster.length})</option>`).join("") +
+    `<option value="new">＋ New class…</option>`;
+  sel.value = String(cur);
+  if (sel.value !== String(cur)) sel.value = "";
+  $("classEdit").style.display = cur ? "" : "none";
+}
+
+function applyRememberedClass() {
+  // A new room on this dashboard starts with the class used last time.
+  if (!state || state.classId || classAppliedFor === state.code) return;
+  classAppliedFor = state.code;
+  const id = rememberedClass();
+  if (id && classes.some((c) => c.id === id)) send({ type: "set_class", classId: id });
+}
+
+function chooseClass(id) {
+  try { if (id) localStorage.setItem("eyesup_class_id", String(id)); else localStorage.removeItem("eyesup_class_id"); } catch {}
+  send({ type: "set_class", classId: id || null });
+}
+
+function openClassEditor(cls) {
+  $("classHead").textContent = cls ? `Edit ${cls.name}` : "New class";
+  $("className").value = cls?.name || "";
+  $("classRoster").value = (cls?.roster || []).join("\n");
+  $("classDelete").style.display = cls ? "" : "none";
+  const st = $("classSticker");
+  st.style.display = cls ? "" : "none";
+  if (cls) st.href = `/class-sticker?c=${encodeURIComponent(cls.code)}`;
+  const count = () => {
+    const n = $("classRoster").value.split(/\r?\n|,/).map((s) => s.trim()).filter(Boolean).length;
+    $("classCount").textContent = n ? `${n} name${n === 1 ? "" : "s"}${cls ? ` · class code ${cls.code}` : ""}` : cls ? `Class code ${cls.code}` : "";
+  };
+  $("classRoster").oninput = count;
+  count();
+  $("classOverlay").classList.add("show");
+  $("className").focus();
+  $("classClose").onclick = () => { $("classOverlay").classList.remove("show"); renderClassSel(); };
+  $("classSave").onclick = async () => {
+    const name = $("className").value.trim();
+    if (!name) { toast("Give the class a name"); $("className").focus(); return; }
+    const roster = $("classRoster").value.split(/\r?\n|,/).map((s) => s.trim()).filter(Boolean);
+    try {
+      const res = await fetch("/api/classes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), id: cls?.id, name, roster }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await loadClasses();
+      $("classOverlay").classList.remove("show");
+      chooseClass(data.class.id);
+      toast(cls ? "Class updated" : `Class saved — code ${data.class.code}`);
+    } catch { toast("Couldn't save the class — try again"); }
+  };
+  $("classDelete").onclick = async () => {
+    if (!cls || !confirm(`Delete ${cls.name}? Past lessons are kept; only the class list and its QR code go.`)) return;
+    try {
+      await fetch(`/api/classes/${cls.id}?${authQuery()}`, { method: "DELETE" });
+      if (rememberedClass() === cls.id) chooseClass(null);
+      await loadClasses();
+      $("classOverlay").classList.remove("show");
+    } catch { toast("Couldn't delete the class"); }
+  };
+}
+
+$("classSel").addEventListener("change", () => {
+  const v = $("classSel").value;
+  if (v === "new") { renderClassSel(); openClassEditor(null); return; }
+  chooseClass(v ? Number(v) : null);
+});
+$("classEdit").onclick = () => openClassEditor(classes.find((c) => c.id === state?.classId) || null);
+loadClasses();
 $("titleInput").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
 // A real link (not window.open) so popup blockers never eat it;
 // render() keeps its href pointed at the current session.

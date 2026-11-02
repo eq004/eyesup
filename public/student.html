@@ -526,6 +526,13 @@
   #pad.rubber { cursor: cell; }
   .change-link { margin-top: 1.2rem; color: var(--accent); font-weight: 700; font-size: 0.95rem; }
 
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.6rem; margin-top: 1.2rem; }
+  .tile { display: flex; align-items: center; gap: 0.55rem; min-height: 64px; padding: 0.6rem 0.8rem; border-radius: 16px; border: 2px solid var(--line); background: #fff; font: inherit; font-size: 1.15rem; font-weight: 800; color: var(--ink); text-align: left; cursor: pointer; }
+  .tile .av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 1.4rem; background: var(--c, #e8eef8); flex: none; }
+  .tile:active { transform: scale(0.97); }
+  .tile.taken { opacity: 0.55; }
+  .tile.taken .av::after { content: "✓"; position: absolute; font-size: 0.8rem; }
+  .tile small { display: block; font-size: 0.7rem; font-weight: 600; color: var(--muted); }
   .join-msg { text-align: center; min-height: 1.2em; margin: 0.6rem 0 0; font-size: 0.95rem; color: var(--muted); }
   .join-msg.warn { color: #8f2f2f; background: #fdeaea; border-radius: 10px; padding: 0.55rem 0.8rem; font-weight: 700; }
   .join-msg:empty { display: none; }
