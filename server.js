@@ -2716,11 +2716,13 @@ async function handle(ws, msg) {
   }
 
   if (type === "student_join") {
-    if (wsLimited(ws, "join", 30, 60000, true) || wsLimited(ws, "join", 3000, 600000)) return safeSend(ws, { type: "error", error: "slow_down" });
     const code = String(msg.code || "").toUpperCase();
+    // Every refused join is logged, so a "students couldn't get in" report can be checked in the server logs.
+    const refuse = (error) => { console.warn(`join refused: ${error} code=${code} ip=${ws.ip}`); return safeSend(ws, { type: "error", error, code }); };
+    if (wsLimited(ws, "join", 30, 60000, true) || wsLimited(ws, "join", 3000, 600000)) return refuse("slow_down");
     const session = sessions.get(code);
-    if (!session) return safeSend(ws, { type: "error", error: "no_session", code });
-    if (session.phase === "ended") return safeSend(ws, { type: "error", error: "session_ended", code });
+    if (!session) return refuse("no_session");
+    if (session.phase === "ended") return refuse("session_ended");
     let student;
     // Rejoin after a refresh keeps identity (and any submitted answers).
     if (msg.studentId && session.students.has(msg.studentId) === false && session.everJoined.has(msg.studentId)) {
