@@ -20,7 +20,7 @@
     confidence: ["🎯", "Confidence Check"], smiley: ["😊", "Smiley Review"], scale: ["🎚️", "Scale"],
     example_nonexample: ["↔️", "Example / Non-example"], ranking: ["🔢", "Ranking"], put_in_order: ["🪜", "Put in Order"],
     match_up: ["🧩", "Match Up"], venn: ["◉", "Venn Diagram"], spelling: ["🔡", "Spelling Test"], cloze: ["▭", "Cloze Passage"], phonics_cloze: ["🖼️", "Picture Phonics"],
-    working: ["🧮", "Working Out"], counters: ["🟠", "Counters"], sketch: ["🎨", "Sketch It"], annotate: ["🖍️", "Annotate"], image_drop: ["📥", "Drop an Image"], image_caption: ["📸", "Image + Writing"], image_long: ["📓", "Image + Long Answer"], maths_board: ["🧮", "Maths Board"], counters_draw: ["🟠", "Counters + Drawing"],
+    working: ["🧮", "Working Out"], counters: ["🟠", "Counters"], sketch: ["🎨", "Sketch It"], trace: ["✍️", "Letter Formation"], annotate: ["🖍️", "Annotate"], image_drop: ["📥", "Drop an Image"], image_caption: ["📸", "Image + Writing"], image_long: ["📓", "Image + Long Answer"], maths_board: ["🧮", "Maths Board"], counters_draw: ["🟠", "Counters + Drawing"],
   };
   const meta = (it) =>
     it.mode === "counters" && it.counterKind === "base10" ? ["🔟", "Tens & Ones"] : META[it.mode] || ["▫️", it.mode];

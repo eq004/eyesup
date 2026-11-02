@@ -1104,7 +1104,7 @@ const STEP_MODES = new Set([
   "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "compose", "exit_ticket", "finish_sentence", "give_example",
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
-  "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "annotate", "image_drop",
+  "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "trace", "annotate", "image_drop",
   "image_caption", "image_long", "slide", "deck",
 ]);
 
@@ -1178,6 +1178,7 @@ function sanitizeStep(it) {
     passage: typeof it.passage === "string" ? it.passage.slice(0, 1500) : undefined,
     wordBank: typeof it.wordBank === "boolean" ? it.wordBank : undefined,
     expected: typeof it.expected === "string" ? it.expected.slice(0, 30) : undefined,
+    trace: typeof it.trace === "string" ? it.trace.slice(0, 8) : undefined,
     counterKind: it.counterKind === "base10" || it.counterKind === "colors" ? it.counterKind : undefined,
     tableRows: Number.isInteger(it.tableRows) ? it.tableRows : undefined,
     sig: ["2/4", "3/4", "4/4", "6/8"].includes(it.sig) ? it.sig : undefined,
@@ -1626,7 +1627,7 @@ const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes whose answer is a picture (drawn, marked up, or uploaded).
-const IMAGE_MODES = new Set(["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
+const IMAGE_MODES = new Set(["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
 // Uploaded (not drawn) pictures — stored server-side, sent to screens by URL.
 const UPLOAD_MODES = new Set(["image_drop", "image_caption", "image_long"]);
 const MAX_UPLOAD_IMAGES = 6; // per student, per activity
@@ -1687,7 +1688,7 @@ function isRevealMode(mode) {
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, trace }) {
   session.counter += 1;
   let opts = null;
   let pairs = null;
@@ -1786,6 +1787,8 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     cloze, // cloze passage {parts, answers}
     bank, // cloze word bank (shuffled answers) or null
     expected: ["working", "counters", "maths_board"].includes(mode) ? String(expected || "").trim().slice(0, 30) || null : null,
+    // Letter formation: the letters or numbers shown dotted on every pad.
+    trace: mode === "trace" ? String(trace || "").trim().slice(0, 8) || null : null,
     counterKind: mode === "counters" ? (counterKind === "base10" ? "base10" : "colors") : null,
     answerRevealed: false,
     showNames: !!session.showNames && !ANON_MODES.has(mode), // follows the room-wide switch; anonymous modes never
@@ -2201,7 +2204,7 @@ function teacherState(session) {
           chords: itx.chords,
           key: itx.key,
           timeLimit: itx.timeLimit,
-          imageUrl: itx.imageUrl,
+          imageUrl: itx.imageUrl, trace: itx.trace,
           correct: itx.correct,
           answerRevealed: itx.answerRevealed,
           moderated: itx.moderated,
@@ -2252,7 +2255,7 @@ function projectorState(session) {
           mode: itx.mode,
           prompt: itx.prompt,
           options: itx.options,
-          imageUrl: itx.imageUrl,
+          imageUrl: itx.imageUrl, trace: itx.trace,
           counterKind: itx.counterKind,
           open: itx.open,
           resultsVisible: itx.resultsVisible,
@@ -2293,7 +2296,7 @@ function studentState(session, student) {
             pairs: itx.pairs,
             fields: itx.fields,
             multi: itx.multi,
-            imageUrl: itx.imageUrl,
+            imageUrl: itx.imageUrl, trace: itx.trace,
             // test modes: students get counts/structure, never the answers
             wordCount: itx.words ? itx.words.length : null,
             clozeParts: itx.cloze ? itx.cloze.parts : null,

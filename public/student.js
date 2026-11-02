@@ -24,7 +24,7 @@ const MODE_NAMES = {
   one_word: "🗣️ One Word", ask_question: "❓ Ask a Question",
   true_false: "✅ True or False", mindmap: "🕸️ Mindmap", exit_ticket: "🎟️ Exit Ticket",
   muddiest_point: "🌫️ Muddiest Point", retrieval_sprint: "🧠 Retrieval Sprint",
-  sketch: "🎨 Sketch It", maths_board: "🧮 Maths Board", counters_draw: "🟠 Counters + Drawing", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", image_long: "📓 Image + Long Answer", spot_mistake: "🔎 Spot the Mistake",
+  sketch: "🎨 Sketch It", trace: "✍️ Letter Formation", maths_board: "🧮 Maths Board", counters_draw: "🟠 Counters + Drawing", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", image_long: "📓 Image + Long Answer", spot_mistake: "🔎 Spot the Mistake",
   example_nonexample: "↔️ Example / Non-example", teach_back: "🧑‍🏫 Teach It Back",
   match_up: "🧩 Match Up", put_in_order: "🪜 Put in Order", give_example: "💡 Give an Example",
   make_connection: "🔗 Make a Connection", finish_sentence: "📝 Finish the Sentence",
@@ -1537,8 +1537,9 @@ function renderInteraction(itx) {
   }
 
   /* --- sketch & annotate --- */
-  if (itx.mode === "sketch" || itx.mode === "annotate") {
+  if (itx.mode === "sketch" || itx.mode === "annotate" || itx.mode === "trace") {
     const anno = itx.mode === "annotate";
+    const tracing = itx.mode === "trace";
     show(`${h}
       <div class="pad-tools">
         <button type="button" class="pad-tool on" id="toolPen">✏️ Pen</button>
@@ -1547,9 +1548,9 @@ function renderInteraction(itx) {
       </div>
       <div class="pad-wrap" id="padWrap"><canvas id="padBg" width="600" height="450"></canvas><canvas id="pad" width="600" height="450"></canvas></div>
       <div style="display:flex;gap:0.6rem;margin-top:0.8rem">
-        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0">${anno ? "Send my annotation" : "Send my sketch"}</button>
+        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0">${anno ? "Send my annotation" : tracing ? "Send my writing" : "Send my sketch"}</button>
       </div>
-      <p class="hint">${anno ? "Draw on the image with your finger or mouse. The rubber only removes your drawing, not the picture." : "Draw with your finger or mouse. Use the rubber to fix mistakes."}</p>`, () => {
+      <p class="hint">${anno ? "Draw on the image with your finger or mouse. The rubber only removes your drawing, not the picture." : tracing ? "Trace over the dotted letters with your finger. Start at the top." : "Draw with your finger or mouse. Use the rubber to fix mistakes."}</p>`, () => {
       // Two layers: the background (white, or the teacher's picture) underneath
       // and the drawing on top, so the rubber can erase ink without touching the picture.
       const wrap = $("padWrap"), bgCanvas = $("padBg"), canvas = $("pad");
@@ -1588,9 +1589,35 @@ function renderInteraction(itx) {
       fitPad(true);
       window.addEventListener("resize", () => fitPad(false), { passive: true });
       let bg = null; // the teacher's image, once loaded
+      // Letter formation: writing lines and the letters, big and dotted, to trace over.
+      const paintGuide = () => {
+        const W = bgCanvas.width, H = bgCanvas.height, text = itx.trace || "";
+        const top = H * 0.2, mid = H * 0.5, base = H * 0.8;
+        bgx.lineCap = "round";
+        bgx.lineJoin = "round";
+        [[top, false], [mid, true], [base, false]].forEach(([y, dashed]) => {
+          bgx.strokeStyle = dashed ? "#c9d3e3" : "#aab7cc";
+          bgx.lineWidth = Math.max(2, W / 450);
+          bgx.setLineDash(dashed ? [W / 70, W / 70] : []);
+          bgx.beginPath(); bgx.moveTo(W * 0.03, y); bgx.lineTo(W * 0.97, y); bgx.stroke();
+        });
+        let size = (base - top) * 1.08; // capitals and tall letters reach the top line
+        const font = (px) => `700 ${px}px "Comic Sans MS", "Chalkboard SE", "Arial Rounded MT Bold", "Nunito", sans-serif`;
+        bgx.font = font(size);
+        const tw = bgx.measureText(text).width;
+        if (tw > W * 0.9) { size *= (W * 0.9) / tw; bgx.font = font(size); }
+        bgx.textAlign = "center";
+        bgx.textBaseline = "alphabetic";
+        bgx.strokeStyle = "#8ea0bd";
+        bgx.lineWidth = Math.max(3, size / 26);
+        bgx.setLineDash([size / 16, size / 11]);
+        bgx.strokeText(text, W / 2, base);
+        bgx.setLineDash([]);
+      };
       const paintBg = () => {
         bgx.fillStyle = "#ffffff";
         bgx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+        if (tracing) paintGuide();
         if (bg) {
           // fit the image inside the canvas, centred
           const s = Math.min(bgCanvas.width / bg.width, bgCanvas.height / bg.height);
@@ -1605,8 +1632,8 @@ function renderInteraction(itx) {
         img.onload = () => { bg = img; paintBg(); };
         img.src = itx.imageUrl;
       }
-      const penWidth = Math.max(3, Math.round(canvas.width / 150)); // same feel at any resolution
-      ctx.strokeStyle = anno ? "#e02d2d" : "#0f1c30";
+      const penWidth = Math.max(3, Math.round(canvas.width / (tracing ? 60 : 150))); // same feel at any resolution; a fat crayon for tracing
+      ctx.strokeStyle = anno ? "#e02d2d" : tracing ? "#1d3f78" : "#0f1c30";
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       let tool = "pen";

@@ -91,6 +91,8 @@ const MODES = {
   counters_draw: { icon: "🟠", name: "Counters + Drawing", hint: "Counters, tens & ones and free drawing — no number pad", opts: null,
                    ph: "e.g. “Show 3 groups of 4”" },
   sketch:        { icon: "🎨", name: "Sketch It",     hint: "Draw understanding instead of writing", opts: null },
+  trace:         { icon: "✍️", name: "Letter Formation", hint: "Dotted letters or numbers to trace — every attempt shows on the board", opts: null, traceUI: true,
+                   ph: "Optional instruction, e.g. “Start at the top and go round”" },
   annotate:      { icon: "🖍️", name: "Annotate",     hint: "Upload an image — students draw on it", opts: null, imageUpload: true,
                    ph: "What should they mark up? e.g. “Circle the error / label the diagram”" },
   image_drop:    { icon: "📥", name: "Drop an Image", hint: "Students drop, choose or photograph an image as their answer", opts: null,
@@ -108,7 +110,7 @@ const CATEGORIES = [
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
-  { label: "🎨 Draw & images", modes: ["sketch", "annotate", "image_drop", "image_caption", "image_long"] },
+  { label: "🎨 Draw & images", modes: ["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long"] },
   { label: "🎵 Music", modes: ["compose_beginner", "compose", "compose_advanced"] },
 ];
 
@@ -118,7 +120,7 @@ const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the projector.
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "question_set" || m === "sketch" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "question_set" || m === "sketch" || m === "trace" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
   m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" ||
   m === "counters" || m === "table" || m === "dot_points" || m === "plus_minus" || m === "compose";
 
@@ -493,6 +495,14 @@ function openComposer(key, keepImage) {
     durSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(durSel);
   }
+  if (m.traceUI) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `
+      <input type="text" id="traceText" maxlength="8" autocomplete="off" autocapitalize="off" spellcheck="false"
+        placeholder="Letters or numbers to trace — e.g. a, Aa, 3, sat" style="font-size:1.15rem;letter-spacing:0.08em" />
+      <p style="margin:0.45rem 0 0;font-size:0.8rem;color:var(--muted)">Shown big and dotted on every student's pad, on writing lines. Up to 8 characters; one letter is best for the youngest.</p>`;
+    opts.appendChild(wrap);
+  }
   if (m.workingUI) {
     const inp = document.createElement("input");
     inp.type = "text";
@@ -621,6 +631,11 @@ function readComposer() {
     wordBank = $("clozeMode").value === "bank";
   }
   const expected = m.workingUI ? $("expectedAns").value.trim() || undefined : undefined;
+  const trace = m.traceUI ? $("traceText").value.trim().slice(0, 8) || undefined : undefined;
+  if (m.traceUI && !trace) {
+    toast("Type the letter(s) or number(s) to trace");
+    return null;
+  }
   const counterKind = m.forceKind || undefined;
   const tableRows = m.tableUI ? parseInt($("rowsSel").value, 10) : undefined;
   const sprintSeconds = m.sprintUI ? parseInt($("durSel").value, 10) : undefined;
@@ -633,7 +648,7 @@ function readComposer() {
   const key = m.tuneUI ? ($("keySel") ? parseInt($("keySel").value, 10) : 0) : undefined;
   const moderated = m.postits ? $("modSel")?.value !== "0" : undefined;
   const multi = m.multiOpt ? $("multiSel")?.value !== "0" : undefined;
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, trace, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key };
 }
 
 /* ---------------- rendering ---------------- */
@@ -948,14 +963,14 @@ function renderLive() {
         .filter(Boolean)
         .join("<br/>")
     );
-  } else if (["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
+  } else if (["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
     const picsOf = (r) => (r.payload.images && r.payload.images.length ? r.payload.images : [r.payload.image]);
     const totalPics = itx.responses.reduce((n, r) => n + picsOf(r).length, 0);
     const source = itx.imageUrl
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.78rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
     const hint = itx.responses.length
-      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the projector; click again to shrink it back.
+      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the projector; click again to shrink it back.
          <a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a></p>`
       : "";
     body = source + hint + revealCards((r) => {
@@ -1975,6 +1990,7 @@ function stepDetail(st) {
     bits.push(st.options.map((o, i) => `${esc(o)}${st.correct === i ? " ✓" : ""}`).join(" · "));
   if (st.passage) bits.push(`“${esc(st.passage.slice(0, 110))}${st.passage.length > 110 ? "…" : ""}”`);
   if (st.expected) bits.push(`Answer: <b>${esc(st.expected)}</b>`);
+  if (st.trace) bits.push(`✍️ Trace <b>${esc(st.trace)}</b>`);
   if (st.url) bits.push(`🔗 ${esc(st.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 70))}`);
   if (st.sprintSeconds) bits.push(`⏱ ${st.sprintSeconds / 60} min`);
   return bits.join(" &nbsp; ");
@@ -2401,6 +2417,7 @@ function fillComposer(st) {
   if (m.wordUI && $("wordFrame")) $("wordFrame").value = st.passage || "";
   if (m.linkUI) { $("linkUrl").value = st.url || ""; $("linkLabel").value = st.linkLabel || ""; }
   if (m.workingUI && $("expectedAns")) $("expectedAns").value = st.expected || "";
+  if (m.traceUI && $("traceText")) $("traceText").value = st.trace || "";
   if (m.tableUI && $("rowsSel") && st.tableRows) $("rowsSel").value = String(st.tableRows);
   if (m.sprintUI && $("durSel") && st.sprintSeconds) $("durSel").value = String(st.sprintSeconds);
   if (m.tuneUI) { if ($("sigSel") && st.sig) $("sigSel").value = st.sig; if ($("barsSel") && st.bars) $("barsSel").value = String(st.bars); if ($("staffSel") && st.staff) $("staffSel").value = st.staff; if ($("keysSel")) $("keysSel").value = st.keys === false ? "0" : "1"; if ($("chordsSel")) $("chordsSel").value = st.chords === false ? "0" : "1"; if ($("keySel")) $("keySel").value = String(st.key || 0); }

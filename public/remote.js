@@ -73,6 +73,7 @@ const MODES = {
   maths_board:   { icon: "🧮", name: "Maths Board", workingUI: true, ph: "The problem, e.g. “23 + 19 = ?”" },
   counters_draw: { icon: "🟠", name: "Counters + Drawing", ph: "e.g. “Show 3 groups of 4”" },
   sketch:        { icon: "🎨", name: "Sketch It" },
+  trace:         { icon: "✍️", name: "Letter Formation" },
   annotate:      { icon: "🖍️", name: "Annotate", imageUpload: true },
   image_drop:    { icon: "📥", name: "Drop an Image", ph: "What should they show? e.g. “A photo of your model”" },
   image_caption: { icon: "📸", name: "Image + Writing", ph: "e.g. “Photograph your experiment and explain it”" },
@@ -398,7 +399,7 @@ function renderLiveResponses(itx) {
   if (["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode) && itx.responses.length) {
     const pics = itx.responses.flatMap((r) => (r.payload.images && r.payload.images.length ? r.payload.images : [r.payload.image])
       .map((src, k) => ({ src, id: k ? `${r.studentId}|${k}` : r.studentId })));
-    out += `<h3 class="sec">Tap ${itx.mode === "sketch" || itx.mode === "annotate" ? "a drawing" : "an image"} → big on the projector</h3>
+    out += `<h3 class="sec">Tap ${itx.mode === "sketch" || itx.mode === "trace" || itx.mode === "annotate" ? "a drawing" : "an image"} → big on the projector</h3>
       <div class="thumb-grid">${pics
         .map((p) => `<img class="thumb ${itx.spotlightId === p.id ? "spot" : ""}" data-spot="${p.id}" src="${p.src}" alt="student image" />`)
         .join("")}</div>
@@ -469,7 +470,7 @@ function renderLiveResponses(itx) {
 
 // Words a teacher might type that aren't in the activity's name.
 const SEARCH_WORDS = {
-  sketch: "draw drawing picture pad", annotate: "draw drawing mark up image photo", image_drop: "photo picture upload drag drop", image_caption: "photo picture upload writing", image_long: "photo picture upload essay",
+  sketch: "draw drawing picture pad", trace: "letter formation handwriting trace tracing numbers writing", annotate: "draw drawing mark up image photo", image_drop: "photo picture upload drag drop", image_caption: "photo picture upload writing", image_long: "photo picture upload essay",
   maths_board: "draw drawing maths working number", counters_draw: "draw drawing counters maths", counters: "maths number", tens_ones: "maths place value number", working: "maths working show",
   multi_choice: "quiz mcq abcd test", poll: "vote survey", tick_boxes: "tick checkbox select many vote", picture_vote: "vote image photo", agree_disagree: "vote opinion", true_false: "quiz vote", this_or_that: "vote either", confidence: "check in feeling", smiley: "feelings mood review", scale: "slider rating",
   word_cloud: "brainstorm words", one_word: "brainstorm", mindmap: "brainstorm map", post_its: "sticky notes brainstorm", phonics: "sounds spelling letters", phonics_cloze: "sounds spelling picture word",
