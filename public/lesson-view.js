@@ -16,7 +16,7 @@
 
 (function () {
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const canonical = (n) => String(n || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const { canonical, parts } = window.Marks; // /marks.js — the same rules the server uses
   const SKIP = new Set(["link", "slide", "deck"]);
 
   // Marks for older lessons, read back from the stored answer text.
@@ -150,11 +150,8 @@
     return { total: counted.length, markable, rows };
   }
 
-  // Which kind of answer key an activity can take after the lesson.
-  const KEY_CHOICE = new Set(["multi_choice", "true_false", "this_or_that", "picture_vote", "poll", "example_nonexample"]);
-  const KEY_TEXT = new Set(["short_answer", "predict", "exit_ticket", "retrieval_sprint", "spot_mistake", "teach_back", "give_example",
-    "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response", "working", "counters", "maths_board", "image_caption", "image_long", "one_word"]);
-  const keyKind = (it) => it.anonymous || SKIP.has(it.mode) ? null : KEY_CHOICE.has(it.mode) ? "choice" : it.mode === "question_set" ? "set" : KEY_TEXT.has(it.mode) ? "text" : "hand";
+  // Which kind of answer key an activity can take after the lesson; "hand" = ✓/✗ only.
+  const keyKind = (it) => (it.anonymous || SKIP.has(it.mode) ? null : window.Marks.keyKind(it.mode) || "hand");
 
   // ✓ / ✗ a teacher can tap to mark one student's answer by hand.
   const markButtons = (i, name, x, byHand) => `<span class="mkb" data-mark="${i}" data-name="${esc(canonical(name))}" title="${byHand ? "Marked by hand — tap the lit one to undo" : "Tap to mark right or wrong"}">
@@ -194,9 +191,6 @@
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
-
-  // Question Set answers are stored as "Q1: …   |   Q2: …" — back to parts.
-  const parts = (resp) => String(resp || "").split(/\s{2,}\|\s{2,}/).map((p) => p.replace(/^Q\d+:\s*/, ""));
 
   const CSS = `
   .lv-ok, .lv-no { display:inline-block; min-width:1.35em; text-align:center; border-radius:6px; font-weight:800; font-size:0.78rem; padding:0.05rem 0.3rem; margin-right:0.35rem; vertical-align:middle; }

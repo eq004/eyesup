@@ -56,11 +56,12 @@
     <span class="wordmark inverted"><svg class="logo-eyes" viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="var(--eyeball)"/><circle cx="97.5" cy="19" r="3.6" fill="var(--eyeball)"/></svg><span class="logo-text">eyes up</span><span class="logo-sub" id="pageKind">· Lesson dashboard</span></span>
   </header>
   <div class="wrap" id="wrap"><div class="gate muted">Loading…</div></div>
+  <script src="/marks.js"></script>
   <script src="/lesson-view.js"></script>
   <script src="/insights-render.js"></script>
   <script>
     const wrap = document.getElementById("wrap");
-    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const esc = LV.esc;
     const params = new URLSearchParams(location.search);
     const key = params.get("share");
     const lessonId = params.get("lesson");

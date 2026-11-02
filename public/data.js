@@ -3,7 +3,7 @@
    mix, per-lesson energy, and a per-student table. */
 
 const wrap = document.getElementById("wrap");
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const esc = LV.esc;
 
 const MODE_META = {
   word_cloud: ["☁️", "Word Cloud"], one_word: ["🗣️", "One Word"], mindmap: ["🕸️", "Mindmap"],

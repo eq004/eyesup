@@ -168,10 +168,11 @@
     <button onclick="window.print()" style="font-size:1rem;padding:0.6rem 1.5rem">🖨 Print / Save as PDF</button>
   </div>
   <div class="page" id="page"><div class="err">Loading report…</div></div>
+  <script src="/marks.js"></script>
   <script src="/lesson-view.js"></script>
 
 <script>
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const esc = LV.esc;
 
 /* Packed word cloud for print — same spiral layout the projector uses,
    in report-friendly colours. */
