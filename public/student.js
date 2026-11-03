@@ -126,6 +126,21 @@ function connect() {
       return;
     }
     if (msg.type === "error") {
+      if (joined && !["no_session", "session_ended", "slow_down", "subscription_required"].includes(msg.error)) {
+        const why = msg.error === "room_full_of_images"
+          ? "The class has sent lots of photos and the room is full. Try again with just one photo."
+          : msg.error === "bad_link" ? "That link couldn't be sent. Check it and try again."
+          : "That didn't go through. Try again.";
+        document.getElementById("liveNotice")?.remove();
+        const n = document.createElement("p");
+        n.id = "liveNotice";
+        n.className = "join-msg";
+        n.textContent = why;
+        screenEl.prepend(n);
+        const btn = document.getElementById("sendBtn");
+        if (btn) btn.disabled = false;
+        return;
+      }
       joined = false;
       if (PREVIEW) {
         show(`<div class="big-emoji">👁</div><p class="state-sub">No live session for this code — start one on the dashboard.</p>`);
@@ -1505,11 +1520,13 @@ function renderInteraction(itx) {
           : (withText ? (longText ? "Send image + my answer" : "Send image + writing") : "Send my image");
         $("sendBtn").disabled = !n || (withText && !textOf());
       };
-      // Keep it print-size: a 2000px long edge still prints crisply on A4.
+      // 1280 px on the long edge: sharp on the board, prints a page of work
+      // legibly, and about a quarter of the old 2000 px size, so a whole class
+      // can send photos over school Wi-Fi without filling the server.
       const shrink = (blob) => new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
-          const k = Math.min(1, 2000 / Math.max(img.width, img.height));
+          const k = Math.min(1, 1280 / Math.max(img.width, img.height));
           const c = document.createElement("canvas");
           c.width = Math.round(img.width * k);
           c.height = Math.round(img.height * k);
@@ -1518,7 +1535,7 @@ function renderInteraction(itx) {
           cx.fillRect(0, 0, c.width, c.height);
           cx.drawImage(img, 0, 0, c.width, c.height);
           URL.revokeObjectURL(img.src);
-          resolve(c.toDataURL("image/jpeg", 0.85));
+          resolve(c.toDataURL("image/jpeg", 0.8));
         };
         img.onerror = () => resolve(null);
         img.src = URL.createObjectURL(blob);

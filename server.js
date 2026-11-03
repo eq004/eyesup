@@ -335,10 +335,9 @@ async function persistNow(session) {
 // answer replaces the earlier one).
 async function persistImage(session, itx, student, record) {
   if (!db || student.name === "👁 Preview") return;
-  const urls = UPLOAD_MODES.has(itx.mode)
+  const parts = (UPLOAD_MODES.has(itx.mode)
     ? imgsOf(record).map((_, k) => session.respImages.get(`${itx.id}/${student.id}/${k}`))
-    : [record.payload.image];
-  const parts = urls.map((u) => String(u || "").match(/^data:(image\/\w+);base64,(.+)$/));
+    : [record.payload.image]).map(imageBytes);
   if (!parts.length || parts.some((m) => !m)) return;
   const at = new Date(session.createdAt);
   try {
@@ -353,8 +352,8 @@ async function persistImage(session, itx, student, record) {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (lesson_code, lesson_created_at, itx_id, student_id, img_index)
          DO UPDATE SET student_name = $5, mime = $7, data = $8, text = $9, created_at = now()`,
-        [session.code, at, itx.id, student.id, student.name, itx.mode, parts[k][1],
-         Buffer.from(parts[k][2], "base64"), k === 0 ? record.payload.text || null : null, k]
+        [session.code, at, itx.id, student.id, student.name, itx.mode, parts[k].mime,
+         parts[k].buf, k === 0 ? record.payload.text || null : null, k]
       );
     }
   } catch (e) {
@@ -491,11 +490,10 @@ app.get("/api/image/:code/:id", (req, res) => {
 
 app.get("/api/resp-image/:code/:itx/:sid/:k?", (req, res) => {
   const session = sessions.get(String(req.params.code || "").toUpperCase());
-  const dataUrl = session?.respImages.get(`${req.params.itx}/${req.params.sid}/${parseInt(req.params.k, 10) || 0}`);
-  const m = dataUrl?.match(/^data:(image\/\w+);base64,(.+)$/);
-  if (!m) return res.status(404).end();
+  const x = session?.respImages.get(`${req.params.itx}/${req.params.sid}/${parseInt(req.params.k, 10) || 0}`);
+  if (!x) return res.status(404).end();
   res.set("Cache-Control", "public, max-age=86400");
-  res.type(m[1]).send(Buffer.from(m[2], "base64"));
+  res.type(x.mime).send(x.buf);
 });
 
 /* ---- teacher accounts (database mode) ---- */
@@ -1630,14 +1628,14 @@ function imageFilesFor(session, itx, folder) {
     if (r.name === "👁 Preview") continue;
     const count = imgsOf(r).length;
     for (let k = 0; k < count; k++) {
-      const dataUrl = UPLOAD_MODES.has(itx.mode) ? session.respImages.get(`${itx.id}/${sid}/${k}`) : r.payload.image;
-      const m = String(dataUrl || "").match(/^data:image\/(\w+);base64,(.+)$/);
-      if (!m) continue;
+      const x = imageBytes(UPLOAD_MODES.has(itx.mode) ? session.respImages.get(`${itx.id}/${sid}/${k}`) : r.payload.image);
+      if (!x) continue;
+      const ext = x.mime.replace("image/", "");
       let base = safeName(r.name) + (count > 1 ? ` ${k + 1}` : "");
       const n = (seen.get(base) || 0) + 1;
       seen.set(base, n);
       if (n > 1) base += ` (${n})`;
-      files.push({ name: `${folder}${base}.${m[1] === "jpeg" ? "jpg" : m[1]}`, data: Buffer.from(m[2], "base64") });
+      files.push({ name: `${folder}${base}.${ext === "jpeg" ? "jpg" : ext}`, data: x.buf });
     }
     if (r.payload.text) captions.push(`${r.name}: ${r.payload.text}`);
   }
@@ -1665,7 +1663,7 @@ app.get("/api/images/:code/:itx?", async (req, res) => {
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 20 * 1024 * 1024 }); // six print-size photos fit; anything bigger is dropped
+const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 10 * 1024 * 1024 }); // six photos from an older cached student page still fit; anything bigger is dropped
 // A room code is four letters — stop a bot from joining rooms by the hundred.
 const wsHits = new Map();
 // Abuse brakes only. A whole school usually sits behind ONE public address, and a
@@ -1683,7 +1681,17 @@ function wsLimited(ws, bucket, max, windowMs, perSocket = false) {
   if (wsHits.size > 5000) for (const [k, v] of wsHits) if (!v.some((ts) => now - ts < 3600000)) wsHits.delete(k);
   return list.length > max;
 }
-const MAX_RESP_IMAGE_BYTES = 120 * 1024 * 1024; // per room, across all students
+const MAX_RESP_IMAGE_BYTES = (parseInt(process.env.MAX_RESP_IMAGE_MB, 10) || 64) * 1024 * 1024; // per room, across all students (decoded bytes)
+const MAX_ALL_RESP_IMAGE_BYTES = 192 * 1024 * 1024; // across every live room — the server has 512 MB in all
+// Photos live as raw bytes ({ mime, buf }) rather than base64 strings: a Buffer
+// sits outside the V8 heap and is a quarter smaller, so a class of photos no
+// longer pushes the process past its memory limit (3 Nov 2026 restart).
+const imageBytes = (x) => {
+  if (x && Buffer.isBuffer(x.buf)) return x;
+  const m = String(x || "").match(/^data:(image\/\w+);base64,(.+)$/);
+  return m ? { mime: m[1], buf: Buffer.from(m[2], "base64") } : null;
+};
+const heldImageBytes = (session) => { let n = 0; for (const v of session.respImages.values()) n += v.buf.length; return n; };
 
 /* ------------------------------------------------------------------ */
 /* Session model                                                      */
@@ -2908,12 +2916,18 @@ async function handle(ws, msg) {
       const prefix = `${itx.id}/${student.id}/`;
       for (const key of [...session.respImages.keys()]) if (key.startsWith(prefix)) session.respImages.delete(key);
       // Keep one room from eating the server's memory with photos.
-      let held = 0;
-      for (const v of session.respImages.values()) held += v.length;
-      if (held + payload.images.reduce((a, u) => a + u.length, 0) > MAX_RESP_IMAGE_BYTES) return safeSend(ws, { type: "error", error: "room_full_of_images" });
+      const incoming = payload.images.map(imageBytes);
+      if (incoming.some((x) => !x)) return;
+      const adding = incoming.reduce((a, x) => a + x.buf.length, 0);
+      let everywhere = 0;
+      for (const s of sessions.values()) everywhere += heldImageBytes(s);
+      if (heldImageBytes(session) + adding > MAX_RESP_IMAGE_BYTES || everywhere + adding > MAX_ALL_RESP_IMAGE_BYTES) {
+        console.warn(`photo refused: room ${session.code} holds ${Math.round(heldImageBytes(session) / 1048576)} MB, server ${Math.round(everywhere / 1048576)} MB`);
+        return safeSend(ws, { type: "error", error: "room_full_of_images" });
+      }
       const v = Date.now();
-      payload.images = payload.images.map((dataUrl, k) => {
-        session.respImages.set(prefix + k, dataUrl);
+      payload.images = incoming.map((x, k) => {
+        session.respImages.set(prefix + k, x);
         return `/api/resp-image/${session.code}/${prefix}${k}?v=${v}`;
       });
       payload.image = payload.images[0];
