@@ -369,10 +369,16 @@ function renderLive() {
   const backToSlides = slidesBehind
     ? `<button class="rbtn back-slides" data-act="seq_prev">🎞 Back to the slides<small>${seq.slice(0, state.seqIndex + 1).some((st) => st.mode === "deck") ? "they're exactly where you left them" : "returns to your last slide"}</small></button>`
     : "";
-  const planNav = inPlan ? `<div class="step-nav" style="margin-top:0.5rem">
-      <button class="rbtn" data-act="${slidesUp ? "seq_prev" : "seq_back"}" ${state.seqIndex < 0 ? "disabled" : ""}>◀ ${slidesUp ? "Previous" : "Back"}</button>
-      <button class="rbtn" data-act="seq_skip" ${nextStep ? "" : "disabled"}>Skip ⏭</button>
-      <button class="rbtn warn" id="stopLive" ${itx ? "" : "disabled"}>⏹ Stop step</button>
+  // Tape-recorder row: one step at a time in either direction, back to the start, or skip one.
+  const planNav = inPlan ? `<div class="tape" style="margin-top:0.5rem">
+      <button class="rbtn" data-act="step_first" ${state.seqIndex < 0 ? "disabled" : ""} title="Start again from step 1">⏮<small>start</small></button>
+      <button class="rbtn" data-act="step_prev" ${state.seqIndex < 0 ? "disabled" : ""} title="Show the previous step again">◀<small>previous</small></button>
+      <button class="rbtn" data-act="next" ${nextStep ? "" : "disabled"} title="Run the next step">▶<small>next</small></button>
+      <button class="rbtn" data-act="seq_skip" ${nextStep ? "" : "disabled"} title="Pass over the next step without running it">⏭<small>skip</small></button>
+    </div>
+    <div class="step-nav" style="margin-top:0.4rem;align-items:center">
+      <span class="step-pos">${state.seqIndex < 0 ? `${seq.length} steps · not started` : `Step ${state.seqIndex + 1} of ${seq.length}`}</span>
+      <button class="rbtn warn" id="stopLive" ${itx ? "" : "disabled"} style="flex:0 0 auto;width:auto;margin:0;min-height:40px;padding:0.5rem 0.9rem;font-size:0.82rem">⏹ Stop step</button>
     </div>` : "";
 
   main.innerHTML = `
@@ -677,8 +683,13 @@ function renderPlan() {
             <span>▶ ${idx < 0 ? "Start the lesson" : `Launch step ${nextI + 1}`}</span>
             <small style="font-weight:600;opacity:0.85">${esc(modeName(nextSt.mode, nextSt.counterKind))}${nextSt.prompt ? " — " + esc(cut(nextSt.prompt, 44)) : ""}</small></button>`
         : `<div class="status"><div class="q">🎉 All ${seq.length} steps done</div></div>`}
-      <div class="timer-row"><button class="rbtn" data-act="seq_back" ${idx < 0 ? "disabled" : ""}>◀ Back</button><button class="rbtn" data-act="seq_skip" ${nextSt ? "" : "disabled"}>Skip ⏭</button></div>
-      <p style="color:var(--rdim);font-size:0.78rem;margin:0.3rem 0 0.2rem">Tap <b>Run</b> on any step to jump straight to it. <b>Next</b> lines a step up without running it.</p>
+      <div class="tape">
+        <button class="rbtn" data-act="step_first" ${idx < 0 ? "disabled" : ""} title="Start again from step 1">⏮<small>start</small></button>
+        <button class="rbtn" data-act="step_prev" ${idx < 0 ? "disabled" : ""} title="Show the previous step again">◀<small>previous</small></button>
+        <button class="rbtn" data-act="next" ${nextSt ? "" : "disabled"} title="Run the next step">▶<small>next</small></button>
+        <button class="rbtn" data-act="seq_skip" ${nextSt ? "" : "disabled"} title="Pass over the next step without running it">⏭<small>skip</small></button>
+      </div>
+      <p style="color:var(--rdim);font-size:0.78rem;margin:0.3rem 0 0.2rem">⏮ ◀ ▶ ⏭ move one step at a time, like a tape recorder. Tap <b>Run</b> on any step to jump straight to it; <b>Next</b> lines a step up without running it.</p>
       ${seq.map((st, i) => {
         const wasSkipped = (state.skipped || []).includes(i) && i <= idx;
         return `

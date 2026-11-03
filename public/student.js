@@ -94,6 +94,45 @@ let pendingJoin = null;
 let pendingTimer = null;
 let reconnectTimer = null;
 let failedConnects = 0;
+let replaced = false; // this seat was opened on another device — this screen steps aside instead of fighting for it
+// The seat is remembered on the device, not just in this tab, so a closed tab, a reopened
+// browser or a locked phone walks straight back into the same class for a few hours.
+const SEAT_TTL = 4 * 60 * 60 * 1000;
+function saveSeat(code, sid) {
+  sessionStorage.setItem("eyesup_sid", sid);
+  sessionStorage.setItem("eyesup_code", code);
+  const name = sessionStorage.getItem("eyesup_name") || localStorage.getItem("eyesup_name") || "";
+  try { localStorage.setItem("eyesup_seat", JSON.stringify({ code, sid, name, at: Date.now() })); } catch {}
+}
+function loadSeat() {
+  const code = sessionStorage.getItem("eyesup_code"), sid = sessionStorage.getItem("eyesup_sid");
+  if (code && sid) return { code, sid, name: sessionStorage.getItem("eyesup_name") || "" };
+  try { const s = JSON.parse(localStorage.getItem("eyesup_seat") || "null"); if (s && s.code && s.sid && Date.now() - s.at < SEAT_TTL) return s; } catch {}
+  return null;
+}
+function clearSeat() {
+  sessionStorage.removeItem("eyesup_sid");
+  sessionStorage.removeItem("eyesup_code");
+  try { localStorage.removeItem("eyesup_seat"); } catch {}
+}
+// Photos take a moment on school Wi-Fi: keep the child told, and offer a retry if nothing comes back.
+let sendWatch = null;
+function watchSend(btn, reset) {
+  clearTimeout(sendWatch);
+  sendWatch = setTimeout(() => {
+    if (btn.isConnected) btn.textContent = "Still sending — stay on this page…";
+    sendWatch = setTimeout(() => {
+      if (!btn.isConnected) return;
+      reset();
+      document.getElementById("liveNotice")?.remove();
+      const n = document.createElement("p");
+      n.id = "liveNotice";
+      n.className = "join-msg warn";
+      n.textContent = "That didn't get through. Check Wi-Fi and tap Send again.";
+      screenEl.prepend(n);
+    }, 25000);
+  }, 10000);
+}
 
 function connect() {
   if (ws && (ws.readyState === 0 || ws.readyState === 1)) return; // already connecting / open
@@ -107,13 +146,12 @@ function connect() {
       return;
     }
     if (pendingJoin) { ws.send(JSON.stringify({ type: "student_join", ...pendingJoin })); return; }
-    const code = sessionStorage.getItem("eyesup_code");
-    const sid = sessionStorage.getItem("eyesup_sid");
-    const name = sessionStorage.getItem("eyesup_name");
-    // Back after a refresh: pick the seat up again — unless this link points at a different room.
+    if (replaced) return;
+    const seat = loadSeat();
+    // Back after a refresh, a closed tab or a reopened browser: pick the seat up again — unless this link points at a different room.
     const q = new URLSearchParams(location.search);
     const urlCode = (q.get("code") || q.get("c") || "").toUpperCase();
-    if (code && sid && (!urlCode || urlCode === code || urlCode.length === 5)) ws.send(JSON.stringify({ type: "student_join", code, studentId: sid, name }));
+    if (seat && (!urlCode || urlCode === seat.code || urlCode.length === 5)) ws.send(JSON.stringify({ type: "student_join", code: seat.code, studentId: seat.sid, name: seat.name }));
   };
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
@@ -121,8 +159,20 @@ function connect() {
       joined = true;
       pendingJoin = null;
       clearTimeout(pendingTimer);
-      sessionStorage.setItem("eyesup_sid", msg.studentId);
-      sessionStorage.setItem("eyesup_code", msg.code);
+      saveSeat(msg.code, msg.studentId);
+      return;
+    }
+    if (msg.type === "replaced") {
+      const seat = loadSeat();
+      replaced = true;
+      joined = false;
+      clearSeat();
+      show(`<div class="big-emoji">📱</div>
+        <div class="state-title">You're in on another screen</div>
+        <p class="state-sub">This class was opened again on another device, so this one has stepped aside.</p>
+        <button class="btn send" id="useHere" style="margin-top:1rem">Use this one instead</button>`, () => {
+        $("useHere").onclick = () => { replaced = false; if (seat) saveSeat(seat.code, seat.sid); connect(); };
+      });
       return;
     }
     if (msg.type === "error") {
@@ -137,8 +187,9 @@ function connect() {
         n.className = "join-msg";
         n.textContent = why;
         screenEl.prepend(n);
+        clearTimeout(sendWatch);
         const btn = document.getElementById("sendBtn");
-        if (btn) btn.disabled = false;
+        if (btn) { btn.disabled = false; btn.textContent = "Send again"; }
         return;
       }
       joined = false;
@@ -150,8 +201,7 @@ function connect() {
       const silent = !pendingJoin; // the automatic re-join after a refresh, not a tap
       pendingJoin = null;
       clearTimeout(pendingTimer);
-      sessionStorage.removeItem("eyesup_code");
-      sessionStorage.removeItem("eyesup_sid");
+      clearSeat();
       const code = msg.code || tried.code || "";
       // Yesterday's room is gone but this link points at a new one: just open the new one.
       const urlCode = (new URLSearchParams(location.search).get("code") || new URLSearchParams(location.search).get("c") || "").toUpperCase();
@@ -169,6 +219,7 @@ function connect() {
     }
   };
   ws.onclose = () => {
+    if (replaced) return; // another device has this seat; stay quiet until the child asks for it back
     failedConnects += 1;
     $("conn").textContent = failedConnects >= 3 ? "Can't reach the class right now — check Wi-Fi or mobile data. Still trying…" : "reconnecting…";
     clearTimeout(reconnectTimer);
@@ -194,6 +245,7 @@ function render(force) {
 
   // Only repaint when something the student can see actually changed —
   // a classmate submitting must never wipe this student's half-typed answer.
+  if (state.submitted) clearTimeout(sendWatch); // the photos arrived
   const key = [state.phase, itx?.id, itx?.open, state.submitted, changingAnswer].join("|");
   if (!force && key === lastRenderKey) return;
   lastRenderKey = key;
@@ -225,8 +277,7 @@ function render(force) {
       <button class="change-link" id="switchStudent" style="display:block;margin:1.4rem auto 0;font-size:0.85rem">Not ${esc(state.name)}? Switch student</button>`, () => {
       $("switchStudent").onclick = () => {
         const code = state.code;
-        sessionStorage.removeItem("eyesup_sid");
-        sessionStorage.removeItem("eyesup_code");
+        clearSeat();
         joined = false; state = null; lastRenderKey = null;
         renderJoin(true, { code, name: "" });
       };
@@ -1564,6 +1615,10 @@ function renderInteraction(itx) {
       }
       $("sendBtn").onclick = () => {
         if (!images.length || (withText && !textOf())) return;
+        const btn = $("sendBtn");
+        btn.disabled = true;
+        btn.textContent = images.length > 1 ? `Sending ${images.length} images…` : "Sending…";
+        watchSend(btn, () => { btn.disabled = false; paint(); });
         submit(withText ? { images: [...images], text: textOf() } : { images: [...images] });
       };
       paint();
@@ -1775,7 +1830,7 @@ function renderJoin(forceFullForm, opts = {}) {
     if (!n) { say("Type your first name so your teacher knows it's you.", "warn"); $("nameInput")?.focus(); return; }
     localStorage.setItem("eyesup_name", n);
     sessionStorage.setItem("eyesup_name", n);
-    sessionStorage.removeItem("eyesup_sid");
+    clearSeat();
     pendingJoin = { code: c, name: n };
     const btn = $("joinBtn") || $("quickJoin");
     if (btn) { btn.disabled = true; btn.textContent = "Joining…"; }

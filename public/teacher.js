@@ -855,7 +855,7 @@ function renderLive() {
       <p class="big">🎞 Your live slides are on the board${state.deck.title ? ` — ${esc(state.deck.title)}` : ""}</p>
       <p>Move through them with your clicker, the arrow keys, or by clicking the slides on the classroom screen — animations and videos play as normal.</p>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center;margin-top:0.8rem">
-        <button class="btn" data-act="seq_prev">◀ Previous step</button>
+        <button class="btn" data-act="step_prev">◀ Previous step</button>
         <button class="btn primary" data-act="next" ${nextSt ? "" : "disabled"}>${nextSt ? `Next: ${esc(stepTag(nextSt))} ▶` : "End of lesson"}</button>
       </div>
       <p style="color:var(--muted);font-size:0.8rem;margin-top:0.7rem">Launch any activity whenever you like — when you come back, the slides are exactly where you left them.</p>
@@ -874,7 +874,7 @@ function renderLive() {
         <p class="big">📽 Slide ${sl.page} of ${sl.pages}</p>
         ${sl.title ? `<p>${esc(sl.title)}</p>` : ""}
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.7rem">
-          <button class="btn" data-act="seq_prev">◀ Previous</button>
+          <button class="btn" data-act="step_prev">◀ Previous</button>
           <button class="btn primary" data-act="next" ${nextSt ? "" : "disabled"}>${nextSt ? (nextSt.mode === "slide" ? "Next slide ▶" : `Next: ${esc(stepTag(nextSt))} ▶`) : "End of lesson"}</button>
         </div>
         <p style="color:var(--muted);font-size:0.8rem;margin-top:0.7rem">Tip: your presenter clicker, or the arrow keys on the classroom-screen computer, move through the lesson too.</p>
@@ -2668,7 +2668,8 @@ function renderLessonStrip() {
   const skipped = new Set(state.skipped || []);
   const nav = `
       <div class="ls-nav">
-        <button class="btn" data-strip="back" ${idx < 0 ? "disabled" : ""} title="Go back one step (it becomes 'up next' again)">◀ Back</button>
+        <button class="btn" data-strip="first" ${idx < 0 ? "disabled" : ""} title="Start again from step 1">⏮</button>
+        <button class="btn" data-strip="back" ${idx < 0 ? "disabled" : ""} title="Show the previous step again">◀ Previous</button>
         <button class="btn" data-strip="skip" ${nextSt ? "" : "disabled"} title="Skip this step without running it">Skip ⏭</button>
         <button class="btn danger-ghost" data-strip="stop" ${state.interaction ? "" : "disabled"} title="Close the question that's on the screen now — the next step stays loaded, ready for ▶">⏹ Stop this step</button>
       </div>`;
@@ -2736,7 +2737,8 @@ function renderLessonStrip() {
   const act = (name, fn) => { const b = el.querySelector(`[data-strip="${name}"]`); if (b) b.onclick = fn; };
   act("next", () => send({ type: "next" }));
   act("skip", () => send({ type: "seq_skip" }));
-  act("back", () => send({ type: "seq_back" }));
+  act("back", () => send({ type: "step_prev" }));
+  act("first", () => send({ type: "step_first" }));
   act("finish", () => $("endBtn").click());
   // Closes the live question only — the plan and "up next" stay where they are.
   act("stop", () => send({ type: "eyes_up" }));

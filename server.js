@@ -2880,12 +2880,24 @@ async function handle(ws, msg) {
     }
     if (session.phase === "ended") return refuse("session_ended");
     let student;
-    // Rejoin after a refresh keeps identity (and any submitted answers).
-    if (msg.studentId && session.students.has(msg.studentId) === false && session.everJoined.has(msg.studentId)) {
-      student = { id: msg.studentId, name: session.everJoined.get(msg.studentId), ws };
+    const typed = String(msg.name || "").trim().slice(0, 24);
+    const sid = typeof msg.studentId === "string" && session.everJoined.has(msg.studentId) ? msg.studentId : null;
+    // A seat that went quiet (tab closed, phone locked, browser restarted) and the same first name
+    // typed or tapped again: that is the same child — same seat, same answers. Only a seat with no
+    // live connection is matched by name, so two children sharing a name never displace each other.
+    const sameName = !sid && typed
+      ? ([...session.everJoined].find(([id, n]) => n.toLowerCase() === typed.toLowerCase() && !session.students.has(id)) || [])[0] || null
+      : null;
+    const reclaim = sid || sameName;
+    if (reclaim) {
+      // Back after a refresh, a closed tab or on a new device: the seat is theirs again. A socket
+      // still holding it (a tab left open elsewhere) is told to step aside, so it does not fight back.
+      const old = session.students.get(reclaim);
+      if (old && old.ws !== ws) { safeSend(old.ws, { type: "replaced" }); try { old.ws.close(4001, "rejoined elsewhere"); } catch {} }
+      student = { id: reclaim, name: session.everJoined.get(reclaim), ws };
     } else {
       const id = "s" + nextStudentId++;
-      const name = String(msg.name || "").trim().slice(0, 24) || "Student";
+      const name = typed || "Student";
       student = { id, name, ws };
       session.everJoined.set(id, name);
     }
@@ -3169,6 +3181,34 @@ async function handle(ws, msg) {
       if (session.seqIndex >= 0) {
         session.skipped = session.skipped.filter((k) => k !== session.seqIndex);
         session.seqIndex -= 1;
+      }
+      break;
+    }
+    /* Tape-recorder controls (remote, dashboard): ⏮ start again, ◀ show the previous step again. */
+    case "step_first": {
+      if (session.sequence.length) {
+        session.seqIndex = 0;
+        session.skipped = [];
+        runStep(session, session.sequence[0]);
+        markPlanTaught(session);
+      }
+      break;
+    }
+    case "step_prev": {
+      // One step back, shown again, whatever kind it is (an activity starts afresh; its earlier
+      // answers stay in the lesson record). If the board no longer shows the current step
+      // (Eyes Up cleared it), "previous" brings the current step back first.
+      const cur = session.sequence[session.seqIndex];
+      const isBoard = (st) => st && (st.mode === "slide" || st.mode === "deck");
+      const showingCur = !!cur && (
+        (session.phase === "slide" && cur.mode === "slide" && session.slide?.img === cur.img) ||
+        (session.phase === "deck" && cur.mode === "deck") ||
+        (session.phase === "interaction" && !isBoard(cur)));
+      const j = !cur || showingCur ? session.seqIndex - 1 : session.seqIndex;
+      if (j >= 0 && j < session.sequence.length) {
+        session.seqIndex = j;
+        session.skipped = session.skipped.filter((k) => k !== j);
+        runStep(session, session.sequence[j]);
       }
       break;
     }

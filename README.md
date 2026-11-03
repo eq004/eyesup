@@ -46,6 +46,8 @@ Written answers (Short Answer, Predict, anonymous questions) arrive on the teach
 
 ## Phone remote
 
+Stepping through a plan works like a tape recorder on the remote and the dashboard: **⏮ start again · ◀ previous (shows the step before again) · ▶ next · ⏭ skip**, with “Step n of m” beside them; the classroom screen has a **⛶ full screen** button (F toggles, Esc leaves) and slides or live decks fill the whole display with the room code in a corner. A student who closes the tab, locks the phone or reopens the browser walks straight back into the same seat (remembered on the device for four hours); typing or tapping the same first name again after a dropped connection reclaims the seat and its answers, and a seat opened on a second device tells the first screen to step aside.
+
 **📱 Remote** on the dashboard shows a QR — scan it with a phone to get a pocket control surface at `/remote` (session code + teacher password). The projector keeps showing the class screen while the teacher walks the room: Eyes Up, open/close/reveal, Next-in-plan, zero-setup launches (question asked aloud), timer, random student, QR toggle. The dashboard and any number of remotes stay connected to the same session simultaneously.
 
 ## Room tools
@@ -145,7 +147,7 @@ Plans are stored per teacher in the `lesson_plans` table (steps as JSON, picture
 
 ## Several pictures per answer
 
-**Drop an Image**, **Image + Writing** and **Image + Long Answer** let each student send up to **6 pictures** in one answer (drag several in, choose several, or add them one at a time; each has a ✕ to remove). Image + Long Answer pairs the pictures with a full written answer of up to 3,000 characters. Photos are shrunk on the student’s own device to 1280 px on the long edge before they are sent (a quarter of a print-size photo), so a whole class can send at once over school Wi‑Fi; the server keeps each room’s photos as raw bytes with a fixed budget per room and per server, and a student whose photo is refused sees why and stays in the class.
+**Drop an Image**, **Image + Writing** and **Image + Long Answer** let each student send up to **6 pictures** in one answer (drag several in, choose several, or add them one at a time; each has a ✕ to remove). Image + Long Answer pairs the pictures with a full written answer of up to 3,000 characters. A photo that is slow to send tells the child so (“Sending…”, then “Still sending — stay on this page”) and offers a retry if nothing comes back. Photos are shrunk on the student’s own device to 1280 px on the long edge before they are sent (a quarter of a print-size photo), so a whole class can send at once over school Wi‑Fi; the server keeps each room’s photos as raw bytes with a fixed budget per room and per server, and a student whose photo is refused sees why and stays in the class.
 
 - The projector shows one card per student: the first picture large, the rest as thumbnails. Tapping any thumbnail puts that exact picture on the big screen, with the student's writing underneath.
 - The dashboard and phone remote show every picture; click one to spotlight it.

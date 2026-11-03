@@ -124,6 +124,11 @@ function renderInner() {
 
   const itx = state.interaction;
 
+  // Slides and live decks fill the whole display; everything else keeps the bar.
+  const board = (state.phase === "slide" || state.phase === "deck") && !state.focus && !state.showJoin;
+  document.body.classList.toggle("board", board);
+  document.getElementById("cornerCode").textContent = `${state.code} · ${state.studentCount} in`;
+
   updateJoinBadge();
   updateToolsDock();
   syncDecks();
@@ -1277,6 +1282,7 @@ connect();
 document.addEventListener("keydown", (e) => {
   if (!state || e.altKey || e.ctrlKey || e.metaKey) return;
   if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
+  if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFull(); return; }
   const fwd = ["ArrowRight", "ArrowDown", "PageDown", " ", "n", "N"];
   const back = ["ArrowLeft", "ArrowUp", "PageUp", "p", "P"];
   if (state.phase === "deck" && deckShowing && (fwd.includes(e.key) || back.includes(e.key))) {
@@ -1339,3 +1345,14 @@ function syncDecks() {
   if (showUrl && deckShowing !== showUrl) setTimeout(() => deckFrames.get(showUrl)?.focus(), 60); // clicker works straight away
   deckShowing = showUrl;
 }
+
+/* Full screen: the whole display becomes the board (the ⛶ button or F toggles it, Esc leaves). */
+const fullBtn = document.getElementById("fullBtn");
+function toggleFull() {
+  if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
+  const p = document.documentElement.requestFullscreen?.();
+  if (!p) deckHint("Press F11 (or ⌃⌘F on a Mac) for full screen");
+  else p.catch(() => deckHint("Press F11 (or ⌃⌘F on a Mac) for full screen"));
+}
+fullBtn.onclick = toggleFull;
+document.addEventListener("fullscreenchange", () => { fullBtn.textContent = document.fullscreenElement ? "⛶ leave full screen" : "⛶ full screen"; });
