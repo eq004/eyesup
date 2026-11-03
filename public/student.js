@@ -246,7 +246,8 @@ function render(force) {
   // Only repaint when something the student can see actually changed —
   // a classmate submitting must never wipe this student's half-typed answer.
   if (state.submitted) clearTimeout(sendWatch); // the photos arrived
-  const key = [state.phase, itx?.id, itx?.open, state.submitted, changingAnswer].join("|");
+  if (changingAnswer && !state.allowChange) changingAnswer = false; // the teacher switched changes off mid-edit
+  const key = [state.phase, itx?.id, itx?.open, state.submitted, changingAnswer, state.allowChange].join("|");
   if (!force && key === lastRenderKey) return;
   lastRenderKey = key;
 
@@ -314,8 +315,9 @@ function render(force) {
       <div class="big-emoji">✓</div>
       <div class="state-title">Response received</div>
       <p class="state-sub">Eyes up while the rest of the class finishes.</p>
-      <button class="change-link" id="changeBtn">Change my answer</button>`, () => {
-      $("changeBtn").onclick = () => { changingAnswer = true; render(); };
+      ${state.allowChange ? `<button class="change-link" id="changeBtn">Change my answer</button>` : ""}`, () => {
+      const cb = $("changeBtn");
+      if (cb) cb.onclick = () => { changingAnswer = true; render(); };
     });
   }
 

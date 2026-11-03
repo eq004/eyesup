@@ -393,6 +393,7 @@ function renderLive() {
     <div class="chip-row">
       <button class="rbtn ${state.showNames ? "accent" : ""}" data-act="toggle_names">🏷 Names ${state.showNames ? "on" : "off"}</button>
       <button class="rbtn ${state.holdAnswers ? "accent" : ""}" data-act="toggle_hold">🙈 Hold answers ${state.holdAnswers ? "on" : "off"}</button>
+      <button class="rbtn ${state.allowChange ? "accent" : ""}" data-act="toggle_change">🔁 Change answers ${state.allowChange ? "on" : "off"}</button>
     </div>
     ${itx && itx.responses.length ? `<div class="quiet-row"><button class="rbtn" data-act="clear">🗑 Clear everyone's answers</button></div>` : ""}
   `;

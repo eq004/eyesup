@@ -1734,6 +1734,7 @@ function createSession(teacherWs) {
     showJoin: false, // teacher-toggled: force the big join screen onto the projector
     showNames: false, // room-wide: student names on screen for every activity (anonymous modes excepted)
     holdAnswers: false, // room-wide: every activity starts with its answers held back until the teacher reveals them
+    allowChange: false, // one answer each; the teacher switches "students may change answers" on when wanted
     timer: null, // {seconds, endsAt, paused, remaining}
     focus: null, // {type:'spotlight', name} | {type:'groups', groups:[[names]]}
     picked: new Set(), // student ids already randomly selected (no repeats till all picked)
@@ -2314,6 +2315,7 @@ function teacherState(session) {
     showJoin: session.showJoin,
     showNames: session.showNames,
     holdAnswers: session.holdAnswers,
+    allowChange: session.allowChange,
     dice: session.dice,
     students: [...session.students.values()].map((s) => ({ id: s.id, name: s.name })),
     sequence: session.sequence,
@@ -2389,6 +2391,7 @@ function projectorState(session) {
     showJoin: session.showJoin,
     showNames: session.showNames,
     holdAnswers: session.holdAnswers,
+    allowChange: session.allowChange,
     dice: session.dice,
     studentCount: session.students.size,
     respondedCount: itx ? itx.responses.size : 0,
@@ -2430,6 +2433,7 @@ function studentState(session, student) {
     name: student.name,
     className: session.className,
     submitted,
+    allowChange: session.allowChange,
     interaction:
       itx && session.phase === "interaction"
         ? {
@@ -2920,6 +2924,9 @@ async function handle(ws, msg) {
     const student = session.students.get(ws.meta.studentId);
     if (!itx || !itx.open || !student || session.phase !== "interaction") return;
     if (msg.interactionId !== itx.id) return;
+    // One answer each unless the teacher has switched "change answers" on. Boards that students
+    // add to one item at a time (Venn, Post-its, Plus/Minus, links) always take more.
+    if (!session.allowChange && itx.responses.has(student.id) && !["venn", "post_its", "plus_minus", "link"].includes(itx.mode)) return;
     const payload = sanitizePayload(itx, msg.payload);
     if (!payload) return;
     if (UPLOAD_MODES.has(itx.mode)) {
@@ -3021,6 +3028,11 @@ async function handle(ws, msg) {
       // One switch for the room: while it's on, answers stay off the board until revealed.
       session.holdAnswers = typeof msg.on === "boolean" ? msg.on : !session.holdAnswers;
       if (session.interaction && session.interaction.mode !== "link") session.interaction.resultsVisible = !session.holdAnswers;
+      break;
+    }
+    case "toggle_change": {
+      // Off (the default): a sent answer is final. On: the student page offers "Change my answer".
+      session.allowChange = typeof msg.on === "boolean" ? msg.on : !session.allowChange;
       break;
     }
     case "show_results": {
@@ -3358,6 +3370,7 @@ async function handle(ws, msg) {
       fresh.title = session.planTitle || ""; // the report is named after the lesson; rename it for the class if you like
       fresh.showNames = session.showNames;
       fresh.holdAnswers = session.holdAnswers;
+      fresh.allowChange = session.allowChange;
       fresh.teachers = new Set(session.teachers);
       fresh.projectors = session.projectors;
       session.teachers = new Set();
