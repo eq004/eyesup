@@ -5,6 +5,8 @@ const MODES = {
   deck:          { icon: "🎞", name: "Live slides", hint: "Your real Google Slides / PowerPoint / Canva deck, animations and all", opts: null },
   /* fast votes */
   multi_choice:  { icon: "🅰️", name: "Multiple Choice", hint: "Quiz question — reveal the answer after voting", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true, picOpts: true },
+  picture_choice:{ icon: "🖼️", name: "Picture Choice", hint: "Drop in 2–8 pictures — students tap one; mark the right one if there is one", opts: { min: 2, max: 8, labels: "Caption" }, hasCorrect: true, picOpts: true, picDrop: true, launchAs: "multi_choice",
+                   ph: "The question, e.g. “Which one is a mammal?”" },
   tick_boxes:    { icon: "☑️", name: "Tick the Boxes", hint: "Students tick every box that applies — the board keeps a tally", opts: { min: 2, max: 10, labels: "Box" } },
   poll:          { icon: "📊", name: "Poll",          hint: "2–5 options, live results",       opts: { min: 2, max: 5, labels: "Option" }, picOpts: true },
   agree_disagree:{ icon: "⚖️", name: "Agree / Disagree", hint: "Agree · Unsure · Disagree",    opts: null },
@@ -104,7 +106,7 @@ const MODES = {
 };
 
 const CATEGORIES = [
-  { label: "⚡ Fast votes", modes: ["multi_choice", "poll", "tick_boxes", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
+  { label: "⚡ Fast votes", modes: ["multi_choice", "picture_choice", "poll", "tick_boxes", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
   { label: "✏️ Written recall", modes: ["short_answer", "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "exit_ticket", "finish_sentence", "give_example", "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict"] },
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
@@ -416,6 +418,50 @@ function showOptThumb(i) {
   b.title = d ? "Picture added — click to remove it" : "Add a picture for this option";
   b.classList.toggle("has", !!d);
 }
+/* Picture Choice: many pictures dropped at once, each one a tappable option. */
+let picCorrect = null;
+let picCaps = [];
+function buildPicDrop(opts) {
+  picCorrect = null;
+  picCaps = [];
+  const wrap = document.createElement("div");
+  wrap.innerHTML = `
+    <div class="drop-zone" id="picDrop">🖼️ Drop your pictures here — as many as you like, up to 8 — or click to choose
+      <input type="file" id="picFiles" accept="image/*" multiple hidden />
+    </div>
+    <div class="pic-grid" id="picGrid"></div>
+    <p style="margin:0.4rem 0 0;font-size:0.78rem;color:var(--muted)">Students tap one picture. Tap ✓ on a picture to mark it as the right answer (optional). A short caption under each keeps the results readable.</p>`;
+  opts.appendChild(wrap);
+  $("picDrop").onclick = () => $("picFiles").click();
+  $("picFiles").onchange = (e) => { addPicChoiceFiles(e.target.files); e.target.value = ""; };
+  renderPicGrid();
+}
+function addPicChoiceFiles(list) {
+  const files = [...(list || [])].filter((f) => f && f.type && f.type.startsWith("image/"));
+  const room = 8 - composerOptImgs.length;
+  if (files.length > room) toast(room ? `Up to 8 pictures — the first ${room} were added` : "That's 8 pictures — remove one to add another");
+  files.slice(0, room).forEach((f) => loadOptionImage(f, (d) => { composerOptImgs.push(d); picCaps.push(""); renderPicGrid(); }));
+}
+function renderPicGrid() {
+  const g = $("picGrid");
+  if (!g) return;
+  g.innerHTML = composerOptImgs.map((d, i) => `
+    <div class="pic-tile ${picCorrect === i ? "correct" : ""}">
+      <img src="${d}" alt="" />
+      <button type="button" class="pic-ok" data-ok="${i}" title="${picCorrect === i ? "This is the right answer — tap to unmark" : "Mark as the right answer"}">✓</button>
+      <button type="button" class="pic-x" data-x="${i}" title="Remove this picture">✕</button>
+      <input type="text" data-opt="1" data-cap="${i}" maxlength="40" placeholder="Caption ${i + 1} (optional)" value="${esc(picCaps[i] || "")}" />
+    </div>`).join("");
+  g.querySelectorAll("[data-cap]").forEach((inp) => (inp.oninput = () => { picCaps[+inp.dataset.cap] = inp.value; }));
+  g.querySelectorAll("[data-x]").forEach((b) => (b.onclick = () => {
+    const i = +b.dataset.x;
+    composerOptImgs.splice(i, 1);
+    picCaps.splice(i, 1);
+    if (picCorrect === i) picCorrect = null; else if (picCorrect != null && picCorrect > i) picCorrect -= 1;
+    renderPicGrid();
+  }));
+  g.querySelectorAll("[data-ok]").forEach((b) => (b.onclick = () => { const i = +b.dataset.ok; picCorrect = picCorrect === i ? null : i; renderPicGrid(); }));
+}
 function picRow(inp, i) {
   const row = document.createElement("div");
   row.className = "opt-row";
@@ -447,7 +493,8 @@ function openComposer(key, keepImage) {
   const opts = $("composerOpts");
   opts.innerHTML = "";
   composerOptImgs = [];
-  if (m.opts) {
+  if (m.picDrop) buildPicDrop(opts);
+  if (m.opts && !m.picDrop) {
     for (let i = 0; i < m.opts.max; i++) {
       const inp = document.createElement("input");
       inp.type = "text";
@@ -578,7 +625,7 @@ function openComposer(key, keepImage) {
     modSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(modSel);
   }
-  if (m.hasCorrect) {
+  if (m.hasCorrect && !m.picDrop) {
     const sel = document.createElement("select");
     sel.id = "correctSel";
     sel.innerHTML =
@@ -643,10 +690,11 @@ function readComposer() {
       });
     } else options = texts.filter(Boolean);
     if (options.length < m.opts.min) {
-      toast(`Needs at least ${m.opts.min} options`);
+      toast(m.picDrop ? "Drop in at least 2 pictures" : `Needs at least ${m.opts.min} options`);
       return null;
     }
-    if (m.hasCorrect) {
+    if (m.picDrop) correct = Number.isInteger(picCorrect) && picCorrect < options.length ? picCorrect : null;
+    else if (m.hasCorrect) {
       const v = parseInt($("correctSel")?.value, 10);
       correct = Number.isInteger(v) && v < options.length ? v : null;
     }
@@ -1267,11 +1315,23 @@ function esc(s) {
 function joinLink() {
   return `${location.origin}/join?code=${state?.code || ""}`;
 }
-$("codeChip").onclick = () => {
-  navigator.clipboard?.writeText(joinLink());
-  toast("Join link copied — students who click it only type their name");
-};
-$("copyLink").onclick = $("codeChip").onclick;
+// Copy the student link and show it, so it can be read out, checked or selected by hand.
+function showStudentLink() {
+  const url = joinLink();
+  navigator.clipboard?.writeText(url).catch(() => {});
+  const pop = $("linkPop");
+  $("linkPopUrl").value = url;
+  $("linkPopHost").textContent = `${location.host}/join`;
+  $("linkPopCode").textContent = state?.code || "";
+  pop.hidden = false;
+  const inp = $("linkPopUrl");
+  inp.onclick = () => inp.select();
+  setTimeout(() => inp.select(), 50);
+}
+$("codeChip").onclick = showStudentLink;
+$("copyLink").onclick = showStudentLink;
+document.addEventListener("click", (e) => { const pop = $("linkPop"); if (pop && !pop.hidden && !e.target.closest(".link-wrap") && e.target !== $("codeChip")) pop.hidden = true; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { const pop = $("linkPop"); if (pop) pop.hidden = true; } });
 $("qrToggle").onclick = () => send({ type: "toggle_join" });
 $("remoteBtn").onclick = async () => {
   if (!state) return;
@@ -1666,9 +1726,19 @@ document.addEventListener("drop", (e) => {
   e.preventDefault();
   dragDepth = 0;
   $("dropHint").classList.remove("show");
-  const f = [...(e.dataTransfer?.files || [])].find((x) => x.type.startsWith("image/"));
+  const files = [...(e.dataTransfer?.files || [])].filter((x) => x.type.startsWith("image/"));
+  const f = files[0];
   if (!f) return;
   if (view === "plans" && !editing) return; // nothing to add it to
+  const composing = $("composer").classList.contains("show") ? MODES[composerModeKey] : null;
+  if (composing?.picDrop) { addPicChoiceFiles(files); return; }
+  if (files.length > 1 && !composing?.imageUpload) {
+    // Several pictures at once: that's a Picture Choice.
+    if (view === "plans" && editing && !$("activityOverlay").classList.contains("show")) openActivityPicker({ kind: "plan-add" });
+    openComposer("picture_choice");
+    addPicChoiceFiles(files);
+    return;
+  }
   loadComposerImage(f, (dataUrl) => {
     if (view === "plans" && editing && !$("activityOverlay").classList.contains("show")) {
       openActivityPicker({ kind: "plan-add" });
@@ -2005,6 +2075,7 @@ const canon = (v) =>
 
 const keyForStep = (st) =>
   st.mode === "counters" ? (st.counterKind === "base10" ? "tens_ones" : "counters")
+  : st.mode === "multi_choice" && Array.isArray(st.optionImages) && (st.options || []).length >= 2 && st.optionImages.filter(Boolean).length === st.options.length ? "picture_choice"
   : st.mode === "compose" ? (st.level === "beginner" ? "compose_beginner" : st.level === "advanced" ? "compose_advanced" : "compose")
   : st.mode;
 const stepTag = (st) => {
@@ -2585,7 +2656,12 @@ function fillComposer(st) {
     st.options.forEach((o, i) => { if (boxes[i]) boxes[i].value = o; });
   }
   if (m.hasCorrect && $("correctSel")) $("correctSel").value = Number.isInteger(st.correct) ? String(st.correct) : "";
-  if (m.picOpts) {
+  if (m.picDrop) {
+    composerOptImgs = [...(st.optionImages || [])].filter(Boolean);
+    picCaps = (st.options || []).map((o) => (/^Picture \d+$/.test(o) ? "" : o));
+    picCorrect = Number.isInteger(st.correct) ? st.correct : null;
+    renderPicGrid();
+  } else if (m.picOpts) {
     composerOptImgs = [...(st.optionImages || st.pairImages || [])];
     composerOptImgs.forEach((_, i) => showOptThumb(i));
   }
