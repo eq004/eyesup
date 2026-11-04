@@ -8,6 +8,9 @@ const barCount = document.getElementById("barCount");
 let ws = null;
 let state = null;
 let code = (new URLSearchParams(location.search).get("code") || "").toUpperCase();
+let retryUntil = 0; // after a class has been live, a vanished room is retried quietly for a while (server restart)
+let retryTimer = null;
+const DL_IMAGE_MODES = new Set(["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
 
 const MODE_TAGS = {
   word_cloud: "Word Cloud", short_answer: "Short Answer", poll: "Poll", tick_boxes: "Tick the Boxes",
@@ -85,11 +88,20 @@ function connect() {
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === "error") {
+      if (code && msg.error === "no_session" && Date.now() < retryUntil) {
+        // The room vanished under a live class (server restart): the teacher's screen brings it back within
+        // seconds, so keep showing the board and knock again rather than dropping to the code screen.
+        barCount.innerHTML = `<span class="dot"></span> reconnecting to ${code}…`;
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => send({ type: "projector_join", code }), 3000);
+        return;
+      }
       code = "";
       renderCodeEntry(true);
       return;
     }
     if (msg.type === "state") {
+      retryUntil = Date.now() + 15 * 60 * 1000;
       state = msg;
       render();
     }
@@ -132,6 +144,16 @@ function renderInner() {
   }
 
   const itx = state.interaction;
+  // Download this question: pictures as a ZIP, anything else as a spreadsheet.
+  const dl = document.getElementById("dlBtn");
+  if (dl) {
+    if (itx && state.dl) {
+      const pics = DL_IMAGE_MODES.has(itx.mode);
+      dl.href = pics ? `/api/images/${state.code}/${itx.id}?pt=${state.dl}` : `/api/question/${state.code}/${itx.id}.csv?pt=${state.dl}`;
+      dl.textContent = pics ? "⬇ download pictures (ZIP)" : "⬇ download this question";
+      dl.hidden = false;
+    } else dl.hidden = true;
+  }
 
   // Slides and live decks fill the whole display; everything else keeps the bar.
   const board = (state.phase === "slide" || state.phase === "deck") && !state.focus && !state.showJoin;

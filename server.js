@@ -1558,8 +1558,11 @@ app.post("/api/lessons/:id/edit", async (req, res) => {
 // The live session behind a code, if this request is allowed to see it:
 // the owning teacher's token in account mode, the shared password otherwise.
 // Answers the request itself on failure.
+const dlToken = (code) => crypto.createHmac("sha256", AUTH_SECRET).update(`dl:${code}`).digest("hex").slice(0, 24);
 async function ownedSession(req, res) {
   const session = sessions.get(String(req.params.code || "").toUpperCase());
+  // The classroom screen carries a token for its own room, so a teacher can download from the board.
+  if (session && req.query.pt && req.query.pt === dlToken(session.code)) return session;
   if (db) {
     const t = await authHttp(res, req.query.t);
     if (!t) return null;
@@ -1571,6 +1574,28 @@ async function ownedSession(req, res) {
   if (!session) { res.status(404).json({ error: "no_session" }); return null; }
   return session;
 }
+
+// This question's answers as a spreadsheet — from the board mid-lesson or from the dashboard.
+app.get("/api/question/:code/:itx", async (req, res) => {
+  const session = await ownedSession(req, res);
+  if (!session) return;
+  const wantId = String(req.params.itx).replace(/\.csv$/i, "");
+  const all = [...session.history, ...(session.interaction ? [session.interaction] : [])];
+  const itx = all.find((i) => String(i.id) === wantId);
+  if (!itx) return res.status(404).send("No such question in this class.");
+  const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const anon = ANON_MODES.has(itx.mode);
+  const rows = [["Student", "Answer", "Correct"]];
+  for (const r of [...itx.responses.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)))) {
+    if (r.name === "👁 Preview") continue;
+    const m = markOf(itx, r.payload);
+    rows.push([anon ? "(anonymous)" : r.name, describePayload(itx, r.payload), m.ok === null || m.ok === undefined ? "" : m.ok ? "yes" : "no"]);
+  }
+  const fname = `${safeName(session.title || `Lesson ${session.code}`)} - ${safeName(itx.prompt || itx.mode)}.csv`;
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="${fname.replace(/"/g, "")}"`);
+  res.send("\ufeff" + rows.map((r) => r.map(cell).join(",")).join("\r\n"));
+});
 
 app.get("/api/summary/:code", async (req, res) => {
   const session = await ownedSession(req, res);
@@ -1702,6 +1727,40 @@ const heldImageBytes = (session) => { let n = 0; for (const v of session.respIma
 const sessions = new Map(); // code -> session
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no lookalikes
+// The server restarted under a live class: the teacher's dashboard asks for its room back by code and the
+// room is rebuilt with the same code and the same lesson record, so the classroom screen, the phones and the
+// dashboard all find it again by themselves. Everything answered before the restart stays in the stored lesson.
+async function reviveSession(code, teacher, ws) {
+  if (!db || !/^[A-Z0-9]{4}$/.test(code)) return null;
+  try {
+    const { rows } = await db.query(
+      `SELECT id, title, created_at, summary FROM lessons
+        WHERE code = $1 AND teacher_id = $2 AND saved_at > now() - interval '6 hours'
+        ORDER BY created_at DESC LIMIT 1`,
+      [code, teacher.id]
+    );
+    const row = rows[0];
+    if (!row || row.summary?.ended) return null;
+    const session = createSession(ws, { code, createdAt: new Date(row.created_at).getTime() });
+    session.title = row.title || "";
+    session.teacherId = teacher.id;
+    session.teacherName = teacher.display_name;
+    session.prior = row.summary || null;
+    if (session.prior) {
+      const p = session.prior;
+      session.classId = p.classId ?? null;
+      session.className = p.className ?? null;
+      session.roster = Array.isArray(p.classRoster) ? p.classRoster : [];
+      session.counter = Math.max(0, ...(p.items || []).map((it) => Number(it.id) || 0)); // new activities get fresh ids
+    }
+    console.log(`room ${code} revived for teacher ${teacher.id} after a restart`);
+    return session;
+  } catch (e) {
+    console.error("revive failed:", e.message);
+    return null;
+  }
+}
+
 function newCode() {
   let code;
   do {
@@ -1712,14 +1771,14 @@ function newCode() {
   return code;
 }
 
-function createSession(teacherWs) {
-  const code = newCode();
+function createSession(teacherWs, opts = {}) {
+  const code = opts.code || (process.env.TEST_FIXED_CODE && !sessions.has(process.env.TEST_FIXED_CODE) ? process.env.TEST_FIXED_CODE : newCode());
   const session = {
     code,
     title: "",
     images: new Map(), // interaction id -> uploaded image dataURL (annotate mode)
     respImages: new Map(), // "itxId/studentId" -> student-uploaded image dataURL (image_drop)
-    createdAt: Date.now(),
+    createdAt: opts.createdAt || Date.now(),
     teachers: new Set([teacherWs]), // dashboard + any phone remotes, all in control
     projectors: new Set(),
     students: new Map(), // id -> {id, name, ws}
@@ -2386,6 +2445,7 @@ function projectorState(session) {
   return {
     type: "state",
     role: "projector",
+    dl: dlToken(session.code), // lets the classroom screen download this room's answers
     code: session.code,
     title: session.title,
     className: session.className,
@@ -2759,7 +2819,7 @@ function buildSummary(session, { withImages = false } = {}) {
     .slice(0, 6)
     .map(([word, count]) => ({ word, count }));
 
-  return {
+  const out = {
     type: "summary",
     title: session.title,
     teacherName: session.teacherName || null,
@@ -2773,7 +2833,24 @@ function buildSummary(session, { withImages = false } = {}) {
     confidence,
     commonWords,
     items,
+    ended: session.phase === "ended" || undefined,
   };
+  // A room revived after a restart carries the lesson's earlier part in front of the new one.
+  const p = session.prior;
+  if (p && Array.isArray(p.items) && p.items.length) {
+    out.items = [...p.items, ...out.items];
+    out.interactionCount = out.items.length;
+    const names = new Map(roster);
+    for (const n of p.roster || []) if (!names.has(canonName(n))) names.set(canonName(n), n);
+    out.roster = [...names.values()].sort();
+    out.joinedCount = names.size;
+    const part = new Set(participants);
+    for (const it of p.items) for (const s of it.students || []) if (s.name) part.add(canonName(s.name));
+    out.participatedCount = part.size;
+    out.commonWords = out.commonWords.length ? out.commonWords : p.commonWords || [];
+    out.confidence = out.confidence || p.confidence;
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2859,7 +2936,8 @@ async function handle(ws, msg) {
   if (type === "teacher_resume") {
     const auth = await authTeacher(msg);
     if (!auth.ok) return safeSend(ws, { type: "error", error: auth.error });
-    const session = sessions.get(String(msg.code || "").toUpperCase());
+    const rcode = String(msg.code || "").toUpperCase();
+    const session = sessions.get(rcode) || (auth.teacher ? await reviveSession(rcode, auth.teacher, ws) : null);
     if (!session) return safeSend(ws, { type: "error", error: "no_session" });
     // A session belongs to its teacher — others can't take it over.
     if (session.teacherId != null && auth.teacher?.id !== session.teacherId)

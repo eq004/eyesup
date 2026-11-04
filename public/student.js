@@ -93,6 +93,15 @@ const PREVIEW_CODE = (new URLSearchParams(location.search).get("code") || "").to
 let pendingJoin = null;
 let pendingTimer = null;
 let reconnectTimer = null;
+let seatRetryTimer = null;
+// Was this device in a live class within the last few minutes? Then a vanished room is a server
+// restart, not a finished lesson — keep the seat and knock again rather than drop to the join page.
+function recentSeat() {
+  try { const s = JSON.parse(localStorage.getItem("eyesup_seat") || "null"); return !!(s && Date.now() - s.at < 3 * 60 * 1000); } catch { return false; }
+}
+function touchSeat() {
+  try { const s = JSON.parse(localStorage.getItem("eyesup_seat") || "null"); if (s && Date.now() - s.at > 60000) { s.at = Date.now(); localStorage.setItem("eyesup_seat", JSON.stringify(s)); } } catch {}
+}
 let failedConnects = 0;
 let replaced = false; // this seat was opened on another device — this screen steps aside instead of fighting for it
 // The seat is remembered on the device, not just in this tab, so a closed tab, a reopened
@@ -157,6 +166,7 @@ function connect() {
     const msg = JSON.parse(e.data);
     if (msg.type === "joined") {
       joined = true;
+      lastRenderKey = null; // a fresh seat always gets a fresh paint
       pendingJoin = null;
       clearTimeout(pendingTimer);
       saveSeat(msg.code, msg.studentId);
@@ -201,10 +211,26 @@ function connect() {
       const silent = !pendingJoin; // the automatic re-join after a refresh, not a tap
       pendingJoin = null;
       clearTimeout(pendingTimer);
-      clearSeat();
       const code = msg.code || tried.code || "";
-      // Yesterday's room is gone but this link points at a new one: just open the new one.
       const urlCode = (new URLSearchParams(location.search).get("code") || new URLSearchParams(location.search).get("c") || "").toUpperCase();
+      if (silent && msg.error === "no_session" && !(urlCode && urlCode !== code) && recentSeat()) {
+        lastRenderKey = null; // the next state must repaint over this holding screen
+        show(`<div class="big-emoji">⏳</div>
+          <div class="state-title">Reconnecting to your class…</div>
+          <p class="state-sub">Hang on — this screen will carry on by itself.</p>
+          <button class="change-link" id="joinFresh" style="display:block;margin:1.2rem auto 0">Join a different class</button>`, () => {
+          $("joinFresh").onclick = () => { clearTimeout(seatRetryTimer); clearSeat(); renderJoin(true, { code: "", name: tried.name }); };
+        });
+        clearTimeout(seatRetryTimer);
+        seatRetryTimer = setTimeout(() => {
+          const s = loadSeat();
+          if (s && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "student_join", code: s.code, studentId: s.sid, name: s.name }));
+          else wakeUp();
+        }, 4000);
+        return;
+      }
+      clearSeat();
+      // Yesterday's room is gone but this link points at a new one: just open the new one.
       if (silent && urlCode && urlCode !== code) { renderJoin(false, { code: urlCode }); return; }
       const why = msg.error === "session_ended" ? "That class has finished. Ask your teacher for a new code."
         : msg.error === "slow_down" ? "Lots of people are joining at once — wait a few seconds, then tap Join again."
@@ -215,6 +241,7 @@ function connect() {
     if (msg.type === "state") {
       state = msg;
       joined = true;
+      touchSeat();
       render();
     }
   };

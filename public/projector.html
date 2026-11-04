@@ -46,6 +46,7 @@
   }
   .names-btn.on { color: #fff; background: rgba(138, 178, 240, 0.35); border-color: #7fa3dc; }
   select.names-btn { cursor: pointer; max-width: 240px; }
+  a.names-btn { text-decoration: none; }
   select.names-btn.on { color: #fff; background: rgba(138, 178, 240, 0.35); border-color: #7fa3dc; }
   select.names-btn option { color: var(--ink, #0f1c30); background: #fff; }
   .reveal-big {
@@ -730,6 +731,7 @@
     <span class="wordmark inverted"><svg class="logo-eyes" viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="var(--eyeball)"/><circle cx="97.5" cy="19" r="3.6" fill="var(--eyeball)"/></svg><span class="logo-text">eyes up</span></span><span class="on-navy" style="margin-left:0.6rem;align-self:flex-end;padding-bottom:0.35rem"><a class="by-peakyou" href="https://peakyou.com.au" target="_blank" rel="noopener">by <b>PeakYou</b></a></span>
     <span class="spacer"></span>
     <span class="count" id="barCount"></span>
+    <a class="names-btn" id="dlBtn" hidden download title="Save this question's answers to this computer">⬇ download this question</a>
     <select class="names-btn" id="limitSel" title="How many answers each student may send in Word Cloud, Mind Map, Post-its, Venn and Plus & Minus — changes apply at once, even mid-activity">
       <option value="">✋ answers each: unlimited</option>
       <option value="1">✋ answers each: one</option>

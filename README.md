@@ -131,7 +131,7 @@ With billing on: new accounts start a trial; accounts that existed before stay o
 
 **AI summaries (optional)**: set `ANTHROPIC_API_KEY` on Render and the data section's ✨ *Visualise this lesson* snapshot gains a **Summarise the written answers** button — common threads, misconceptions and follow-ups across every short/long answer in the lesson. Only the answer texts are sent (never student names); the result is saved with the lesson so it's free to re-open. `AI_MODEL` overrides the model (default `claude-sonnet-5`). Without the key the feature stays hidden.
 
-Images are kept for **60 days** by default (`IMAGE_KEEP_DAYS` on Render changes this) and then pruned, to keep the free database within its limits. Everything else about the lesson stays forever.
+A server restart (a deploy, or the host recycling the process) is no longer a lost lesson: the dashboard asks for its room back by code, the room is rebuilt with the same code and the same lesson record (earlier answers stay in it), the classroom screen keeps showing the board and reconnects on its own, and students’ screens show “Reconnecting to your class…” and rejoin their seats by themselves. The classroom screen’s bar also has **⬇ download this question** — pictures as a ZIP for drawing and photo activities, a spreadsheet for everything else — so a teacher can keep a record mid-lesson without leaving the board. Images are kept for **60 days** by default (`IMAGE_KEEP_DAYS` on Render changes this) and then pruned, to keep the free database within its limits. Everything else about the lesson stays forever.
 
 ## Lesson plans (plan ahead, teach again and again)
 
