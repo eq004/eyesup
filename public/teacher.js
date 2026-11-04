@@ -884,11 +884,14 @@ function renderTools() {
 
 function updateTimerDisplay() {
   const el = $("timerDisplay");
+  const sum = $("roomToolsLabel");
   const t = state?.timer;
-  if (!t) { el.textContent = ""; return; }
+  if (!t) { el.textContent = ""; if (sum) sum.textContent = "🧰 Room tools"; return; }
   const left = timerLeftMs(t);
-  el.textContent = (t.paused ? "⏸ " : "") + (left <= 0 ? "Time's up!" : fmtTime(left));
+  const text = (t.paused ? "⏸ " : "") + (left <= 0 ? "Time's up!" : fmtTime(left));
+  el.textContent = text;
   el.classList.toggle("urgent", left > 0 && left <= 10000);
+  if (sum) sum.textContent = `🧰 Room tools · ⏱ ${text}`; // the countdown stays visible while the panel is closed
 }
 setInterval(updateTimerDisplay, 250);
 
@@ -2045,7 +2048,7 @@ $("menuBtn").onclick = (e) => {
 };
 document.addEventListener("click", () => $("menu").classList.remove("show"));
 // The Lesson settings drop-down closes like the menu: a click anywhere else puts it away.
-document.addEventListener("click", (e) => { const d = $("lessonSettings"); if (d && d.open && !d.contains(e.target)) d.open = false; });
+document.addEventListener("click", (e) => { document.querySelectorAll("details.lesson-settings").forEach((d) => { if (d.open && !d.contains(e.target)) d.open = false; }); });
 
 /* ---------------- saved lesson plans: server calls ---------------- */
 

@@ -136,6 +136,8 @@
     padding: 0.7rem 0.8rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-lift);
   }
   .settings-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
+  .tools-panel { width: 380px; max-height: min(78vh, 720px); overflow-y: auto; }
+  .tools-panel .tools { padding: 0; }
   .settings-label { flex-basis: 100%; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .btn.remote-big, .btn.big { font-size: 1rem; padding: 0.6rem 1.2rem; }
   /* Student link: the address appears under the button as well as being copied */
@@ -301,7 +303,7 @@
   /* ---------- layout ---------- */
   .layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1.25rem;
     padding: 1.25rem 1.4rem 3rem;
     max-width: 1360px;
@@ -799,6 +801,64 @@
             <button class="btn" id="endBtn">✅ Finish</button></div>
         </div>
       </details>
+      <!-- Timer, random student, groups and question dice: same drop-down format as Lesson settings. -->
+      <details class="lesson-settings" id="roomTools">
+        <summary class="btn" id="roomToolsLabel" title="Timer, random student, random groups, question dice">🧰 Room tools</summary>
+        <div class="settings-panel tools-panel">
+            <div class="tools">
+              <div class="tool-block">
+                <div class="tool-title">⏱ Timer <span class="timer-display" id="timerDisplay"></span></div>
+                <div class="tool-row">
+                  <button class="btn mini" data-timer="30">30s</button>
+                  <button class="btn mini" data-timer="60">1m</button>
+                  <button class="btn mini" data-timer="120">2m</button>
+                  <button class="btn mini" data-timer="300">5m</button>
+                  <input type="number" id="timerCustom" min="5" max="3600" placeholder="secs" />
+                  <button class="btn mini" id="timerGo">Go</button>
+                </div>
+                <label class="timer-big-opt"><input type="checkbox" id="timerBigPref" /> ⛶ Start full screen on the projector</label>
+                <div class="tool-row" id="timerControls"></div>
+              </div>
+              <div class="tool-block">
+                <div class="tool-title">🎲 Random student</div>
+                <div class="tool-row">
+                  <button class="btn mini primary-mini" id="pickBtn">Pick someone</button>
+                  <span class="picked-name" id="pickedName"></span>
+                </div>
+                <p class="tool-hint">No repeats until everyone has had a turn.</p>
+              </div>
+              <div class="tool-block">
+                <div class="tool-title">👥 Random groups</div>
+                <div class="tool-row">
+                  <select id="groupBy">
+                    <option value="size">groups of</option>
+                    <option value="count">split into</option>
+                  </select>
+                  <input type="number" id="groupN" min="2" max="15" value="2" />
+                  <button class="btn mini primary-mini" id="groupsBtn">Make groups</button>
+                </div>
+                <div id="groupsList"></div>
+              </div>
+              <div class="tool-block">
+                <div class="tool-title">🎲 Question dice</div>
+                <div class="dice-faces" id="diceFaces">
+                  <label class="dice-row"><span class="dice-glyph">⚀</span><span class="dice-lbl">Face 1</span><input class="dice-in" data-face="0" maxlength="200" placeholder="Question when it lands on 1" /></label>
+                  <label class="dice-row"><span class="dice-glyph">⚁</span><span class="dice-lbl">Face 2</span><input class="dice-in" data-face="1" maxlength="200" placeholder="Question when it lands on 2" /></label>
+                  <label class="dice-row"><span class="dice-glyph">⚂</span><span class="dice-lbl">Face 3</span><input class="dice-in" data-face="2" maxlength="200" placeholder="Question when it lands on 3" /></label>
+                  <label class="dice-row"><span class="dice-glyph">⚃</span><span class="dice-lbl">Face 4</span><input class="dice-in" data-face="3" maxlength="200" placeholder="Question when it lands on 4" /></label>
+                  <label class="dice-row"><span class="dice-glyph">⚄</span><span class="dice-lbl">Face 5</span><input class="dice-in" data-face="4" maxlength="200" placeholder="Question when it lands on 5" /></label>
+                  <label class="dice-row"><span class="dice-glyph">⚅</span><span class="dice-lbl">Face 6</span><input class="dice-in" data-face="5" maxlength="200" placeholder="Question when it lands on 6" /></label>
+                </div>
+                <div class="tool-row">
+                  <button class="btn mini primary-mini" id="diceRoll">🎲 Roll the dice</button>
+                  <span class="picked-name" id="diceResult"></span>
+                </div>
+                <p class="tool-hint">One question per face. Tip: paste six lines into Face 1 and they fill all six. The dice rolls on the projector and reveals the question it lands on; questions are remembered for next lesson.</p>
+              </div>
+              <div class="tool-row" id="focusClearRow"></div>
+            </div>
+            </div>
+      </details>
       <select id="classSel" title="Which class is this? Their names become tap-to-join tiles on the join page" style="border:1px solid #c7d4e8;border-radius:10px;padding:0.4rem 0.6rem;background:#fff;font:inherit;font-size:0.9rem;font-weight:700;color:var(--ink);max-width:200px">
         <option value="">👥 Class: none</option>
         <option value="new">＋ New class…</option>
@@ -877,64 +937,6 @@
       </section>
     </main>
 
-    <!-- Sequence sidebar -->
-    <aside>
-      <section class="panel">
-        <div class="panel-head">Room tools</div>
-        <div class="tools">
-          <div class="tool-block">
-            <div class="tool-title">⏱ Timer <span class="timer-display" id="timerDisplay"></span></div>
-            <div class="tool-row">
-              <button class="btn mini" data-timer="30">30s</button>
-              <button class="btn mini" data-timer="60">1m</button>
-              <button class="btn mini" data-timer="120">2m</button>
-              <button class="btn mini" data-timer="300">5m</button>
-              <input type="number" id="timerCustom" min="5" max="3600" placeholder="secs" />
-              <button class="btn mini" id="timerGo">Go</button>
-            </div>
-            <label class="timer-big-opt"><input type="checkbox" id="timerBigPref" /> ⛶ Start full screen on the projector</label>
-            <div class="tool-row" id="timerControls"></div>
-          </div>
-          <div class="tool-block">
-            <div class="tool-title">🎲 Random student</div>
-            <div class="tool-row">
-              <button class="btn mini primary-mini" id="pickBtn">Pick someone</button>
-              <span class="picked-name" id="pickedName"></span>
-            </div>
-            <p class="tool-hint">No repeats until everyone has had a turn.</p>
-          </div>
-          <div class="tool-block">
-            <div class="tool-title">👥 Random groups</div>
-            <div class="tool-row">
-              <select id="groupBy">
-                <option value="size">groups of</option>
-                <option value="count">split into</option>
-              </select>
-              <input type="number" id="groupN" min="2" max="15" value="2" />
-              <button class="btn mini primary-mini" id="groupsBtn">Make groups</button>
-            </div>
-            <div id="groupsList"></div>
-          </div>
-          <div class="tool-block">
-            <div class="tool-title">🎲 Question dice</div>
-            <div class="dice-faces" id="diceFaces">
-              <label class="dice-row"><span class="dice-glyph">⚀</span><span class="dice-lbl">Face 1</span><input class="dice-in" data-face="0" maxlength="200" placeholder="Question when it lands on 1" /></label>
-              <label class="dice-row"><span class="dice-glyph">⚁</span><span class="dice-lbl">Face 2</span><input class="dice-in" data-face="1" maxlength="200" placeholder="Question when it lands on 2" /></label>
-              <label class="dice-row"><span class="dice-glyph">⚂</span><span class="dice-lbl">Face 3</span><input class="dice-in" data-face="2" maxlength="200" placeholder="Question when it lands on 3" /></label>
-              <label class="dice-row"><span class="dice-glyph">⚃</span><span class="dice-lbl">Face 4</span><input class="dice-in" data-face="3" maxlength="200" placeholder="Question when it lands on 4" /></label>
-              <label class="dice-row"><span class="dice-glyph">⚄</span><span class="dice-lbl">Face 5</span><input class="dice-in" data-face="4" maxlength="200" placeholder="Question when it lands on 5" /></label>
-              <label class="dice-row"><span class="dice-glyph">⚅</span><span class="dice-lbl">Face 6</span><input class="dice-in" data-face="5" maxlength="200" placeholder="Question when it lands on 6" /></label>
-            </div>
-            <div class="tool-row">
-              <button class="btn mini primary-mini" id="diceRoll">🎲 Roll the dice</button>
-              <span class="picked-name" id="diceResult"></span>
-            </div>
-            <p class="tool-hint">One question per face. Tip: paste six lines into Face 1 and they fill all six. The dice rolls on the projector and reveals the question it lands on; questions are remembered for next lesson.</p>
-          </div>
-          <div class="tool-row" id="focusClearRow"></div>
-        </div>
-      </section>
-    </aside>
   </div>
   </div>
 
