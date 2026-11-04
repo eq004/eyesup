@@ -811,7 +811,7 @@ function render() {
   }
   $("inviteBtn").style.display = teacherToken() && state?.storage ? "" : "none";
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
-  $("qrToggle").textContent = state.showJoin ? "🔳 Student QR is up" : "🔳 Student QR";
+  $("qrToggle").innerHTML = state.showJoin ? "<span>🔳 Student QR is up</span><small>tap to take it down</small>" : "<span>🔳 Student QR</span><small>best for iPad use</small>";
   $("studentCount").textContent = state.students.length;
   if ($("classSel") && $("classSel").value !== String(state.classId || "")) renderClassSel();
   if ($("classEdit")) $("classEdit").style.display = state.classId ? "" : "none";

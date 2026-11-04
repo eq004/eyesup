@@ -192,6 +192,8 @@
   .tools-cat .tool-block:last-of-type { flex-basis: 340px; }
   .tools-cat #focusClearRow { flex-basis: 100%; }
   .mini-doors { display: flex; flex-wrap: nowrap; gap: 0.5rem; align-self: center; }
+  .mini-doors .btn.big { flex-direction: column; gap: 0.1rem; line-height: 1.15; padding: 0.5rem 0.9rem; }
+  .mini-doors .btn.big small { font-size: 0.7rem; font-weight: 600; color: var(--muted); }
 
   /* Compact and docked: the teach top stays under the header while the page scrolls. */
   .teach-top { position: sticky; top: var(--head-h, 104px); z-index: 15; background: var(--paper); gap: 1rem; padding: 0.7rem 1.4rem 0.6rem; grid-template-columns: minmax(0, 1fr) 340px; box-shadow: 0 10px 18px -16px rgba(14, 36, 69, 0.45); }
@@ -749,7 +751,7 @@
     position: fixed;
     right: 1.2rem;
     bottom: 1.2rem;
-    width: 320px;
+    width: min(760px, calc(100vw - 2.4rem)); /* an iPad held in landscape, as the class will see it */
     z-index: 40;
     display: none;
     flex-direction: column;
@@ -778,11 +780,18 @@
   .phone-panel .phone-head button:hover { background: rgba(255,255,255,0.12); }
   .phone-panel iframe {
     width: 100%;
-    height: 480px;
-    border: none;
-    border-radius: 18px;
-    background: var(--paper);
+    aspect-ratio: 4 / 3; /* iPad screen proportions in landscape */
+    height: auto;
+    max-height: calc(100vh - 7rem);
+    border: 0;
+    border-radius: 14px;
+    background: #fff;
+    display: block;
   }
+  .phone-panel { padding: 0.8rem 1.1rem 0.9rem; border-radius: 30px; border: 1px solid #2a3a55; }
+  .phone-panel .phone-head { padding: 0 0.3rem 0.55rem; }
+  .phone-panel .home-bar { width: 120px; height: 5px; border-radius: 999px; background: #c9d5e6; opacity: 0.55; margin: 0.6rem auto 0; }
+  .phone-panel .cam { position: absolute; top: 50%; left: 0.4rem; width: 7px; height: 7px; border-radius: 50%; background: #3b4b66; transform: translateY(-50%); }
 
   /* ---------- summary overlay ---------- */
   .overlay {
@@ -885,14 +894,14 @@
         <button class="act-card" id="remoteBtn" title="Control the class from your phone"><span class="act-text"><b>Teacher remote</b><small>Control this lesson from your phone.</small></span><span class="act-chev">›</span></button>
         <div class="mini-doors">
         <span class="link-wrap">
-        <button class="btn big" id="copyLink" title="Show and copy the student join link — paste it into Google Classroom, Teams, email…">🔗 Student link</button>
+        <button class="btn big" id="copyLink" title="Show and copy the student join link — paste it into Google Classroom, Teams, email…"><span>🔗 Student link</span><small>best for laptop use</small></button>
         <div class="link-pop" id="linkPop" hidden>
           <div class="link-pop-head">Student link copied ✓</div>
           <input type="text" id="linkPopUrl" readonly title="The link students open — click to select it" />
           <div class="link-pop-foot">Or they go to <b id="linkPopHost"></b> and type the code <b id="linkPopCode"></b></div>
         </div>
       </span>
-        <button class="btn big" id="qrToggle" title="Put the big student QR / join screen on the projector">🔳 Student QR</button>
+        <button class="btn big" id="qrToggle" title="Put the big student QR / join screen on the projector"><span>🔳 Student QR</span><small>best for iPad use</small></button>
         </div>
       </div>
       <div class="join-row">
@@ -1044,10 +1053,12 @@
   <!-- Student preview (teacher testing) -->
   <div class="phone-panel" id="phonePanel">
     <div class="phone-head">
-      <span>👁 Student view — live preview</span>
+      <span>👁 Student view — live preview, as on an iPad held sideways</span>
       <button id="closePreview" title="Close (leaves the session)">✕</button>
     </div>
     <iframe id="phoneFrame" title="Student view preview"></iframe>
+    <span class="cam" aria-hidden="true"></span>
+    <div class="home-bar" aria-hidden="true"></div>
   </div>
 
   <!-- Summary overlay -->
