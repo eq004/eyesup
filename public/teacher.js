@@ -2048,6 +2048,11 @@ $("menuBtn").onclick = (e) => {
 };
 document.addEventListener("click", () => $("menu").classList.remove("show"));
 // The Lesson settings drop-down closes like the menu: a click anywhere else puts it away.
+// The docked teach top sits exactly under the sticky header, whatever height the header wraps to.
+const setHeadH = () => document.documentElement.style.setProperty("--head-h", `${document.querySelector("header").offsetHeight}px`);
+setHeadH();
+window.addEventListener("resize", setHeadH);
+if (window.ResizeObserver) new ResizeObserver(setHeadH).observe(document.querySelector("header"));
 document.addEventListener("click", (e) => { document.querySelectorAll("details.lesson-settings").forEach((d) => { if (d.open && !d.contains(e.target)) d.open = false; }); });
 
 /* ---------------- saved lesson plans: server calls ---------------- */
