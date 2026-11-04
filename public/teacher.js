@@ -886,12 +886,12 @@ function updateTimerDisplay() {
   const el = $("timerDisplay");
   const sum = $("roomToolsLabel");
   const t = state?.timer;
-  if (!t) { el.textContent = ""; if (sum) sum.textContent = "🧰 Room tools"; return; }
+  if (!t) { el.textContent = ""; if (sum) sum.textContent = "Room tools"; return; }
   const left = timerLeftMs(t);
   const text = (t.paused ? "⏸ " : "") + (left <= 0 ? "Time's up!" : fmtTime(left));
   el.textContent = text;
   el.classList.toggle("urgent", left > 0 && left <= 10000);
-  if (sum) sum.textContent = `🧰 Room tools · ⏱ ${text}`; // the countdown stays visible while the panel is closed
+  if (sum) sum.textContent = `Room tools · ⏱ ${text}`; // the countdown stays visible while the panel is closed
 }
 setInterval(updateTimerDisplay, 250);
 
@@ -1434,7 +1434,7 @@ function renderClassSel() {
   const sel = $("classSel");
   if (!sel) return;
   const cur = state?.classId || "";
-  sel.innerHTML = `<option value="">👥 Class: none</option>` +
+  sel.innerHTML = `<option value="">None</option>` +
     classes.map((c) => `<option value="${c.id}">👥 ${esc(c.name)} (${c.roster.length})</option>`).join("") +
     `<option value="new">＋ New class…</option>`;
   sel.value = String(cur);

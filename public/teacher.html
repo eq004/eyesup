@@ -126,9 +126,7 @@
   /* Lesson settings: one button on the bar; open, it unfolds as a full-width panel beneath. */
   .lesson-settings > summary { list-style: none; cursor: pointer; user-select: none; }
   .lesson-settings > summary::-webkit-details-marker { display: none; }
-  .lesson-settings > summary::after { content: " ▸"; opacity: 0.6; }
   .lesson-settings { position: relative; }
-  .lesson-settings[open] > summary::after { content: " ▾"; }
   .lesson-settings[open] > summary { background: var(--ink); border-color: var(--ink); color: #fff; }
   .settings-panel {
     position: absolute; left: 0; top: calc(100% + 6px); z-index: 40;
@@ -138,6 +136,55 @@
   .settings-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
   .tools-panel { width: 380px; max-height: min(78vh, 720px); overflow-y: auto; }
   .tools-panel .tools { padding: 0; }
+
+  /* ---------- teach top: hero, doors, join row, lesson setup ---------- */
+  header { position: sticky; }
+  header .wave { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  header > .hrow { position: relative; z-index: 1; }
+  header .wordmark { font-size: 1.6rem; }
+  header #whoAmI { color: #fff !important; font-size: 1rem; }
+  header .views { margin: 0.2rem 0 0.1rem; background: rgba(255, 255, 255, 0.12); border-radius: 999px; padding: 0.25rem; gap: 0; }
+  header .view-tab { padding: 0.55rem 1.25rem; font-size: 1rem; }
+  .teach-top { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 1.4rem; align-items: start; max-width: 1360px; margin: 0 auto; padding: 1.3rem 1.4rem 0.2rem; }
+  @media (max-width: 1040px) { .teach-top { grid-template-columns: 1fr; } }
+  .teach-h1 { font-family: var(--font-display); font-size: clamp(1.9rem, 3.4vw, 2.7rem); font-weight: 800; color: var(--navy); margin: 0; letter-spacing: -0.02em; line-height: 1.1; }
+  .teach-sub { margin: 0.3rem 0 1rem; color: var(--ink-soft); font-size: 1.05rem; }
+  .action-row { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: stretch; }
+  .act-card { display: inline-flex; align-items: center; justify-content: space-between; gap: 1rem; min-width: 220px; padding: 0.85rem 1.1rem; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); color: var(--navy); text-align: left; text-decoration: none; font: inherit; cursor: pointer; box-shadow: 0 1px 2px rgba(14, 36, 69, 0.06); transition: transform 0.12s ease, box-shadow 0.12s ease; }
+  .act-card:hover { box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+  .act-text { display: flex; flex-direction: column; gap: 0.15rem; }
+  .act-text b { font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; line-height: 1.1; }
+  .act-text small { font-size: 0.88rem; color: var(--ink-soft); font-weight: 600; }
+  .act-chev { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 1.6rem; font-weight: 800; line-height: 1; flex: none; color: var(--navy); }
+  .act-primary { min-width: 250px; border-color: transparent; color: #fff; background: linear-gradient(120deg, #123a8a 0%, #1270b8 55%, #15a3c7 100%); }
+  .act-primary .act-text small { color: rgba(255, 255, 255, 0.85); }
+  .act-primary .act-chev { background: #fff; color: #123a8a; }
+  .action-row .link-wrap, .action-row > .btn.big { align-self: center; }
+  .action-row .btn.big { padding: 0.9rem 1rem; border-radius: 14px; white-space: nowrap; }
+  .join-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 0.9rem; padding: 0.55rem 0.9rem; border-radius: 14px; background: var(--paper); }
+  .join-label { font-family: var(--font-display); font-weight: 800; font-size: 1.15rem; color: var(--navy); }
+  .join-sep { width: 1px; height: 28px; background: var(--line); }
+  .join-row .code-chip { font-size: 1.25rem; padding: 0.4rem 0.95rem; }
+  .join-row .join-url { font-size: 1rem; color: var(--ink-soft); font-weight: 600; }
+  .join-row .pill { background: var(--green-soft); border-color: transparent; color: var(--green); font-size: 1.15rem; font-weight: 800; }
+  .join-row .pill .dot { width: 10px; height: 10px; }
+  .join-row .btn { border-color: var(--accent); color: var(--accent); border-radius: 999px; font-size: 0.95rem; }
+  .setup-card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 1rem 1.1rem 1.1rem; box-shadow: 0 1px 2px rgba(14, 36, 69, 0.06); }
+  .setup-card h2 { font-family: var(--font-display); font-size: 1.45rem; font-weight: 800; color: var(--navy); margin: 0 0 0.6rem; }
+  .setup-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.7rem; border-radius: 12px; font-weight: 800; color: var(--navy); margin-bottom: 0.35rem; }
+  summary.setup-row { cursor: pointer; background: var(--paper); list-style: none; }
+  summary.setup-row::-webkit-details-marker { display: none; }
+  .lesson-settings[open] > summary.setup-row { background: var(--navy); color: #fff; }
+  .setup-ico { width: 1.7rem; text-align: center; font-size: 1.1rem; flex: none; }
+  .setup-name { flex: none; }
+  .setup-chev { margin-left: auto; font-size: 1.4rem; line-height: 1; }
+  .setup-row select, .setup-row input { flex: 1; min-width: 0; width: auto; max-width: none; font: inherit; font-size: 0.95rem; font-weight: 600; padding: 0.5rem 0.7rem; border: 1px solid #c7d4e8; border-radius: 10px; background: #fff; color: var(--ink); }
+  .setup-row #classEdit { flex: none; }
+  .setup-row #titleInput { flex: 1; width: auto; border: 1px solid #c7d4e8; background: #fff; font-weight: 600; padding: 0.5rem 0.7rem; border-radius: 10px; }
+  .setup-row #titleInput:focus { border-color: var(--accent); }
+  .setup-card .lesson-settings { position: relative; }
+  .setup-card .settings-panel { left: 0; right: 0; min-width: 0; }
+  .setup-card .tools-panel { width: auto; }
   .settings-label { flex-basis: 100%; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .btn.remote-big, .btn.big { font-size: 1rem; padding: 0.6rem 1.2rem; }
   /* Student link: the address appears under the button as well as being copied */
@@ -765,16 +812,13 @@
 </head>
 <body>
   <header>
+    <svg class="wave" viewBox="0 0 1200 220" preserveAspectRatio="none" aria-hidden="true" focusable="false"><defs><linearGradient id="wg" x1="0" x2="1"><stop offset="0" stop-color="#1b5fae"/><stop offset="1" stop-color="#19b5d6"/></linearGradient></defs><path d="M520 0 C 680 30, 740 170, 900 195 C 1020 214, 1120 175, 1200 125 L1200 0 Z" fill="url(#wg)" opacity="0.95"/><path d="M700 0 C 800 70, 870 160, 1010 190 C 1100 208, 1160 195, 1200 178 L1200 0 Z" fill="#1aa3cf" opacity="0.5"/></svg>
     <div class="hrow">
       <span class="wordmark inverted"><svg class="logo-eyes" viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="var(--eyeball)"/><circle cx="97.5" cy="19" r="3.6" fill="var(--eyeball)"/></svg><span class="logo-text">eyes up</span></span>
-      <nav class="views" aria-label="Main">
-        <button class="view-tab" data-view="plans">📝 Lesson plans</button>
-        <button class="view-tab" data-view="teach">🎤 Teach</button>
-      </nav>
       <span class="spacer"></span>
       <span id="whoAmI" style="color:var(--muted);font-size:0.85rem;font-weight:700"></span>
       <div class="menu-wrap">
-        <button class="btn" id="menuBtn" aria-haspopup="true">☰ Menu</button>
+        <button class="btn" id="menuBtn" aria-haspopup="true">☰ Menu ▾</button>
         <div class="menu" id="menu">
           <button id="lessonsBtn" style="display:none" title="Reports from classes you've already taught">📚 Past lessons</button>
           <a id="dataBtn" href="/data" style="display:none" title="Interactive charts over everything you've captured">📈 Data</a>
@@ -786,10 +830,47 @@
         </div>
       </div>
     </div>
-    <div class="hrow classbar" id="classBar">
-      <!-- Everything that is set once per lesson lives behind one button at the far left; it drops down beneath. -->
+    <div class="hrow">
+      <nav class="views" aria-label="Main">
+        <button class="view-tab" data-view="teach">Teach</button>
+        <button class="view-tab" data-view="plans">Lesson plans</button>
+      </nav>
+    </div>
+  </header>
+  <!-- Teach: hero, the three doors, the join row and the lesson setup card -->
+  <section class="teach-top" id="classBar">
+    <div class="teach-main">
+      <h1 class="teach-h1">Ready to teach?</h1>
+      <p class="teach-sub">Run an interactive lesson, share with your class, and collect responses in real time.</p>
+      <div class="action-row">
+        <a class="act-card act-primary" id="openProjector" target="_blank" rel="noopener" href="/projector" title="Open the classroom screen in a new window"><span class="act-text"><b>Projector</b><small>Launch your lesson</small></span><span class="act-chev">›</span></a>
+        <button class="act-card" id="remoteBtn" title="Control the class from your phone"><span class="act-text"><b>Teacher remote</b><small>Control this lesson from your phone.</small></span><span class="act-chev">›</span></button>
+        <span class="link-wrap">
+        <button class="btn big" id="copyLink" title="Show and copy the student join link — paste it into Google Classroom, Teams, email…">🔗 Student link</button>
+        <div class="link-pop" id="linkPop" hidden>
+          <div class="link-pop-head">Student link copied ✓</div>
+          <input type="text" id="linkPopUrl" readonly title="The link students open — click to select it" />
+          <div class="link-pop-foot">Or they go to <b id="linkPopHost"></b> and type the code <b id="linkPopCode"></b></div>
+        </div>
+      </span>
+        <button class="btn big" id="qrToggle" title="Put the big student QR / join screen on the projector">🔳 Student QR</button>
+      </div>
+      <div class="join-row">
+        <span class="join-label">Class join</span>
+        <span class="join-sep"></span>
+        <button class="code-chip" id="codeChip" title="Click to copy the join link"> <small>CODE</small> <span id="codeText">····</span> </button>
+        <span class="join-sep"></span>
+        <span class="join-url" id="joinUrl"></span>
+        <span class="join-sep"></span>
+        <span class="pill"><span class="dot"></span><span id="studentCount">0</span>&nbsp;joined</span>
+        <button class="btn" id="togglePreview" title="See exactly what students see">👁 Student view</button>
+        <a class="btn" id="zipAll" style="display:none;text-decoration:none" title="Every picture students have sent in this class so far, as one ZIP (a folder per activity, a file per student)">🖼 Pictures ZIP</a>
+      </div>
+    </div>
+    <aside class="setup-card">
+      <h2>Lesson setup</h2>
       <details class="lesson-settings" id="lessonSettings">
-        <summary class="btn" title="Names, held answers, changing answers, student view, next class, finish">⚙️ Lesson settings</summary>
+        <summary class="setup-row" title="Names, held answers, changing answers, student view, next class, finish"><span class="setup-ico">⚙️</span><span class="setup-name">Lesson settings</span><span class="setup-chev">›</span></summary>
         <div class="settings-panel">
           <div class="settings-group"><span class="settings-label">On the projector</span>
             <button class="btn" id="namesBtn" title="Show student names on the projector, for every activity (anonymous ones excepted)">🏷 Names: off</button>
@@ -801,9 +882,8 @@
             <button class="btn" id="endBtn">✅ Finish</button></div>
         </div>
       </details>
-      <!-- Timer, random student, groups and question dice: same drop-down format as Lesson settings. -->
       <details class="lesson-settings" id="roomTools">
-        <summary class="btn" id="roomToolsLabel" title="Timer, random student, random groups, question dice">🧰 Room tools</summary>
+        <summary class="setup-row" title="Timer, random student, random groups, question dice"><span class="setup-ico">🧰</span><span class="setup-name" id="roomToolsLabel">Room tools</span><span class="setup-chev">›</span></summary>
         <div class="settings-panel tools-panel">
             <div class="tools">
               <div class="tool-block">
@@ -859,35 +939,13 @@
             </div>
             </div>
       </details>
-      <select id="classSel" title="Which class is this? Their names become tap-to-join tiles on the join page" style="border:1px solid #c7d4e8;border-radius:10px;padding:0.4rem 0.6rem;background:#fff;font:inherit;font-size:0.9rem;font-weight:700;color:var(--ink);max-width:200px">
-        <option value="">👥 Class: none</option>
+      <div class="setup-row"><span class="setup-ico">👥</span><span class="setup-name">Class</span><select id="classSel" title="Which class is this? Their names become tap-to-join tiles on the join page">
+        <option value="">None</option>
         <option value="new">＋ New class…</option>
-      </select>
-      <button class="btn" id="classEdit" title="Edit this class's names, or print its QR sticker" style="display:none">✎</button>
-      <input id="titleInput" placeholder="Lesson name, e.g. Phonics week 4" maxlength="80"
-        title="Names this lesson — shows on the results and PDF export" />
-      <button class="code-chip" id="codeChip" title="Click to copy the join link">
-        <small>CODE</small> <span id="codeText">····</span>
-      </button>
-      <span class="join-url" id="joinUrl"></span>
-      <span class="pill"><span class="dot"></span><span id="studentCount">0</span>&nbsp;joined</span>
-      <span class="spacer"></span>
-      <span class="link-wrap">
-        <button class="btn big" id="copyLink" title="Show and copy the student join link — paste it into Google Classroom, Teams, email…">🔗 Student link</button>
-        <div class="link-pop" id="linkPop" hidden>
-          <div class="link-pop-head">Student link copied ✓</div>
-          <input type="text" id="linkPopUrl" readonly title="The link students open — click to select it" />
-          <div class="link-pop-foot">Or they go to <b id="linkPopHost"></b> and type the code <b id="linkPopCode"></b></div>
-        </div>
-      </span>
-      <button class="btn big" id="qrToggle" title="Put the big student QR / join screen on the projector">🔳 Student QR</button>
-      <a class="btn" id="openProjector" target="_blank" rel="noopener" href="/projector" style="text-decoration:none">📽️ Projector</a>
-      <button class="btn" id="togglePreview" title="See exactly what students see">👁 Student view</button>
-      <button class="btn dark remote-big" id="remoteBtn" title="Control the class from your phone">📱 Teacher remote</button>
-      <!-- Appears only once students have sent pictures: one click, one ZIP of everything so far. -->
-      <a class="btn" id="zipAll" style="display:none;text-decoration:none" title="Every picture students have sent in this class so far, as one ZIP (a folder per activity, a file per student)">🖼 Pictures ZIP</a>
-    </div>
-  </header>
+      </select><button class="btn" id="classEdit" title="Edit this class's names, or print its QR sticker" style="display:none">✎</button></div>
+      <div class="setup-row"><span class="setup-ico">✏️</span><span class="setup-name">Lesson name</span><input id="titleInput" placeholder="e.g. Phonics week 4" maxlength="80" title="Names this lesson — shows on the results and PDF export" /></div>
+    </aside>
+  </section>
 
   <!-- ============ LESSON PLANS ============ -->
   <div class="view" id="viewPlans" hidden>
