@@ -219,6 +219,10 @@
   .setup-chev { font-size: 1.15rem; }
   .setup-row select, .setup-row input, .setup-row #titleInput { font-size: 0.86rem; padding: 0.32rem 0.55rem; border-radius: 8px; }
   .setup-row #classEdit { padding: 0.3rem 0.55rem; font-size: 0.85rem; }
+  .limit-wrap { display: flex; flex-basis: 100%; align-items: center; gap: 0.4rem; font-weight: 700; font-size: 0.88rem; color: var(--ink); white-space: nowrap; }
+  .limit-wrap select, .limit-wrap input { font: inherit; font-size: 0.85rem; font-weight: 600; padding: 0.35rem 0.5rem; border: 1px solid #c7d4e8; border-radius: 8px; background: #fff; color: var(--ink); }
+  .limit-wrap input { width: 64px; }
+  .settings-note { flex-basis: 100%; margin: 0; font-size: 0.75rem; color: var(--muted); }
   .settings-label { flex-basis: 100%; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .btn.remote-big, .btn.big { font-size: 1rem; padding: 0.6rem 1.2rem; }
   /* Student link: the address appears under the button as well as being copied */
@@ -912,7 +916,12 @@
             <button class="btn" id="namesBtn" title="Show student names on the projector, for every activity (anonymous ones excepted)">🏷 Names: off</button>
             <button class="btn" id="holdBtn" title="Keep every activity's answers off the projector until you press Reveal">🙈 Hold answers: off</button></div>
           <div class="settings-group"><span class="settings-label">Students</span>
-            <button class="btn" id="chgBtn" title="Off: one answer each, a sent answer is final. On: students see 'Change my answer' after sending.">🔁 Change answers: off</button></div>
+            <button class="btn" id="chgBtn" title="Off: one answer each, a sent answer is final. On: students see 'Change my answer' after sending.">🔁 Change answers: off</button>
+            <label class="limit-wrap" title="How many answers each student may send in Word Cloud, Mind Map, Post-its, Venn and Plus &amp; Minus">✋ Answers each
+              <select id="limitSel"><option value="">Unlimited</option><option value="1">One response</option><option value="custom">Choose a number…</option></select>
+              <input type="number" id="limitN" min="2" max="12" value="3" hidden />
+            </label>
+            <p class="settings-note">Answers each applies to activities that take several answers: Word Cloud, Mind Map, Post-its, Venn, Plus &amp; Minus. One-answer activities such as Multiple Choice are unaffected.</p></div>
           <div class="settings-group"><span class="settings-label">This class</span>
             <button class="btn" id="newLessonBtn" title="Save this class and start the next one — new code, same lesson plan">🆕 Next class</button>
             <button class="btn" id="endBtn">✅ Finish</button></div>

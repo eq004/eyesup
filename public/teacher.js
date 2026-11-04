@@ -802,6 +802,13 @@ function render() {
   const cb = $("chgBtn");
   cb.textContent = `🔁 Change answers: ${state.allowChange ? "ON" : "off"}`;
   cb.classList.toggle("primary", !!state.allowChange);
+  const ls = $("limitSel"), ln = $("limitN");
+  if (ls && document.activeElement !== ls && document.activeElement !== ln) {
+    const lim = state.answerLimit;
+    ls.value = lim == null ? "" : lim === 1 ? "1" : "custom";
+    ln.hidden = ls.value !== "custom";
+    if (lim != null && lim !== 1) ln.value = lim;
+  }
   $("inviteBtn").style.display = teacherToken() && state?.storage ? "" : "none";
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
   $("qrToggle").textContent = state.showJoin ? "🔳 Student QR is up" : "🔳 Student QR";
@@ -1581,6 +1588,13 @@ $("pickBtn").onclick = () => send({ type: "pick_student" });
 $("namesBtn").onclick = () => send({ type: "toggle_names" });
 $("holdBtn").onclick = () => send({ type: "toggle_hold" });
 $("chgBtn").onclick = () => send({ type: "toggle_change" });
+$("limitSel").onchange = () => {
+  const v = $("limitSel").value;
+  $("limitN").hidden = v !== "custom";
+  if (v === "custom") { $("limitN").focus(); send({ type: "set_answer_limit", limit: parseInt($("limitN").value, 10) || 3 }); }
+  else send({ type: "set_answer_limit", limit: v ? 1 : null });
+};
+$("limitN").onchange = () => send({ type: "set_answer_limit", limit: Math.min(12, Math.max(2, parseInt($("limitN").value, 10) || 2)) });
 const diceInputs = () => [...document.querySelectorAll("#diceFaces .dice-in")];
 const sendDiceFaces = () => {
   const faces = diceInputs().map((i) => i.value.trim());

@@ -1737,6 +1737,7 @@ function createSession(teacherWs) {
     showNames: false, // room-wide: student names on screen for every activity (anonymous modes excepted)
     holdAnswers: false, // room-wide: every activity starts with its answers held back until the teacher reveals them
     allowChange: false, // one answer each; the teacher switches "students may change answers" on when wanted
+    answerLimit: null, // answers each in Word Cloud, Mind Map, Post-its, Venn, Plus & Minus: null = unlimited (12), 1 = one, or a chosen number
     timer: null, // {seconds, endsAt, paused, remaining}
     focus: null, // {type:'spotlight', name} | {type:'groups', groups:[[names]]}
     picked: new Set(), // student ids already randomly selected (no repeats till all picked)
@@ -1896,6 +1897,8 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     session.images.set(session.counter, image);
     imageUrl = `/api/image/${session.code}/${session.counter}`;
   }
+  // Answers each for the activities that take several: the room's limit, the composer's "one each", or 12.
+  const maxEach = MULTI_MODES.has(mode) ? Math.min(session.answerLimit ?? 12, multi === false ? 1 : 12) : null;
   const correctIdx =
     mode === "multi_choice" && Number.isInteger(correct) && opts && correct >= 0 && correct < opts.length
       ? correct
@@ -1939,7 +1942,8 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     // Post-its: teacher chooses at launch — screen notes first, or straight up.
     moderated: mode === "post_its" ? moderated !== false : null,
     // One contribution each, or several (the default).
-    multi: MULTI_MODES.has(mode) ? multi !== false : null,
+    multi: MULTI_MODES.has(mode) ? maxEach > 1 : null,
+    maxEach,
     open: true,
     // Live-building modes show results as they arrive; written/drawn answers
     // are revealed by the teacher (gradually or all at once).
@@ -2318,6 +2322,7 @@ function teacherState(session) {
     showNames: session.showNames,
     holdAnswers: session.holdAnswers,
     allowChange: session.allowChange,
+    answerLimit: session.answerLimit,
     dice: session.dice,
     students: [...session.students.values()].map((s) => ({ id: s.id, name: s.name })),
     sequence: session.sequence,
@@ -2358,7 +2363,7 @@ function teacherState(session) {
           correct: itx.correct,
           answerRevealed: itx.answerRevealed,
           moderated: itx.moderated,
-          multi: itx.multi,
+          multi: itx.multi, maxEach: itx.maxEach,
           showNames: itx.showNames,
           spotlightId: itx.spotlightId,
           open: itx.open,
@@ -2398,6 +2403,7 @@ function projectorState(session) {
     showNames: session.showNames,
     holdAnswers: session.holdAnswers,
     allowChange: session.allowChange,
+    answerLimit: session.answerLimit,
     dice: session.dice,
     studentCount: session.students.size,
     respondedCount: itx ? itx.responses.size : 0,
@@ -2440,6 +2446,7 @@ function studentState(session, student) {
     className: session.className,
     submitted,
     allowChange: session.allowChange,
+    answerLimit: session.answerLimit,
     interaction:
       itx && session.phase === "interaction"
         ? {
@@ -2449,7 +2456,7 @@ function studentState(session, student) {
             options: itx.options, optionImages: itx.optionImages,
             pairs: itx.pairs, pairImages: itx.pairImages,
             fields: itx.fields,
-            multi: itx.multi,
+            multi: itx.multi, maxEach: itx.maxEach,
             imageUrl: itx.imageUrl, trace: itx.trace,
             // test modes: students get counts/structure, never the answers
             wordCount: itx.words ? itx.words.length : null,
@@ -3036,6 +3043,12 @@ async function handle(ws, msg) {
       if (session.interaction && session.interaction.mode !== "link") session.interaction.resultsVisible = !session.holdAnswers;
       break;
     }
+    case "set_answer_limit": {
+      // Room-wide cap on answers each for the several-answer activities; null means unlimited.
+      const n = msg.limit;
+      session.answerLimit = n === null || n === undefined || n === "" ? null : Math.min(12, Math.max(1, parseInt(n, 10) || 1));
+      break;
+    }
     case "toggle_change": {
       // Off (the default): a sent answer is final. On: the student page offers "Change my answer".
       session.allowChange = typeof msg.on === "boolean" ? msg.on : !session.allowChange;
@@ -3377,6 +3390,7 @@ async function handle(ws, msg) {
       fresh.showNames = session.showNames;
       fresh.holdAnswers = session.holdAnswers;
       fresh.allowChange = session.allowChange;
+      fresh.answerLimit = session.answerLimit;
       fresh.teachers = new Set(session.teachers);
       fresh.projectors = session.projectors;
       session.teachers = new Set();
@@ -3458,8 +3472,7 @@ function sanitizePayload(itx, payload) {
   if (WORD_MODES.has(itx.mode)) {
     let words = Array.isArray(payload.words) ? payload.words : [];
     const maxLen = itx.mode === "mindmap" ? 40 : 30; // mindmap allows short phrases
-    const cap =
-      itx.mode === "one_word" || itx.multi === false ? 1 : itx.mode === "mindmap" ? 6 : 5;
+    const cap = itx.mode === "one_word" ? 1 : itx.maxEach || (itx.multi === false ? 1 : itx.mode === "mindmap" ? 6 : 5);
     const seen = new Set();
     words = words
       .map((w) => String(w).trim().replace(/\s+/g, " ").slice(0, maxLen))
@@ -3517,7 +3530,7 @@ function sanitizePayload(itx, payload) {
         seen.add(n.toLowerCase());
         return true;
       })
-      .slice(0, itx.multi === false ? 1 : 4);
+      .slice(0, itx.maxEach || (itx.multi === false ? 1 : 4));
     return notes.length ? { notes } : null;
   }
 
@@ -3536,7 +3549,7 @@ function sanitizePayload(itx, payload) {
         seen.add(k);
         return true;
       })
-      .slice(0, itx.multi === false ? 1 : 6);
+      .slice(0, itx.maxEach || (itx.multi === false ? 1 : 6));
     return items.length ? { items } : null;
   }
 
@@ -3589,7 +3602,7 @@ function sanitizePayload(itx, payload) {
         seen.add(k);
         return true;
       })
-      .slice(0, itx.multi === false ? 1 : 6);
+      .slice(0, itx.maxEach || (itx.multi === false ? 1 : 6));
     return items.length ? { items } : null;
   }
 

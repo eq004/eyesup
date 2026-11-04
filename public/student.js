@@ -348,6 +348,7 @@ function renderInteraction(itx) {
   /* --- words (incl. mindmap phrases) --- */
   if (["word_cloud", "one_word", "mindmap"].includes(itx.mode)) {
     const single = itx.mode === "one_word" || itx.multi === false;
+    const capW = itx.mode === "one_word" ? 1 : itx.maxEach || (single ? 1 : 12);
     const ph = itx.mode === "one_word"
       ? "One word only"
       : single
@@ -358,7 +359,7 @@ function renderInteraction(itx) {
     show(`${h}
       <input type="text" id="wordInput" autocomplete="off" placeholder="${ph}" maxlength="${single && itx.mode !== "mindmap" ? 30 : 160}" />
       <button class="btn send" id="sendBtn">Send</button>
-      ${single ? `<p class="hint">Just one — make it count.</p>` : ""}`, () => {
+      ${single ? `<p class="hint">Just one — make it count.</p>` : `<p class="hint">Up to ${capW} — separate them with commas.</p>`}`, () => {
       const input = $("wordInput");
       input.focus();
       const go = () => {
@@ -367,6 +368,7 @@ function renderInteraction(itx) {
           words = words.slice(0, 1);
           if (itx.mode !== "mindmap") words = words.map((w) => w.split(/\s+/)[0]);
         }
+        words = words.slice(0, capW);
         if (!words.length) return;
         submit({ words });
       };
@@ -621,7 +623,7 @@ function renderInteraction(itx) {
 
   /* --- post-its: write a note, stick it, write another --- */
   if (itx.mode === "post_its") {
-    const cap = itx.multi === false ? 1 : 4;
+    const cap = itx.maxEach || (itx.multi === false ? 1 : 4);
     const full = postNotes.length >= cap;
     show(`${h}
       <textarea id="noteInput" rows="3" maxlength="140" placeholder="Write your note…" ${full ? "disabled" : ""}></textarea>
@@ -647,7 +649,7 @@ function renderInteraction(itx) {
 
   /* --- plus & minus: type a point, tap its side --- */
   if (itx.mode === "plus_minus") {
-    const cap = itx.multi === false ? 1 : 6;
+    const cap = itx.maxEach || (itx.multi === false ? 1 : 6);
     const full = pmItems.length >= cap;
     show(`${h}
       <input type="text" id="pmInput" autocomplete="off" maxlength="140" placeholder="Type a point…" ${full ? "disabled" : ""} />
@@ -688,12 +690,12 @@ function renderInteraction(itx) {
             .map((it) => `<span class="sent-chip">${esc(it.text)} → ${esc(regionNames[it.region])}</span>`)
             .join("")}</div>`
         : ""}
-      <p class="hint">${vennItems.length >= (itx.multi === false ? 1 : 6) ? "Sent ✓ — eyes up! 👀" : vennItems.length ? `${vennItems.length} sent ✓ — add another, or eyes up.` : itx.multi === false ? "One idea each — type it, then tap where it belongs." : "Type an idea, then tap where it belongs. Add a few!"}</p>`, () => {
+      <p class="hint">${vennItems.length >= (itx.maxEach || (itx.multi === false ? 1 : 6)) ? "Sent ✓ — eyes up! 👀" : vennItems.length ? `${vennItems.length} sent ✓ — add another, or eyes up.` : itx.multi === false ? "One idea each — type it, then tap where it belongs." : "Type an idea, then tap where it belongs. Add a few!"}</p>`, () => {
       const input = $("vennInput");
       input.focus();
       screenEl.querySelectorAll("[data-r]").forEach((b) => (b.onclick = () => {
         const text = input.value.trim();
-        if (!text || vennItems.length >= (itx.multi === false ? 1 : 6)) return;
+        if (!text || vennItems.length >= (itx.maxEach || (itx.multi === false ? 1 : 6))) return;
         vennItems.push({ text, region: +b.dataset.r });
         submit({ items: vennItems });
         render(true);
