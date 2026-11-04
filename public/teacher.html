@@ -119,6 +119,8 @@
   .menu.show { display: block; }
   .menu button { display: block; width: 100%; text-align: left; padding: 0.6rem 0.8rem; border-radius: 8px; font-weight: 700; font-size: 0.9rem; }
   .menu button:hover { background: var(--paper); }
+  .menu a { display: block; padding: 0.6rem 0.8rem; border-radius: 8px; font-weight: 700; font-size: 0.9rem; color: var(--ink); text-decoration: none; }
+  .menu a:hover { background: var(--paper); }
   /* the class controls sit on a white band under the navy bar */
   .classbar { background: var(--surface); color: var(--ink); margin: 0.7rem -1.4rem -0.75rem; padding: 0.6rem 1.4rem; }
   /* Lesson settings: one button on the bar; open, it unfolds as a full-width panel beneath. */
@@ -744,14 +746,14 @@
       <nav class="views" aria-label="Main">
         <button class="view-tab" data-view="plans">📝 Lesson plans</button>
         <button class="view-tab" data-view="teach">🎤 Teach</button>
-        <button class="view-tab" id="lessonsBtn" style="display:none" title="Reports from classes you've already taught">📚 Past lessons</button>
-        <a class="view-tab" id="dataBtn" href="/data" style="display:none" title="Interactive charts over everything you've captured">📈 Data</a>
       </nav>
       <span class="spacer"></span>
       <span id="whoAmI" style="color:var(--muted);font-size:0.85rem;font-weight:700"></span>
       <div class="menu-wrap">
         <button class="btn" id="menuBtn" aria-haspopup="true">☰ Menu</button>
         <div class="menu" id="menu">
+          <button id="lessonsBtn" style="display:none" title="Reports from classes you've already taught">📚 Past lessons</button>
+          <a id="dataBtn" href="/data" style="display:none" title="Interactive charts over everything you've captured">📈 Data</a>
           <button id="accountBtn" style="display:none">👤 My account</button>
           <a id="adminLink" href="/admin" style="display:none">🛠 Owner admin</a>
           <button id="inviteBtn">➕ Invite a colleague</button>
@@ -779,6 +781,8 @@
       <a class="btn" id="openProjector" target="_blank" rel="noopener" href="/projector" style="text-decoration:none">📽️ Projector</a>
       <button class="btn" id="remoteBtn" title="Control the class from your phone">📱 Teacher remote</button>
       <button class="btn dark" id="eyesUpTop">👀 EYES UP</button>
+      <!-- Appears only once students have sent pictures: one click, one ZIP of everything so far. -->
+      <a class="btn" id="zipAll" style="display:none;text-decoration:none" title="Every picture students have sent in this class so far, as one ZIP (a folder per activity, a file per student)">🖼 Pictures ZIP</a>
       <!-- Everything that is set once per lesson lives behind one button, so the bar stays calm. -->
       <details class="lesson-settings" id="lessonSettings">
         <summary class="btn" title="Names, held answers, changing answers, student view, next class, finish">⚙️ Lesson settings</summary>

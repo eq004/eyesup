@@ -990,6 +990,8 @@ app.get("/api/lessons", async (req, res) => {
               summary->>'participatedCount' AS participated,
               summary->>'joinedCount' AS joined,
               summary->>'interactionCount' AS interactions,
+              (SELECT count(*)::int FROM lesson_images li
+                WHERE li.lesson_code = lessons.code AND li.lesson_created_at = lessons.created_at) AS pictures,
               (SELECT e->>'prompt' FROM jsonb_array_elements(summary->'items') e
                 WHERE coalesce(e->>'prompt', '') <> '' AND e->>'mode' NOT IN ('link', 'slide', 'deck') LIMIT 1) AS first_prompt
        FROM lessons
@@ -2324,6 +2326,10 @@ function teacherState(session) {
     planId: session.planId || null,
     planTitle: session.planTitle || "",
     historyCount: session.history.length,
+    // Pictures students have sent so far (drawings and photos), so the dashboard can offer one ZIP.
+    pictureCount: [...session.history, ...(itx ? [itx] : [])]
+      .filter((i) => IMAGE_MODES.has(i.mode))
+      .reduce((n, i) => n + [...i.responses.values()].filter((r) => r.name !== "👁 Preview").reduce((m, r) => m + imgsOf(r).length, 0), 0),
     // The last few activity types this room has run — the remote shows them as "recent".
     recentModes: [...new Set([...session.history.slice(-12).reverse(), ...(itx ? [itx] : [])].map((i) => (i.mode === "counters" && i.counterKind === "base10" ? "tens_ones" : i.mode)))].slice(0, 6),
     interaction: itx

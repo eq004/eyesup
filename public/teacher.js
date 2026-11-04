@@ -739,6 +739,10 @@ function render() {
   $("openProjector").href = `/projector?code=${state.code}`;
   $("lessonsBtn").style.display = state.storage ? "" : "none";
   $("dataBtn").style.display = state.storage ? "" : "none";
+  const za = $("zipAll");
+  za.style.display = state.pictureCount ? "" : "none";
+  za.textContent = `🖼 Pictures ZIP (${state.pictureCount || 0})`;
+  za.href = `/api/images/${state.code}?${authQuery()}`;
   $("whoAmI").textContent = teacherToken() ? localStorage.getItem("eyesup_teacher_name") || "" : "";
   $("signOutBtn").style.display = teacherToken() ? "" : "none";
   const nb = $("namesBtn");
@@ -1321,10 +1325,14 @@ async function loadLessonsList(attempt) {
             const when = new Date(l.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
             const href = `/data?lesson=${l.id}`;
             const name = l.title || (l.first_prompt ? (l.first_prompt.length > 70 ? l.first_prompt.slice(0, 68).trimEnd() + "…" : l.first_prompt) : "Untitled lesson");
-            return `<a href="${href}" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:10px;padding:0.65rem 0.9rem;margin-bottom:0.5rem;background:var(--paper)">
-              <b>${esc(name)}</b> <span style="color:var(--muted);font-size:0.8rem">· ${esc(l.code)}</span><br/>
-              <span style="color:var(--ink-soft);font-size:0.82rem">${esc(when)} — ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions</span>
-            </a>`;
+            const pics = Number(l.pictures) || 0;
+            return `<div style="display:flex;align-items:center;gap:0.6rem;border:1px solid var(--line);border-radius:10px;padding:0.65rem 0.9rem;margin-bottom:0.5rem;background:var(--paper)">
+              <a href="${href}" target="_blank" rel="noopener" style="flex:1;min-width:0;text-decoration:none;color:inherit">
+                <b>${esc(name)}</b> <span style="color:var(--muted);font-size:0.8rem">· ${esc(l.code)}</span><br/>
+                <span style="color:var(--ink-soft);font-size:0.82rem">${esc(when)} — ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions${pics ? ` · ${pics} picture${pics === 1 ? "" : "s"}` : ""}</span>
+              </a>
+              ${pics ? `<a class="btn" href="/api/lessons/${l.id}/images?${authQuery()}" style="text-decoration:none;white-space:nowrap" title="Every picture from this lesson as one ZIP — a folder per activity, a file per student">🖼 ZIP</a>` : ""}
+            </div>`;
           })
           .join("")
       : `<p style="color:var(--muted)">No stored lessons yet — run one and it saves itself.</p>`;
