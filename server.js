@@ -2990,7 +2990,7 @@ async function handle(ws, msg) {
   /* ---- teacher actions ---- */
 
   // Room tools a teacher can also drive from the board's corner dock.
-  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "show_results", "hide_results", "reveal_random", "clear_peek", "next", "seq_prev"]);
+  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "set_answer_limit", "show_results", "hide_results", "reveal_random", "clear_peek", "next", "seq_prev"]);
   if (ws.meta.role !== "teacher" && !(ws.meta.role === "projector" && BOARD_ACTIONS.has(type))) {
     // The projector often runs on an interactive whiteboard: allow
     // tap-to-spotlight and the corner tools straight from the board — and only those.
@@ -3047,6 +3047,9 @@ async function handle(ws, msg) {
       // Room-wide cap on answers each for the several-answer activities; null means unlimited.
       const n = msg.limit;
       session.answerLimit = n === null || n === undefined || n === "" ? null : Math.min(12, Math.max(1, parseInt(n, 10) || 1));
+      // Mid-activity it applies at once: the live board takes the new cap (answers already in stay).
+      const live = session.interaction;
+      if (live && MULTI_MODES.has(live.mode)) { live.maxEach = session.answerLimit ?? 12; live.multi = live.maxEach > 1; }
       break;
     }
     case "toggle_change": {

@@ -236,8 +236,26 @@ window.addEventListener("pageshow", wakeUp);
 
 /* ---------------- render ---------------- */
 
+// A repaint while a child is typing (the teacher changed a setting mid-activity) must not eat their words:
+// remember the focused box and put the text, focus and caret back after the repaint.
+function typingSnapshot() {
+  const el = document.activeElement;
+  if (!el || !screenEl.contains(el) || !el.id || !/^(INPUT|TEXTAREA)$/.test(el.tagName)) return null;
+  return { id: el.id, value: el.value, s: el.selectionStart, e: el.selectionEnd };
+}
+function restoreTyping(keep) {
+  if (!keep) return;
+  const el = document.getElementById(keep.id);
+  if (!el || el.value) return;
+  el.value = keep.value;
+  el.focus({ preventScroll: true });
+  try { el.setSelectionRange(keep.s, keep.e); } catch {}
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function render(force) {
   $("topInfo").textContent = state && joined ? `${state.name} · ${state.code}` : "";
+  const keep = typingSnapshot();
 
   if (!joined || !state) return renderJoin();
 
@@ -247,7 +265,7 @@ function render(force) {
   // a classmate submitting must never wipe this student's half-typed answer.
   if (state.submitted) clearTimeout(sendWatch); // the photos arrived
   if (changingAnswer && !state.allowChange) changingAnswer = false; // the teacher switched changes off mid-edit
-  const key = [state.phase, itx?.id, itx?.open, state.submitted, changingAnswer, state.allowChange].join("|");
+  const key = [state.phase, itx?.id, itx?.open, state.submitted, changingAnswer, state.allowChange, itx?.maxEach].join("|");
   if (!force && key === lastRenderKey) return;
   lastRenderKey = key;
 
@@ -322,6 +340,7 @@ function render(force) {
   }
 
   renderInteraction(itx);
+  restoreTyping(keep);
 }
 
 function show(html, after) {
@@ -631,7 +650,7 @@ function renderInteraction(itx) {
       ${postNotes.length
         ? `<div class="venn-sent">${postNotes.map((n) => `<span class="sent-chip">🗒 ${esc(n)}</span>`).join("")}</div>`
         : ""}
-      <p class="hint">${full ? (cap === 1 ? "Sent ✓ — eyes up! 👀" : "That's the lot. Eyes up! 👀") : postNotes.length ? `${postNotes.length} sent ✓ — add another if you've got one.` : cap === 1 ? "One note each — make it your best thought." : "Short and punchy. You can add up to 4."}</p>`, () => {
+      <p class="hint">${full ? (cap === 1 ? "Sent ✓ — eyes up! 👀" : "That's the lot. Eyes up! 👀") : postNotes.length ? `${postNotes.length} sent ✓ — add another if you've got one.` : cap === 1 ? "One note each — make it your best thought." : `Short and punchy. You can add up to ${cap}.`}</p>`, () => {
       const input = $("noteInput");
       if (!full) input.focus();
       const stick = () => {

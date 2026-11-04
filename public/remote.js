@@ -240,6 +240,7 @@ function bindActions() {
     send({ type: b.dataset.act });
   }));
   main.querySelectorAll("[data-tune-board]").forEach((b) => (b.onclick = () => send({ type: "play_tune", studentId: b.dataset.tuneBoard })));
+  main.querySelectorAll("[data-limit]").forEach((b) => (b.onclick = () => send({ type: "set_answer_limit", limit: b.dataset.limit === "" ? null : +b.dataset.limit })));
   main.querySelectorAll("[data-goto]").forEach((b) => (b.onclick = () => { tab = b.dataset.goto; render(); }));
   const sl = $("stopLive");
   if (sl) sl.onclick = () => send({ type: "eyes_up" }); // next step stays loaded
@@ -395,6 +396,14 @@ function renderLive() {
       <button class="rbtn ${state.holdAnswers ? "accent" : ""}" data-act="toggle_hold">🙈 Hold answers ${state.holdAnswers ? "on" : "off"}</button>
       <button class="rbtn ${state.allowChange ? "accent" : ""}" data-act="toggle_change">🔁 Change answers ${state.allowChange ? "on" : "off"}</button>
     </div>
+    ${(() => {
+      // Answers each — buttons, not a drop-down, so a state update mid-tap never closes a picker.
+      const cur = state.answerLimit == null ? "" : String(state.answerLimit);
+      const opts = [["", "∞"], ["1", "1"], ["2", "2"], ["3", "3"], ["5", "5"]];
+      if (cur && !opts.some(([v]) => v === cur)) opts.push([cur, cur]);
+      return `<div class="chip-row limit-row"><span class="step-pos" title="Word Cloud, Mind Map, Post-its, Venn, Plus & Minus">✋ Answers each</span>
+        ${opts.map(([v, l]) => `<button class="rbtn ${cur === v ? "accent" : ""}" data-limit="${v}" title="${v === "" ? "Unlimited" : v === "1" ? "One each" : "Up to " + v + " each"}">${l}</button>`).join("")}</div>`;
+    })()}
     ${itx && itx.responses.length ? `<div class="quiet-row"><button class="rbtn" data-act="clear">🗑 Clear everyone's answers</button></div>` : ""}
   `;
 }

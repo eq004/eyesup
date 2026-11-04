@@ -121,6 +121,15 @@ function renderInner() {
   hb.textContent = `🙈 hold answers: ${state.holdAnswers ? "ON" : "off"}`;
   hb.classList.toggle("on", !!state.holdAnswers);
   hb.onclick = () => send({ type: "toggle_hold" });
+  // Answers each (Word Cloud, Mind Map, Post-its, Venn, Plus & Minus): changeable from the board, mid-activity too.
+  const ls = document.getElementById("limitSel");
+  if (ls) {
+    const v = state.answerLimit == null ? "" : String(state.answerLimit);
+    if (v && ![...ls.options].some((o) => o.value === v)) ls.add(new Option(`✋ answers each: up to ${v}`, v));
+    if (document.activeElement !== ls) ls.value = v; // never yank a menu the teacher has open
+    ls.classList.toggle("on", v !== "");
+    ls.onchange = () => send({ type: "set_answer_limit", limit: ls.value === "" ? null : +ls.value });
+  }
 
   const itx = state.interaction;
 
