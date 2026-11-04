@@ -1190,6 +1190,8 @@ function sanitizeStep(it) {
     wordBank: typeof it.wordBank === "boolean" ? it.wordBank : undefined,
     expected: typeof it.expected === "string" ? it.expected.slice(0, 30) : undefined,
     trace: typeof it.trace === "string" ? it.trace.slice(0, 8) : undefined,
+    traceCase: ["lower", "upper", "both"].includes(it.traceCase) ? it.traceCase : undefined,
+    traceGuide: it.traceGuide === "dots" || it.traceGuide === "arrows" ? it.traceGuide : undefined,
     counterKind: it.counterKind === "base10" || it.counterKind === "colors" ? it.counterKind : undefined,
     tableRows: Number.isInteger(it.tableRows) ? it.tableRows : undefined,
     sig: ["2/4", "3/4", "4/4", "6/8"].includes(it.sig) ? it.sig : undefined,
@@ -1878,7 +1880,7 @@ function isRevealMode(mode) {
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, trace, optionImages, pairImages }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, trace, traceCase, traceGuide, optionImages, pairImages }) {
   session.counter += 1;
   // Picture answers: each option's picture is parked in the room and sent as a link.
   const picUrls = (list, tag) => {
@@ -1994,6 +1996,9 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     expected: ["working", "counters", "maths_board"].includes(mode) ? String(expected || "").trim().slice(0, 30) || null : null,
     // Letter formation: the letters or numbers shown dotted on every pad.
     trace: mode === "trace" ? String(trace || "").trim().slice(0, 8) || null : null,
+    // Letter Formation: which case the NSW Foundation cards show, and whether they carry stroke arrows.
+    traceCase: mode === "trace" ? (["lower", "upper", "both"].includes(traceCase) ? traceCase : "lower") : null,
+    traceGuide: mode === "trace" ? (traceGuide === "dots" ? "dots" : "arrows") : null,
     counterKind: mode === "counters" ? (counterKind === "base10" ? "base10" : "colors") : null,
     answerRevealed: false,
     showNames: !!session.showNames && !ANON_MODES.has(mode), // follows the room-wide switch; anonymous modes never
@@ -2418,7 +2423,7 @@ function teacherState(session) {
           chords: itx.chords,
           key: itx.key,
           timeLimit: itx.timeLimit,
-          imageUrl: itx.imageUrl, trace: itx.trace,
+          imageUrl: itx.imageUrl, trace: itx.trace, traceCase: itx.traceCase, traceGuide: itx.traceGuide,
           correct: itx.correct,
           answerRevealed: itx.answerRevealed,
           moderated: itx.moderated,
@@ -2473,7 +2478,7 @@ function projectorState(session) {
           mode: itx.mode,
           prompt: itx.prompt,
           options: itx.options, optionImages: itx.optionImages,
-          imageUrl: itx.imageUrl, trace: itx.trace,
+          imageUrl: itx.imageUrl, trace: itx.trace, traceCase: itx.traceCase, traceGuide: itx.traceGuide,
           counterKind: itx.counterKind,
           open: itx.open,
           resultsVisible: itx.resultsVisible,
@@ -2517,7 +2522,7 @@ function studentState(session, student) {
             pairs: itx.pairs, pairImages: itx.pairImages,
             fields: itx.fields,
             multi: itx.multi, maxEach: itx.maxEach,
-            imageUrl: itx.imageUrl, trace: itx.trace,
+            imageUrl: itx.imageUrl, trace: itx.trace, traceCase: itx.traceCase, traceGuide: itx.traceGuide,
             // test modes: students get counts/structure, never the answers
             wordCount: itx.words ? itx.words.length : null,
             clozeParts: itx.cloze ? itx.cloze.parts : null,

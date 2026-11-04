@@ -1730,29 +1730,74 @@ function renderInteraction(itx) {
       window.addEventListener("resize", () => fitPad(false), { passive: true });
       let bg = null; // the teacher's image, once loaded
       // Letter formation: writing lines and the letters, big and dotted, to trace over.
+      // Letter Formation: one card per character. Letters use the NSW Foundation tracing cards
+      // (dots, with stroke arrows and numbers unless the teacher chose dots only), in the case the
+      // teacher picked — "both" shows the capital then the small letter. Numbers and anything else
+      // are drawn dotted on writing lines inside their card.
+      const traceImgs = new Map();
+      const traceSlots = () => {
+        const text = itx.trace || "", kase = itx.traceCase || "lower", guide = itx.traceGuide === "dots" ? "dots" : "arrows";
+        const out = [];
+        for (const ch of text) {
+          if (ch === " ") continue;
+          if (/[a-z]/i.test(ch)) {
+            for (const f of kase === "both" ? ["upper", "lower"] : [kase]) {
+              const L = f === "upper" ? ch.toUpperCase() : ch.toLowerCase();
+              out.push({ ch: L, url: `/trace/${f}/${guide}/${L}.svg` });
+            }
+          } else out.push({ ch });
+        }
+        return out.slice(0, 8);
+      };
+      const card = (x, y, w, h, r) => { bgx.beginPath(); bgx.moveTo(x + r, y); bgx.arcTo(x + w, y, x + w, y + h, r); bgx.arcTo(x + w, y + h, x, y + h, r); bgx.arcTo(x, y + h, x, y, r); bgx.arcTo(x, y, x + w, y, r); bgx.closePath(); };
       const paintGuide = () => {
-        const W = bgCanvas.width, H = bgCanvas.height, text = itx.trace || "";
-        const top = H * 0.2, mid = H * 0.5, base = H * 0.8;
+        const W = bgCanvas.width, H = bgCanvas.height;
+        const slots = traceSlots();
+        if (!slots.length) return;
+        // Up to four cards in a row; more than that wraps to two rows so every card stays big.
+        const n = slots.length, gap = W * 0.02;
+        const rows = n > 4 ? 2 : 1, cols = Math.ceil(n / rows);
+        const size = Math.min((W - gap * (cols + 1)) / cols, (H - gap * (rows + 1)) / rows);
+        const x0 = (W - (size * cols + gap * (cols - 1))) / 2, y0 = (H - (size * rows + gap * (rows - 1))) / 2;
         bgx.lineCap = "round";
         bgx.lineJoin = "round";
-        [[top, false], [mid, true], [base, false]].forEach(([y, dashed]) => {
-          bgx.strokeStyle = dashed ? "#c9d3e3" : "#aab7cc";
-          bgx.lineWidth = Math.max(2, W / 450);
-          bgx.setLineDash(dashed ? [W / 70, W / 70] : []);
-          bgx.beginPath(); bgx.moveTo(W * 0.03, y); bgx.lineTo(W * 0.97, y); bgx.stroke();
+        slots.forEach((s, i) => {
+          const x = x0 + (i % cols) * (size + gap), y = y0 + Math.floor(i / cols) * (size + gap);
+          bgx.setLineDash([]);
+          bgx.fillStyle = "#fff";
+          bgx.strokeStyle = "#dfe6f0";
+          bgx.lineWidth = Math.max(1.5, W / 600);
+          card(x, y, size, size, size * 0.08);
+          bgx.fill();
+          bgx.stroke();
+          if (s.url) {
+            let img = traceImgs.get(s.url);
+            if (!img) {
+              img = new Image();
+              img.onload = () => paintBg(); // the strokes live on the other canvas, so a repaint costs nothing
+              img.src = s.url;
+              traceImgs.set(s.url, img);
+            }
+            if (img.complete && img.naturalWidth) bgx.drawImage(img, x, y, size, size);
+            return;
+          }
+          const top = y + size * 0.22, mid = y + size * 0.5, base = y + size * 0.78;
+          [[top, false], [mid, true], [base, false]].forEach(([ly, dashed]) => {
+            bgx.strokeStyle = dashed ? "#c9d3e3" : "#aab7cc";
+            bgx.lineWidth = Math.max(2, size / 150);
+            bgx.setLineDash(dashed ? [size / 25, size / 25] : []);
+            bgx.beginPath(); bgx.moveTo(x + size * 0.06, ly); bgx.lineTo(x + size * 0.94, ly); bgx.stroke();
+          });
+          const px = (base - top) * 1.08;
+          bgx.font = `700 ${px}px "Comic Sans MS", "Chalkboard SE", "Arial Rounded MT Bold", "Nunito", sans-serif`;
+          bgx.textAlign = "center";
+          bgx.textBaseline = "alphabetic";
+          bgx.strokeStyle = "#8ea0bd";
+          bgx.lineWidth = Math.max(3, px / 26);
+          bgx.setLineDash([px / 16, px / 11]);
+          bgx.strokeText(s.ch, x + size / 2, base);
+          bgx.setLineDash([]);
         });
-        let size = (base - top) * 1.08; // capitals and tall letters reach the top line
-        const font = (px) => `700 ${px}px "Comic Sans MS", "Chalkboard SE", "Arial Rounded MT Bold", "Nunito", sans-serif`;
-        bgx.font = font(size);
-        const tw = bgx.measureText(text).width;
-        if (tw > W * 0.9) { size *= (W * 0.9) / tw; bgx.font = font(size); }
-        bgx.textAlign = "center";
-        bgx.textBaseline = "alphabetic";
-        bgx.strokeStyle = "#8ea0bd";
-        bgx.lineWidth = Math.max(3, size / 26);
-        bgx.setLineDash([size / 16, size / 11]);
-        bgx.strokeText(text, W / 2, base);
-        bgx.setLineDash([]);
       };
       const paintBg = () => {
         bgx.fillStyle = "#ffffff";

@@ -604,9 +604,23 @@ function openComposer(key, keepImage) {
     const wrap = document.createElement("div");
     wrap.innerHTML = `
       <input type="text" id="traceText" maxlength="8" autocomplete="off" autocapitalize="off" spellcheck="false"
-        placeholder="Letters or numbers to trace — e.g. a, Aa, 3, sat" style="font-size:1.15rem;letter-spacing:0.08em" />
-      <p style="margin:0.45rem 0 0;font-size:0.8rem;color:var(--muted)">Shown big and dotted on every student's pad, on writing lines. Up to 8 characters; one letter is best for the youngest.</p>`;
+        placeholder="Letters or numbers to trace — e.g. s, sat, 3" style="font-size:1.15rem;letter-spacing:0.08em" />
+      <div class="trace-opts">
+        <span class="settings-label">Letters</span>
+        <div class="seg" id="traceCase">
+          <button type="button" data-v="lower" class="on">abc lowercase</button>
+          <button type="button" data-v="upper">ABC uppercase</button>
+          <button type="button" data-v="both">Aa both</button>
+        </div>
+        <span class="settings-label">Guide</span>
+        <div class="seg" id="traceGuide">
+          <button type="button" data-v="arrows" class="on">Dots with arrows &amp; numbers</button>
+          <button type="button" data-v="dots">Dots only</button>
+        </div>
+      </div>
+      <p style="margin:0.45rem 0 0;font-size:0.8rem;color:var(--muted)">NSW Foundation letters, one big card per letter on every student's pad. "Both" shows each letter as a capital and a small letter, so up to 4 letters; otherwise up to 8. Numbers are shown dotted on writing lines.</p>`;
     opts.appendChild(wrap);
+    wrap.querySelectorAll(".seg").forEach((seg) => seg.querySelectorAll("button").forEach((b) => (b.onclick = () => { seg.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); })));
   }
   if (m.workingUI) {
     const inp = document.createElement("input");
@@ -747,10 +761,16 @@ function readComposer() {
     wordBank = $("clozeMode").value === "bank";
   }
   const expected = m.workingUI ? $("expectedAns").value.trim() || undefined : undefined;
-  const trace = m.traceUI ? $("traceText").value.trim().slice(0, 8) || undefined : undefined;
+  let trace = m.traceUI ? $("traceText").value.trim().slice(0, 8) || undefined : undefined;
   if (m.traceUI && !trace) {
     toast("Type the letter(s) or number(s) to trace");
     return null;
+  }
+  const traceCase = m.traceUI ? $("traceCase")?.querySelector(".on")?.dataset.v || "lower" : undefined;
+  const traceGuide = m.traceUI ? $("traceGuide")?.querySelector(".on")?.dataset.v || "arrows" : undefined;
+  if (m.traceUI && traceCase === "both" && trace.replace(/\s/g, "").length > 4) {
+    trace = trace.replace(/\s/g, "").slice(0, 4);
+    toast("Showing both cases: the first 4 letters fit on the pad");
   }
   const counterKind = m.forceKind || undefined;
   const tableRows = m.tableUI ? parseInt($("rowsSel").value, 10) : undefined;
@@ -773,7 +793,7 @@ function readComposer() {
     });
     if (!pairImages.some(Boolean)) pairImages = undefined;
   }
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, trace, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, optionImages, pairImages };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, trace, traceCase, traceGuide, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, optionImages, pairImages };
 }
 
 /* ---------------- rendering ---------------- */
@@ -2267,7 +2287,7 @@ function stepDetail(st) {
     bits.push(st.options.map((o, i) => `${thumb(st.optionImages, i)}${esc(o)}${st.correct === i ? " ✓" : ""}`).join(" · "));
   if (st.passage) bits.push(`“${esc(st.passage.slice(0, 110))}${st.passage.length > 110 ? "…" : ""}”`);
   if (st.expected) bits.push(`Answer: <b>${esc(st.expected)}</b>`);
-  if (st.trace) bits.push(`✍️ Trace <b>${esc(st.trace)}</b>`);
+  if (st.trace) bits.push(`✍️ Trace <b>${esc(st.trace)}</b>${st.traceCase === "upper" ? " · capitals" : st.traceCase === "both" ? " · Aa both" : ""}${st.traceGuide === "dots" ? " · dots only" : ""}`);
   if (st.url) bits.push(`🔗 ${esc(st.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 70))}`);
   if (st.sprintSeconds) bits.push(`⏱ ${st.sprintSeconds / 60} min`);
   return bits.join(" &nbsp; ");
@@ -2703,7 +2723,12 @@ function fillComposer(st) {
   if (m.wordUI && $("wordFrame")) $("wordFrame").value = st.passage || "";
   if (m.linkUI) { $("linkUrl").value = st.url || ""; $("linkLabel").value = st.linkLabel || ""; }
   if (m.workingUI && $("expectedAns")) $("expectedAns").value = st.expected || "";
-  if (m.traceUI && $("traceText")) $("traceText").value = st.trace || "";
+  if (m.traceUI && $("traceText")) {
+    $("traceText").value = st.trace || "";
+    const pick = (id, v) => $(id)?.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
+    pick("traceCase", st.traceCase || "lower");
+    pick("traceGuide", st.traceGuide || "arrows");
+  }
   if (m.tableUI && $("rowsSel") && st.tableRows) $("rowsSel").value = String(st.tableRows);
   if (m.sprintUI && $("durSel") && st.sprintSeconds) $("durSel").value = String(st.sprintSeconds);
   if (m.tuneUI) { if ($("sigSel") && st.sig) $("sigSel").value = st.sig; if ($("barsSel") && st.bars) $("barsSel").value = String(st.bars); if ($("staffSel") && st.staff) $("staffSel").value = st.staff; if ($("keysSel")) $("keysSel").value = st.keys === false ? "0" : "1"; if ($("chordsSel")) $("chordsSel").value = st.chords === false ? "0" : "1"; if ($("keySel")) $("keySel").value = String(st.key || 0); }

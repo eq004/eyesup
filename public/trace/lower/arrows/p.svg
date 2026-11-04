@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600" role="img" aria-label="p Lowercase With_Instructions">
+<g transform="translate(-47.9718 -750.0976) scale(2.581345)">
+<g transform="translate(70 0) skewX(-6)">
+<path d="M257 403 L233 829 L249 481 C270 400 343 380 390 422 C450 481 421 613 365 655 C331 681 277 689 240 679" fill="none" stroke="#9CAAB8" stroke-width="17" stroke-dasharray="0.01 31" stroke-linecap="round" stroke-linejoin="round" />
+<defs><marker id="arr" markerWidth="7" markerHeight="7" refX="5.2" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L6 3 L0 6 Z" fill="#087E95" /></marker></defs>
+<circle cx="257" cy="403" r="12" fill="#087E95" stroke="white" stroke-width="3" />
+<path d="M 289.5 416.3 L 286.7 486.3" fill="none" stroke="#087E95" stroke-width="4.5" stroke-linecap="round" marker-end="url(#arr)" />
+<circle cx="322.3" cy="395.6" r="23" fill="white" stroke="#087E95" stroke-width="3.5" />
+<text x="322.3" y="406.6" text-anchor="middle" fill="#087E95" font-family="Arial,sans-serif" font-size="29" font-weight="700">1</text>
+</g></g>
+</svg>
