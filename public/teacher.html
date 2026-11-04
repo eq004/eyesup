@@ -121,6 +121,16 @@
   .menu button:hover { background: var(--paper); }
   /* the class controls sit on a white band under the navy bar */
   .classbar { background: var(--surface); color: var(--ink); margin: 0.7rem -1.4rem -0.75rem; padding: 0.6rem 1.4rem; }
+  /* Lesson settings: one button on the bar; open, it unfolds as a full-width panel beneath. */
+  .lesson-settings > summary { list-style: none; cursor: pointer; user-select: none; }
+  .lesson-settings > summary::-webkit-details-marker { display: none; }
+  .lesson-settings > summary::after { content: " ▸"; opacity: 0.6; }
+  .lesson-settings[open] { flex-basis: 100%; }
+  .lesson-settings[open] > summary::after { content: " ▾"; }
+  .lesson-settings[open] > summary { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .settings-panel { display: flex; flex-wrap: wrap; gap: 0.5rem 0.55rem; align-items: center; margin-top: 0.55rem; padding: 0.65rem 0.8rem; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+  .settings-label { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0.1rem 0 0.4rem; }
+  .settings-label:first-child { margin-left: 0; }
   .spacer { flex: 1; }
 
   /* ---------- lesson plans: library ---------- */
@@ -764,17 +774,26 @@
       <span class="join-url" id="joinUrl"></span>
       <span class="pill"><span class="dot"></span><span id="studentCount">0</span>&nbsp;joined</span>
       <span class="spacer"></span>
-      <button class="btn" id="copyLink" title="Copy the join link — paste it into Google Classroom, Teams, email…">🔗 Link</button>
-      <button class="btn" id="qrToggle" title="Put the big QR / join screen on the projector">🔳 QR</button>
+      <button class="btn" id="copyLink" title="Copy the student join link — paste it into Google Classroom, Teams, email…">🔗 Student link</button>
+      <button class="btn" id="qrToggle" title="Put the big student QR / join screen on the projector">🔳 Student QR</button>
       <a class="btn" id="openProjector" target="_blank" rel="noopener" href="/projector" style="text-decoration:none">📽️ Projector</a>
-      <button class="btn" id="remoteBtn" title="Control the class from your phone">📱 Remote</button>
-      <button class="btn" id="togglePreview" title="See exactly what students see">👁 Student view</button>
-      <button class="btn" id="namesBtn" title="Show student names on the projector, for every activity (anonymous ones excepted)">🏷 Names: off</button>
-      <button class="btn" id="holdBtn" title="Keep every activity's answers off the projector until you press Reveal">🙈 Hold answers: off</button>
-      <button class="btn" id="chgBtn" title="Off: one answer each, a sent answer is final. On: students see 'Change my answer' after sending.">🔁 Change answers: off</button>
+      <button class="btn" id="remoteBtn" title="Control the class from your phone">📱 Teacher remote</button>
       <button class="btn dark" id="eyesUpTop">👀 EYES UP</button>
-      <button class="btn" id="newLessonBtn" title="Save this class and start the next one — new code, same lesson plan">🆕 Next class</button>
-      <button class="btn" id="endBtn">✅ Finish</button>
+      <!-- Everything that is set once per lesson lives behind one button, so the bar stays calm. -->
+      <details class="lesson-settings" id="lessonSettings">
+        <summary class="btn" title="Names, held answers, changing answers, student view, next class, finish">⚙️ Lesson settings</summary>
+        <div class="settings-panel">
+          <span class="settings-label">On the projector</span>
+          <button class="btn" id="namesBtn" title="Show student names on the projector, for every activity (anonymous ones excepted)">🏷 Names: off</button>
+          <button class="btn" id="holdBtn" title="Keep every activity's answers off the projector until you press Reveal">🙈 Hold answers: off</button>
+          <span class="settings-label">Students</span>
+          <button class="btn" id="chgBtn" title="Off: one answer each, a sent answer is final. On: students see 'Change my answer' after sending.">🔁 Change answers: off</button>
+          <button class="btn" id="togglePreview" title="See exactly what students see">👁 Student view</button>
+          <span class="settings-label">This class</span>
+          <button class="btn" id="newLessonBtn" title="Save this class and start the next one — new code, same lesson plan">🆕 Next class</button>
+          <button class="btn" id="endBtn">✅ Finish</button>
+        </div>
+      </details>
     </div>
   </header>
 

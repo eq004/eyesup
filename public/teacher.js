@@ -752,7 +752,7 @@ function render() {
   cb.classList.toggle("primary", !!state.allowChange);
   $("inviteBtn").style.display = teacherToken() && state?.storage ? "" : "none";
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
-  $("qrToggle").textContent = state.showJoin ? "🔳 QR is up" : "🔳 QR";
+  $("qrToggle").textContent = state.showJoin ? "🔳 Student QR is up" : "🔳 Student QR";
   $("studentCount").textContent = state.students.length;
   if ($("classSel") && $("classSel").value !== String(state.classId || "")) renderClassSel();
   if ($("classEdit")) $("classEdit").style.display = state.classId ? "" : "none";
