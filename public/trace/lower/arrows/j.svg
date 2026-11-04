@@ -1,12 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600" role="img" aria-label="j Lowercase With_Instructions">
-<g transform="translate(-50.1657 -541.9396) scale(2.319688)">
-<g transform="translate(70 0) skewX(-6)">
-<path d="M384 405 L362 718 C356 817 304 852 244 809" fill="none" stroke="#9CAAB8" stroke-width="17" stroke-dasharray="0.01 31" stroke-linecap="round" stroke-linejoin="round" />
-<circle cx="388" cy="331" r="9" fill="#9CAAB8" />
-<defs><marker id="arr" markerWidth="7" markerHeight="7" refX="5.2" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0 0 L6 3 L0 6 Z" fill="#087E95" /></marker></defs>
-<circle cx="384" cy="405" r="12" fill="#087E95" stroke="white" stroke-width="3" />
-<path d="M 416.5 418.3 L 413.7 488.3" fill="none" stroke="#087E95" stroke-width="4.5" stroke-linecap="round" marker-end="url(#arr)" />
-<circle cx="449.3" cy="397.6" r="23" fill="white" stroke="#087E95" stroke-width="3.5" />
-<text x="449.3" y="408.6" text-anchor="middle" fill="#087E95" font-family="Arial,sans-serif" font-size="29" font-weight="700">1</text>
-</g></g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-30 -10 160 160" width="1600" height="1600" role="img" aria-label="j NSW Foundation Style tracing card">
+<rect x="-30" y="-10" width="160" height="160" fill="#fff"/>
+<g stroke-linecap="round"><line x1="-28" y1="2" x2="128" y2="2" stroke="#AAB7CC" stroke-width="1.1"/><line x1="-28" y1="50" x2="128" y2="50" stroke="#C9D3E3" stroke-width="1.1" stroke-dasharray="3 4"/><line x1="-28" y1="100" x2="128" y2="100" stroke="#AAB7CC" stroke-width="1.3"/></g>
+<g transform="translate(10.5 0) skewX(-6)"><circle cx="30" cy="51" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="58.2" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="65.4" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="72.5" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="79.7" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="86.9" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="94.1" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="101.3" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="108.5" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="115.6" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="122.8" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="130" r="3.1" fill="#9CAAB8"/><circle cx="28.5" cy="136.8" r="3.1" fill="#9CAAB8"/><circle cx="24.3" cy="142.3" r="3.1" fill="#9CAAB8"/><circle cx="18.1" cy="145.5" r="3.1" fill="#9CAAB8"/><circle cx="11.2" cy="145.8" r="3.1" fill="#9CAAB8"/><circle cx="4.8" cy="143.1" r="3.1" fill="#9CAAB8"/><circle cx="0.1" cy="138" r="3.1" fill="#9CAAB8"/><circle cx="30" cy="30" r="4.1850000000000005" fill="#9CAAB8"/><line x1="30" y1="60" x2="30" y2="75" stroke="#087E95" stroke-width="1.6" stroke-linecap="round"/><path d="M30 79.5 L26.8 75 L33.2 75 Z" fill="#087E95"/><circle cx="30" cy="38" r="6.2" fill="#fff" stroke="#087E95" stroke-width="1.2"/><text x="30" y="40.9" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.4" font-weight="700" fill="#087E95">1</text><circle cx="30" cy="51" r="4" fill="#087E95" stroke="#fff" stroke-width="1"/><circle cx="43" cy="30" r="6.2" fill="#fff" stroke="#087E95" stroke-width="1.2"/><text x="43" y="32.9" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.4" font-weight="700" fill="#087E95">2</text></g>
 </svg>

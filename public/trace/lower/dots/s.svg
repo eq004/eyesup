@@ -1,6 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600" role="img" aria-label="s Lowercase Dots_Only">
-<g transform="translate(-731.4965 -1412.3944) scale(4.190141)">
-<g transform="translate(70 0) skewX(-6)">
-<path d="M407 420 C342 365 273 411 276 462 C279 506 338 517 367 537 C442 589 394 681 288 657" fill="none" stroke="#9CAAB8" stroke-width="17" stroke-dasharray="0.01 31" stroke-linecap="round" stroke-linejoin="round" />
-</g></g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-30 -10 160 160" width="1600" height="1600" role="img" aria-label="s NSW Foundation Style tracing card">
+<rect x="-30" y="-10" width="160" height="160" fill="#fff"/>
+<g stroke-linecap="round"><line x1="-28" y1="2" x2="128" y2="2" stroke="#AAB7CC" stroke-width="1.1"/><line x1="-28" y1="50" x2="128" y2="50" stroke="#C9D3E3" stroke-width="1.1" stroke-dasharray="3 4"/><line x1="-28" y1="100" x2="128" y2="100" stroke="#AAB7CC" stroke-width="1.3"/></g>
+<g transform="translate(10.5 0) skewX(-6)"><circle cx="36.5" cy="55.5" r="3.1" fill="#9CAAB8"/><circle cx="30.9" cy="50.7" r="3.1" fill="#9CAAB8"/><circle cx="23.6" cy="50.5" r="3.1" fill="#9CAAB8"/><circle cx="17.8" cy="55" r="3.1" fill="#9CAAB8"/><circle cx="16.1" cy="62.1" r="3.1" fill="#9CAAB8"/><circle cx="19.2" cy="68.8" r="3.1" fill="#9CAAB8"/><circle cx="26.4" cy="74.2" r="3.1" fill="#9CAAB8"/><circle cx="33.5" cy="79.5" r="3.1" fill="#9CAAB8"/><circle cx="36.7" cy="85.4" r="3.1" fill="#9CAAB8"/><circle cx="36.3" cy="92.1" r="3.1" fill="#9CAAB8"/><circle cx="32.3" cy="97.5" r="3.1" fill="#9CAAB8"/><circle cx="26" cy="100" r="3.1" fill="#9CAAB8"/><circle cx="19.5" cy="98.6" r="3.1" fill="#9CAAB8"/><circle cx="14.6" cy="94" r="3.1" fill="#9CAAB8"/></g>
 </svg>
