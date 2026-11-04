@@ -1455,7 +1455,6 @@ $("closePreview").onclick = () => {
   $("phonePanel").classList.remove("show");
   $("phoneFrame").src = "about:blank"; // disconnects the preview student so the roster stays honest
 };
-$("eyesUpTop").onclick = () => send({ type: "eyes_up" });
 $("newLessonBtn").onclick = () => {
   if (confirm("Start a fresh lesson?\n\nThis one is saved to the archive, its session ends for the students in the room, and you get a new class code."))
     send({ type: "new_lesson" });
@@ -1975,6 +1974,8 @@ $("menuBtn").onclick = (e) => {
   $("menu").classList.toggle("show");
 };
 document.addEventListener("click", () => $("menu").classList.remove("show"));
+// The Lesson settings drop-down closes like the menu: a click anywhere else puts it away.
+document.addEventListener("click", (e) => { const d = $("lessonSettings"); if (d && d.open && !d.contains(e.target)) d.open = false; });
 
 /* ---------------- saved lesson plans: server calls ---------------- */
 
