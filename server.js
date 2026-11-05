@@ -2465,6 +2465,8 @@ function projectorState(session) {
     nextStepLabel: (() => { const st = session.sequence?.[session.seqIndex + 1]; return st ? (st.mode === "slide" ? `slide ${st.page}` : st.mode === "deck" ? "live slides" : st.mode) : null; })(),
     nextSlideImg: session.sequence?.[session.seqIndex + 1]?.mode === "slide" ? session.sequence[session.seqIndex + 1].img : null,
     nextStepAfterSlide: session.sequence?.[session.seqIndex + 1]?.afterSlide || null,
+    // a slide to go back to (for the ◀ Previous slide corner button on PDF slides)
+    prevSlide: session.phase === "slide" && (session.sequence || []).slice(0, Math.max(0, session.seqIndex)).some((st) => st.mode === "slide" || st.mode === "deck"),
     // slides (a live deck or a slide step) are waiting behind the current activity, so the board offers a way back
     slidesBehind: session.phase !== "slide" && session.phase !== "deck" && (!!session.deck || (session.sequence || []).slice(0, Math.max(0, session.seqIndex) + 1).some((st) => st.mode === "slide" || st.mode === "deck")),
     timer: session.timer,

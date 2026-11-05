@@ -159,6 +159,17 @@ function renderInner() {
   const board = (state.phase === "slide" || state.phase === "deck") && !state.focus && !state.showJoin;
   document.body.classList.toggle("board", board);
   document.getElementById("backSlides").hidden = board || !state.slidesBehind;
+  // PDF slides: corner buttons. The question shows only when it is the very next step, i.e. after its slide.
+  const onSlide = board && state.phase === "slide";
+  const sn = document.getElementById("slideNext"), sp = document.getElementById("slidePrev");
+  const nl = state.nextStepLabel;
+  sn.hidden = !onSlide || !nl;
+  if (!sn.hidden) {
+    const boardNext = nl === "live slides" || nl.startsWith("slide ");
+    sn.classList.toggle("ask", !boardNext);
+    sn.textContent = boardNext ? (nl === "live slides" ? "Next: live slides ▶" : "Next slide ▶") : `Eyes Up: ${MODE_TAGS[nl] || nl} ▶`;
+  }
+  sp.hidden = !onSlide || !state.prevSlide;
   document.getElementById("cornerCode").textContent = `${state.code} · ${state.studentCount} in`;
 
   updateJoinBadge();
@@ -1394,4 +1405,6 @@ function toggleFull() {
 }
 fullBtn.onclick = toggleFull;
 document.getElementById("backSlides").onclick = () => send({ type: "back_to_slides" });
+document.getElementById("slideNext").onclick = () => send({ type: "next" });
+document.getElementById("slidePrev").onclick = () => send({ type: "seq_prev" });
 document.addEventListener("fullscreenchange", () => { fullBtn.textContent = document.fullscreenElement ? "⛶ leave full screen" : "⛶ full screen"; });
