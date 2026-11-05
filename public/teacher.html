@@ -159,7 +159,12 @@
   .act-primary { min-width: 250px; border-color: transparent; color: #fff; background: linear-gradient(120deg, #123a8a 0%, #1270b8 55%, #15a3c7 100%); }
   .act-primary .act-text small { color: rgba(255, 255, 255, 0.85); }
   .act-primary .act-chev { background: #fff; color: #123a8a; }
-  .action-row .link-wrap, .action-row > .btn.big { align-self: center; }
+  /* Four doors share the row: Projector · Teacher remote · Student link · Student QR */
+  .action-row > .act-card, .action-row .link-wrap { flex: 1 1 170px; min-width: 0; }
+  .action-row .link-wrap { display: flex; }
+  .action-row .link-wrap .act-card { flex: 1 1 auto; min-width: 0; }
+  .action-row .act-text { min-width: 0; }
+  .action-row .act-text small { white-space: normal; line-height: 1.2; }
   .action-row .btn.big { padding: 0.9rem 1rem; border-radius: 14px; white-space: nowrap; }
   .join-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 0.9rem; padding: 0.55rem 0.9rem; border-radius: 14px; background: var(--paper); }
   .join-label { font-family: var(--font-display); font-weight: 800; font-size: 1.15rem; color: var(--navy); }
@@ -191,9 +196,9 @@
   .tools-cat .tool-block { flex: 1 1 250px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); padding: 0.8rem 0.95rem; }
   .tools-cat .tool-block:last-of-type { flex-basis: 340px; }
   .tools-cat #focusClearRow { flex-basis: 100%; }
-  .mini-doors { display: flex; flex-wrap: nowrap; gap: 0.5rem; align-self: center; }
-  .mini-doors .btn.big { flex-direction: column; gap: 0.1rem; line-height: 1.15; padding: 0.5rem 0.9rem; }
-  .mini-doors .btn.big small { font-size: 0.7rem; font-weight: 600; color: var(--muted); }
+  .act-chev.act-ico { font-size: 1.15rem; background: var(--paper); }
+  .act-card.on { border-color: var(--green); background: var(--green-soft); }
+  .act-card.on .act-chev { background: var(--green); color: #fff; }
 
   /* Compact and docked: the teach top stays under the header while the page scrolls. */
   .teach-top { position: sticky; top: var(--head-h, 104px); z-index: 15; background: var(--paper); gap: 1rem; padding: 0.7rem 1.4rem 0.6rem; grid-template-columns: minmax(0, 1fr) 340px; box-shadow: 0 10px 18px -16px rgba(14, 36, 69, 0.45); }
@@ -885,7 +890,7 @@
     </div>
     <div class="hrow">
       <nav class="views" aria-label="Main">
-        <button class="view-tab" data-view="teach">Teach</button>
+        <button class="view-tab on" data-view="teach">Teach</button>
         <button class="view-tab" data-view="plans">Lesson plans</button>
       </nav>
     </div>
@@ -898,17 +903,15 @@
       <div class="action-row">
         <a class="act-card act-primary" id="openProjector" target="_blank" rel="noopener" href="/projector" title="Open the classroom screen in a new window"><span class="act-text"><b>Projector</b><small>Launch your lesson</small></span><span class="act-chev">›</span></a>
         <button class="act-card" id="remoteBtn" title="Control the class from your phone"><span class="act-text"><b>Teacher remote</b><small>Control this lesson from your phone.</small></span><span class="act-chev">›</span></button>
-        <div class="mini-doors">
         <span class="link-wrap">
-        <button class="btn big" id="copyLink" title="Show and copy the student join link — paste it into Google Classroom, Teams, email…"><span>🔗 Student link</span><small>best for students accessing with laptops</small></button>
+        <button class="act-card" id="copyLink" title="Show and copy the student join link — paste it into Google Classroom, Teams, email…"><span class="act-text"><b>Student link</b><small>best for students accessing with laptops</small></span><span class="act-chev act-ico">🔗</span></button>
         <div class="link-pop" id="linkPop" hidden>
           <div class="link-pop-head">Student link copied ✓</div>
           <input type="text" id="linkPopUrl" readonly title="The link students open — click to select it" />
           <div class="link-pop-foot">Or they go to <b id="linkPopHost"></b> and type the code <b id="linkPopCode"></b></div>
         </div>
-      </span>
-        <button class="btn big" id="qrToggle" title="Put the big student QR / join screen on the projector"><span>🔳 Student QR</span><small>best for students accessing with iPads</small></button>
-        </div>
+        </span>
+        <button class="act-card" id="qrToggle" title="Put the big student QR / join screen on the projector"><span class="act-text"><b>Student QR</b><small>best for students accessing with iPads</small></span><span class="act-chev act-ico">🔳</span></button>
       </div>
       <div class="join-row">
         <span class="join-label">Class join</span>
@@ -957,7 +960,7 @@
   </div>
 
   <!-- ============ TEACH ============ -->
-  <div class="view" id="viewTeach" hidden>
+  <div class="view" id="viewTeach">
   <div class="layout">
     <main>
       <!-- The lesson plan being taught -->

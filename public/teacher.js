@@ -830,8 +830,8 @@ function render() {
     if (lim != null && lim !== 1) ln.value = lim;
   }
   $("inviteBtn").style.display = teacherToken() && state?.storage ? "" : "none";
-  $("qrToggle").classList.toggle("primary", !!state.showJoin);
-  $("qrToggle").innerHTML = state.showJoin ? "<span>🔳 Student QR is up</span><small>tap to take it down</small>" : "<span>🔳 Student QR</span><small>best for students accessing with iPads</small>";
+  $("qrToggle").classList.toggle("on", !!state.showJoin);
+  $("qrToggle").querySelector(".act-text").innerHTML = state.showJoin ? "<b>Student QR is up</b><small>tap to take it down</small>" : "<b>Student QR</b><small>best for students accessing with iPads</small>";
   $("studentCount").textContent = state.students.length;
   if ($("classSel") && $("classSel").value !== String(state.classId || "")) renderClassSel();
   if ($("classEdit")) $("classEdit").style.display = state.classId ? "" : "none";
@@ -2058,11 +2058,11 @@ $("pwInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("pwGo
 /* Views: Lesson plans · Teach                                        */
 /* ================================================================== */
 
-let view = sessionStorage.getItem("eyesup_view") || "plans";
+// The page always opens on Teach; Lesson plans is a tab away.
+let view = "teach";
 
 function showView(v) {
   view = v === "teach" ? "teach" : "plans";
-  sessionStorage.setItem("eyesup_view", view);
   $("viewPlans").hidden = view !== "plans";
   $("viewTeach").hidden = view !== "teach";
   $("classBar").hidden = view !== "teach";
