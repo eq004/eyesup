@@ -72,7 +72,7 @@ The owner does not browse teachers' lessons from the admin page; the admin page 
 
 ## How a teacher or school gets data deleted
 
-There is no "delete this lesson" or "delete this student" button yet (it is first on the fix list). Today the process is manual and goes through the owner:
+With the `safety-fixes` branch deployed, a teacher can delete a whole lesson themselves (Data page → 🗑 Delete lesson: the record, every picture and any share link go at once), delete a class list (Teach → Class → ✎ → Delete), stop a share link (🔗 → ✕ Stop sharing) and delete their own account with everything in it (My account). Removing **one child** from a lesson while keeping the rest is still a manual job for the owner:
 
 1. The teacher (or school) emails the owner with: the teacher's sign-in name, the lesson date(s) or class name, and the child's first name if it is a single child.
 2. The owner opens **Supabase → the project → Table Editor**.

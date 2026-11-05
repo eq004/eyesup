@@ -23,7 +23,7 @@ Then open **http://localhost:4630**.
 
 - **/teacher** — the dashboard. A session and 4-letter join code are created automatically.
 - **/join** — students enter the code (no accounts). Also reachable via the QR code on the projector.
-- **/projector?code=XXXX** — the big classroom screen (opens via the 📽️ button on the dashboard).
+- **/projector?code=XXXX** — the big classroom screen. Open it from the 📽️ button on the dashboard: that link carries the room's key, which lets the screen drive the lesson (next step, reveal, timer, names) and download answers. A screen opened by typing the code — a student's phone, say — can only watch.
 
 For real classroom use, students on other devices connect to your machine's LAN address (e.g. `http://192.168.x.x:4630/join`).
 
@@ -42,7 +42,7 @@ Teacher controls: **Open / Close responses · Show / Hide results · Reveal (one
 
 The **📱 Student view** button on the dashboard opens a phone-sized live preview of the real student experience — it joins the session as "👁 Preview" so a teacher can test any interaction end-to-end without a second device. Closing the panel removes the preview student from the roster.
 
-Written answers (Short Answer, Predict, anonymous questions) arrive on the teacher dashboard privately and only reach the projector when the teacher reveals them — gradually or all at once. Live modes (word cloud, polls, votes) build on the projector in real time.
+Text answers and votes build on the projector as they arrive; the teacher's controls take things down (hide results, un-reveal one answer, spotlight). **Pictures and drawings are different: they arrive on the teacher dashboard first and reach the projector only when the teacher reveals them**, one at a time or all at once. With **🙈 Hold answers** on (Lesson settings), every kind of answer waits for the teacher.
 
 ## Phone remote
 
@@ -86,6 +86,8 @@ The app is one Node process (HTTP + WebSockets), so it needs a host that runs pe
 
 Typical Render setup: push this folder to a GitHub repo → Render "New Web Service" → build command `npm install`, start command `npm start`. The server reads `PORT` from the environment automatically.
 
+**Safety and privacy**: the review, incident plan and monthly checklist are in `docs/safety/`; the public privacy page is `/privacy`. Three settings matter before real classes use the live site: `AUTH_SECRET` (a long random string that signs sign-ins; the server warns at start-up until it is set), `PUBLIC_URL` (the site's own address) and, if you can, `DATABASE_CA` (Supabase's database certificate, so the connection is verified). Passwords need 10+ characters. Deploying a version with the new sign-in format signs every teacher out once.
+
 **Teacher password**: set the `TEACHER_PASSWORD` environment variable on the host. When set, opening `/teacher` asks for the password before a session can be created or resumed, and `/report` + `/api/summary` require it too. Students and the projector never need the password — a live 4-letter session code is their only key, and without a teacher there are no sessions to join. When the variable is unset (e.g. local testing), there is no gate.
 
 Caveats for live use: sessions are in-memory, so a server restart/redeploy clears them (fine for a lesson-length tool), and free hosting tiers may sleep when idle — the first visit of the day can take a minute to wake.
@@ -125,11 +127,16 @@ Pictures students submit (Drop an Image, Image + Writing, Sketch, Annotate) are 
 | `TRIAL_DAYS` | *(optional)* free-trial length for new accounts, default 30 |
 | `OPEN_SIGNUP` | *(optional)* `1`/`0` to force sign-up open or invite-only; by default it opens when billing is on |
 | `AUTH_SECRET` | *(recommended before selling)* a long random string that signs sign-ins, so the invite code is no longer also the signing key. Setting it signs everyone out once. |
-| `PUBLIC_URL` | *(optional)* site address used for Stripe return links |
+| `PUBLIC_URL` | site address used for Stripe return links (set it before selling) |
+| `DATABASE_CA` | *(recommended)* the database's CA certificate (PEM) from Supabase → Project Settings → Database, so the connection is verified |
+| `LESSON_KEEP_DAYS` | *(optional)* delete whole lesson records (names and answers) after this many days; unset keeps them until a teacher deletes them |
+| `MAX_RESP_IMAGE_MB` | *(optional)* photo budget per room in memory, default 48 |
 
 With billing on: new accounts start a trial; accounts that existed before stay on **free access** until the owner changes them; when a trial or subscription lapses the teacher can still sign in and open/export their data but cannot start a new class (a class already running is never interrupted); a late card gets 3 days' grace. Prices are read from Stripe, so they are changed there. Card details never touch this server — checkout and "manage subscription" are Stripe-hosted pages. School licences are recorded by the owner in the admin page (plan *School licence* + end date) and invoiced outside the app.
 
 **AI summaries (optional)**: set `ANTHROPIC_API_KEY` on Render and the data section's ✨ *Visualise this lesson* snapshot gains a **Summarise the written answers** button — common threads, misconceptions and follow-ups across every short/long answer in the lesson. Only the answer texts are sent (never student names); the result is saved with the lesson so it's free to re-open. `AI_MODEL` overrides the model (default `claude-sonnet-5`). Without the key the feature stays hidden.
+
+**Accounts, in brief**: a sign-in lasts 90 days and renews itself while in use; My account has *Sign out everywhere else*, optional *two-factor sign-in* (authenticator app; recommended for owners), *Download my data* and *Delete my account*. A finished room leaves the server's memory 15 minutes after the teacher ends it. The *joined* pill on the Teach page lists who is in the room and can remove a seat. The data page can delete a lesson and stop a share link (share links show no names of any kind and expire after 90 days). The owner admin page records every owner action and asks for the owner's password again before giving a password, switching an account off or making an owner; a password an owner gives out must be changed at the teacher's next sign-in.
 
 A server restart (a deploy, or the host recycling the process) is no longer a lost lesson: the dashboard asks for its room back by code, the room is rebuilt with the same code and the same lesson record (earlier answers stay in it), the classroom screen keeps showing the board and reconnects on its own, and students’ screens show “Reconnecting to your class…” and rejoin their seats by themselves. The classroom screen’s bar also has **⬇ download this question** — pictures as a ZIP for drawing and photo activities, a spreadsheet for everything else — so a teacher can keep a record mid-lesson without leaving the board. Images are kept for **60 days** by default (`IMAGE_KEEP_DAYS` on Render changes this) and then pruned, to keep the free database within its limits. Everything else about the lesson stays forever.
 

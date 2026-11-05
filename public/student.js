@@ -86,6 +86,22 @@ function esc(s) {
 // as a labelled preview student, no join form.
 const PREVIEW = new URLSearchParams(location.search).get("preview") === "1";
 const PREVIEW_CODE = (new URLSearchParams(location.search).get("code") || "").toUpperCase();
+const PREVIEW_KEY = new URLSearchParams(location.search).get("k") || ""; // the dashboard's room key: only it may join as the preview
+let removed = false; // the teacher removed this seat: stay off the class until the child joins afresh
+
+// The first name is remembered on the device for a day, so the next lesson is one tap —
+// and no longer, so a shared iPad does not offer yesterday's child's name to today's.
+function savedName() {
+  try {
+    const at = Number(localStorage.getItem("eyesup_name_at") || 0);
+    if (!at || Date.now() - at > 24 * 60 * 60 * 1000) { localStorage.removeItem("eyesup_name"); return ""; }
+    return localStorage.getItem("eyesup_name") || "";
+  } catch { return ""; }
+}
+function rememberName(n) {
+  try { localStorage.setItem("eyesup_name", n); localStorage.setItem("eyesup_name_at", String(Date.now())); } catch {}
+  sessionStorage.setItem("eyesup_name", n);
+}
 
 // A join the student tapped before the socket was ready (slow Wi-Fi, phone
 // just woken, server waking up). It goes the moment the socket opens, and the
@@ -107,23 +123,28 @@ let replaced = false; // this seat was opened on another device — this screen 
 // The seat is remembered on the device, not just in this tab, so a closed tab, a reopened
 // browser or a locked phone walks straight back into the same class for a few hours.
 const SEAT_TTL = 4 * 60 * 60 * 1000;
-function saveSeat(code, sid) {
+// The seat comes with a secret the server gave this device; only a device that presents it can
+// take the seat back by number, so a classmate cannot sit down as someone else.
+function saveSeat(code, sid, secret) {
   sessionStorage.setItem("eyesup_sid", sid);
   sessionStorage.setItem("eyesup_code", code);
-  const name = sessionStorage.getItem("eyesup_name") || localStorage.getItem("eyesup_name") || "";
-  try { localStorage.setItem("eyesup_seat", JSON.stringify({ code, sid, name, at: Date.now() })); } catch {}
+  if (secret) sessionStorage.setItem("eyesup_secret", secret);
+  const name = sessionStorage.getItem("eyesup_name") || savedName();
+  try { localStorage.setItem("eyesup_seat", JSON.stringify({ code, sid, secret: secret || sessionStorage.getItem("eyesup_secret") || "", name, at: Date.now() })); } catch {}
 }
 function loadSeat() {
   const code = sessionStorage.getItem("eyesup_code"), sid = sessionStorage.getItem("eyesup_sid");
-  if (code && sid) return { code, sid, name: sessionStorage.getItem("eyesup_name") || "" };
+  if (code && sid) return { code, sid, secret: sessionStorage.getItem("eyesup_secret") || "", name: sessionStorage.getItem("eyesup_name") || "" };
   try { const s = JSON.parse(localStorage.getItem("eyesup_seat") || "null"); if (s && s.code && s.sid && Date.now() - s.at < SEAT_TTL) return s; } catch {}
   return null;
 }
 function clearSeat() {
   sessionStorage.removeItem("eyesup_sid");
   sessionStorage.removeItem("eyesup_code");
+  sessionStorage.removeItem("eyesup_secret");
   try { localStorage.removeItem("eyesup_seat"); } catch {}
 }
+const seatJoin = (s) => ({ type: "student_join", code: s.code, studentId: s.sid, secret: s.secret || "", name: s.name });
 // Photos take a moment on school Wi-Fi: keep the child told, and offer a retry if nothing comes back.
 let sendWatch = null;
 function watchSend(btn, reset) {
@@ -151,25 +172,41 @@ function connect() {
     failedConnects = 0;
     $("conn").textContent = "";
     if (PREVIEW && PREVIEW_CODE) {
-      ws.send(JSON.stringify({ type: "student_join", code: PREVIEW_CODE, name: "👁 Preview" }));
+      ws.send(JSON.stringify({ type: "student_join", code: PREVIEW_CODE, name: "👁 Preview", key: PREVIEW_KEY }));
       return;
     }
     if (pendingJoin) { ws.send(JSON.stringify({ type: "student_join", ...pendingJoin })); return; }
-    if (replaced) return;
+    if (replaced || removed) return;
     const seat = loadSeat();
     // Back after a refresh, a closed tab or a reopened browser: pick the seat up again — unless this link points at a different room.
     const q = new URLSearchParams(location.search);
     const urlCode = (q.get("code") || q.get("c") || "").toUpperCase();
-    if (seat && (!urlCode || urlCode === seat.code || urlCode.length === 5)) ws.send(JSON.stringify({ type: "student_join", code: seat.code, studentId: seat.sid, name: seat.name }));
+    if (seat && (!urlCode || urlCode === seat.code || urlCode.length === 5)) ws.send(JSON.stringify(seatJoin(seat)));
   };
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === "joined") {
       joined = true;
+      removed = false;
       lastRenderKey = null; // a fresh seat always gets a fresh paint
       pendingJoin = null;
       clearTimeout(pendingTimer);
-      saveSeat(msg.code, msg.studentId);
+      saveSeat(msg.code, msg.studentId, msg.secret);
+      return;
+    }
+    if (msg.type === "removed") {
+      // The teacher took this seat out of the class. Say so, and wait for the child to join afresh.
+      removed = true;
+      joined = false;
+      state = null;
+      lastRenderKey = null;
+      clearSeat();
+      show(`<div class="big-emoji">🙋</div>
+        <div class="state-title">Your teacher has taken you out of the class</div>
+        <p class="state-sub">Ask your teacher if you should join again.</p>
+        <button class="btn send" id="joinAgain" style="margin-top:1rem">Join again</button>`, () => {
+        $("joinAgain").onclick = () => { removed = false; renderJoin(true, { name: "" }); };
+      });
       return;
     }
     if (msg.type === "replaced") {
@@ -224,7 +261,7 @@ function connect() {
         clearTimeout(seatRetryTimer);
         seatRetryTimer = setTimeout(() => {
           const s = loadSeat();
-          if (s && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "student_join", code: s.code, studentId: s.sid, name: s.name }));
+          if (s && ws && ws.readyState === 1) ws.send(JSON.stringify(seatJoin(s)));
           else wakeUp();
         }, 4000);
         return;
@@ -245,8 +282,9 @@ function connect() {
       render();
     }
   };
-  ws.onclose = () => {
-    if (replaced) return; // another device has this seat; stay quiet until the child asks for it back
+  ws.onclose = (ev) => {
+    if (replaced || removed) return; // another device has this seat, or the teacher removed it; stay quiet until the child asks
+    if (ev && ev.code === 4003) { clearSeat(); joined = false; state = null; lastRenderKey = null; } // the room was closed; a fresh join is needed
     failedConnects += 1;
     $("conn").textContent = failedConnects >= 3 ? "Can't reach the class right now — check Wi-Fi or mobile data. Still trying…" : "reconnecting…";
     clearTimeout(reconnectTimer);
@@ -1911,7 +1949,7 @@ function renderJoin(forceFullForm, opts = {}) {
   const params = new URLSearchParams(location.search);
   const preset = opts.code !== undefined ? opts.code : (params.get("code") || params.get("c") || "").toUpperCase();
   // The device remembers who you are — next lesson is one tap.
-  const savedName = opts.name !== undefined ? opts.name : localStorage.getItem("eyesup_name") || "";
+  const savedName = opts.name !== undefined ? opts.name : window.savedName();
 
   const say = (text, kind) => {
     const el = $("joinMsg");
@@ -1923,8 +1961,7 @@ function renderJoin(forceFullForm, opts = {}) {
   const doJoin = (c, n) => {
     if (c.length !== 4 && c.length !== 5) { say("Type the 4-letter code from the board (or the 5-letter code on your class sticker).", "warn"); $("codeInput")?.focus(); return; }
     if (!n) { say("Type your first name so your teacher knows it's you.", "warn"); $("nameInput")?.focus(); return; }
-    localStorage.setItem("eyesup_name", n);
-    sessionStorage.setItem("eyesup_name", n);
+    rememberName(n);
     clearSeat();
     pendingJoin = { code: c, name: n };
     const btn = $("joinBtn") || $("quickJoin");
@@ -1973,7 +2010,7 @@ function renderJoin(forceFullForm, opts = {}) {
     <input type="text" id="nameInput" placeholder="First name" maxlength="24" value="${forceFullForm && opts.name === undefined ? "" : esc(savedName)}" style="margin-top:0.6rem;text-align:center" />
     <button class="btn send" id="joinBtn">Join</button>
     <p class="join-msg ${opts.message ? "warn" : ""}" id="joinMsg">${esc(opts.message || "")}</p>
-    <p class="hint">No account. No downloads. You're just here to think.</p>
+    <p class="hint">No account. No downloads. You're just here to think. <a href="/privacy" target="_blank" rel="noopener" style="color:inherit">Privacy</a></p>
     <p style="text-align:center;margin-top:1.2rem">Eyes Up <a class="by-peakyou" href="https://peakyou.com.au" target="_blank" rel="noopener">by <b>PeakYou</b></a></p>`, () => {
     const code = $("codeInput"), name = $("nameInput");
     (preset ? name : code).focus();

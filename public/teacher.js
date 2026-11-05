@@ -187,11 +187,11 @@ function teacherPw() {
 function teacherToken() {
   return localStorage.getItem("eyesup_token") || "";
 }
-// Auth credential for HTTP links/fetches: account token (database mode)
-// or the legacy shared password (local mode).
+// Auth for links that cannot carry a header (reports, ZIPs, slides): a short-lived
+// download token in account mode (see auth.js), or the legacy shared password in local mode.
+// Fetches send the sign-in as a header instead (EUAuth.fetch / EUAuth.headers).
 function authQuery() {
-  const t = teacherToken();
-  if (t) return `t=${encodeURIComponent(t)}`;
+  if (teacherToken()) return EUAuth.query();
   return teacherPw() ? `pw=${encodeURIComponent(teacherPw())}` : "";
 }
 
@@ -804,7 +804,9 @@ function render() {
   if (document.activeElement !== ti) ti.value = state.title || "";
   $("codeText").textContent = state.code;
   $("joinUrl").textContent = `${location.host}/join`;
-  $("openProjector").href = `/projector?code=${state.code}`;
+  // The projector link carries the room's key: a screen opened from here may drive the lesson and
+  // download; a screen opened by typing the code (a student's phone) can only watch.
+  $("openProjector").href = `/projector?code=${state.code}&k=${encodeURIComponent(state.boardKey || "")}`;
   $("lessonsBtn").style.display = state.storage ? "" : "none";
   $("dataBtn").style.display = state.storage ? "" : "none";
   const za = $("zipAll");
@@ -833,6 +835,7 @@ function render() {
   $("qrToggle").classList.toggle("primary", !!state.showJoin);
   $("qrToggle").innerHTML = state.showJoin ? "<span>🔳 Student QR is up</span><small>tap to take it down</small>" : "<span>🔳 Student QR</span><small>best for students accessing with iPads</small>";
   $("studentCount").textContent = state.students.length;
+  renderRosterPop();
   if ($("classSel") && $("classSel").value !== String(state.classId || "")) renderClassSel();
   if ($("classEdit")) $("classEdit").style.display = state.classId ? "" : "none";
   applyRememberedClass();
@@ -846,6 +849,40 @@ function render() {
   renderLauncher();
   renderTools();
   if (view === "plans" && !plansLoaded && teacherToken()) loadPlans();
+}
+
+/* ---------------- who is in the room ----------------
+   Click the "joined" pill for the names. ✕ removes a seat: a silly or rude join name,
+   or a child who should not be in this class. Their device is told and does not rejoin by itself. */
+
+let rosterOpen = false;
+function renderRosterPop() {
+  let pop = $("rosterPop");
+  if (!pop) {
+    pop = document.createElement("div");
+    pop.id = "rosterPop";
+    pop.style.cssText = "position:absolute;z-index:30;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lift);padding:0.6rem 0.8rem;min-width:220px;max-height:50vh;overflow:auto;font-size:0.9rem;display:none";
+    document.body.appendChild(pop);
+    const pill = $("studentCount")?.closest(".pill");
+    if (pill) {
+      pill.style.cursor = "pointer";
+      pill.title = "Who has joined — click to see the names (and remove one if you need to)";
+      pill.onclick = (e) => { e.stopPropagation(); rosterOpen = !rosterOpen; const r = pill.getBoundingClientRect(); pop.style.left = `${r.left + window.scrollX}px`; pop.style.top = `${r.bottom + window.scrollY + 6}px`; renderRosterPop(); };
+    }
+    document.addEventListener("click", (e) => { if (rosterOpen && !pop.contains(e.target)) { rosterOpen = false; pop.style.display = "none"; } });
+  }
+  pop.style.display = rosterOpen ? "block" : "none";
+  if (!rosterOpen || !state) return;
+  const kids = state.students.filter((s) => s.name !== "👁 Preview");
+  pop.innerHTML = kids.length
+    ? `<div style="font-weight:800;margin-bottom:0.3rem">${kids.length} in the room</div>` + kids
+        .map((s) => `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.15rem 0"><span style="flex:1">${esc(s.name)}</span><button class="btn mini" data-kick="${esc(s.id)}" title="Remove this seat from the class">✕</button></div>`)
+        .join("")
+    : `<div style="color:var(--muted)">Nobody has joined yet.</div>`;
+  pop.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = () => {
+    const s = kids.find((x) => x.id === b.dataset.kick);
+    if (s && confirm(`Remove "${s.name}" from the class?\n\nTheir device is told, and anything they sent to the current question is removed. They can join again with a new name if you give them the code.`)) send({ type: "kick_student", studentId: s.id });
+  }));
 }
 
 /* ---------------- room tools ---------------- */
@@ -1136,7 +1173,7 @@ function renderLive() {
       : "";
     const hint = itx.responses.length
       ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the projector; click again to shrink it back.
-         <a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a></p>`
+         <a data-dl href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a></p>`
       : "";
     body = source + hint + revealCards((r) => {
       const pics = picsOf(r);
@@ -1317,7 +1354,7 @@ function renderSummary(s) {
     <div style="margin-top:1.4rem;display:flex;gap:0.6rem">
       <button class="btn primary" id="closeSummary">Back to the room</button>
       <a class="btn" id="exportPdf" target="_blank" rel="noopener"
-         href="/report?code=${state.code}${authQuery() ? `&${authQuery()}` : ""}"
+         data-dl href="/report?code=${state.code}${authQuery() ? `&${authQuery()}` : ""}"
          style="text-decoration:none">🖨 Export as PDF</a>
     </div>`;
   $("summaryOverlay").classList.add("show");
@@ -1374,8 +1411,8 @@ $("remoteBtn").onclick = async () => {
     try {
       const res = await fetch("/api/pair", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ t: teacherToken() }),
+        headers: EUAuth.headers({ "Content-Type": "application/json" }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (res.ok) url += `&pair=${encodeURIComponent(data.pair)}`;
@@ -1402,7 +1439,7 @@ $("lessonsBtn").onclick = () => {
 async function loadLessonsList(attempt) {
   $("lessonsList").innerHTML = `<p style="color:var(--muted)">${attempt ? "Still connecting to the lesson archive…" : "Loading…"}</p>`;
   try {
-    const res = await fetch(`/api/lessons${authQuery() ? `?${authQuery()}` : ""}`);
+    const res = await EUAuth.fetch("/api/lessons");
     const data = await res.json();
     if (res.status === 403) {
       $("lessonsList").innerHTML = `<p style="color:var(--red)">Your sign-in has expired on this device — sign out and back in to see your lessons.</p>`;
@@ -1421,7 +1458,7 @@ async function loadLessonsList(attempt) {
                 <b>${esc(name)}</b> <span style="color:var(--muted);font-size:0.8rem">· ${esc(l.code)}</span><br/>
                 <span style="color:var(--ink-soft);font-size:0.82rem">${esc(when)} — ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions${pics ? ` · ${pics} picture${pics === 1 ? "" : "s"}` : ""}</span>
               </a>
-              ${pics ? `<a class="btn" href="/api/lessons/${l.id}/images?${authQuery()}" style="text-decoration:none;white-space:nowrap" title="Every picture from this lesson as one ZIP — a folder per activity, a file per student">🖼 ZIP</a>` : ""}
+              ${pics ? `<a class="btn" data-dl href="/api/lessons/${l.id}/images?${authQuery()}" style="text-decoration:none;white-space:nowrap" title="Every picture from this lesson as one ZIP — a folder per activity, a file per student">🖼 ZIP</a>` : ""}
             </div>`;
           })
           .join("")
@@ -1435,7 +1472,8 @@ async function loadLessonsList(attempt) {
       return;
     }
     $("lessonsList").innerHTML = `<p style="color:var(--red)">Couldn't reach the lesson archive right now. Your lessons are safe — this is a connection hiccup, not lost data.</p>
-      <button class="btn" onclick="loadLessonsList(0)">Try again</button>`;
+      <button class="btn" id="retryLessons">Try again</button>`;
+    $("retryLessons").onclick = () => loadLessonsList(0);
   }
 }
 $("closeLessons").onclick = () => $("lessonsOverlay").classList.remove("show");
@@ -1450,7 +1488,7 @@ const rememberedClass = () => { try { return Number(localStorage.getItem("eyesup
 
 async function loadClasses() {
   try {
-    const res = await fetch(`/api/classes?${authQuery()}`);
+    const res = await EUAuth.fetch("/api/classes");
     const data = await res.json();
     classes = data.classes || [];
   } catch { classes = []; }
@@ -1504,7 +1542,7 @@ function openClassEditor(cls) {
     if (!name) { toast("Give the class a name"); $("className").focus(); return; }
     const roster = $("classRoster").value.split(/\r?\n|,/).map((s) => s.trim()).filter(Boolean);
     try {
-      const res = await fetch("/api/classes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), id: cls?.id, name, roster }) });
+      const res = await fetch("/api/classes", { method: "POST", headers: EUAuth.headers({ "Content-Type": "application/json" }), body: JSON.stringify({ id: cls?.id, name, roster }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       await loadClasses();
@@ -1516,7 +1554,7 @@ function openClassEditor(cls) {
   $("classDelete").onclick = async () => {
     if (!cls || !confirm(`Delete ${cls.name}? Past lessons are kept; only the class list and its QR code go.`)) return;
     try {
-      await fetch(`/api/classes/${cls.id}?${authQuery()}`, { method: "DELETE" });
+      await EUAuth.fetch(`/api/classes/${cls.id}`, { method: "DELETE" });
       if (rememberedClass() === cls.id) chooseClass(null);
       await loadClasses();
       $("classOverlay").classList.remove("show");
@@ -1538,7 +1576,7 @@ $("togglePreview").onclick = () => {
   if (!state) return;
   const panel = $("phonePanel");
   if (panel.classList.contains("show")) return $("closePreview").click();
-  $("phoneFrame").src = `/join?code=${state.code}&preview=1`;
+  $("phoneFrame").src = `/join?code=${state.code}&preview=1&k=${encodeURIComponent(state.boardKey || "")}`;
   panel.classList.add("show");
 };
 $("closePreview").onclick = () => {
@@ -1844,10 +1882,13 @@ const AUTH_ERRORS = {
   bad_invite: "That invite code isn't right — ask a colleague for their invite link.",
   taken: "That name is already in use — add a surname or initial.",
   bad_name: "Please enter your name.",
-  bad_pass: "Password needs at least 6 characters.",
+  bad_pass: "Password needs at least 10 characters — a few words run together works well.",
   bad_email: "That email address doesn't look right — check it, or leave it blank.",
   account_disabled: "This account has been switched off. Please contact Eyes Up to have it turned back on.",
   slow_down: "Too many tries — wait a few minutes and try again.",
+  locked: "Too many wrong passwords — this account is paused for a while. Try again later.",
+  bad_code: "That code didn't match — check the time on your phone and try the next code.",
+  totp_required: "Enter the 6-digit code from your authenticator app.",
 };
 
 $("tabLogin").onclick = () => showAuthOverlay("login");
@@ -1855,27 +1896,40 @@ $("tabSignup").onclick = () => showAuthOverlay("signup");
 $("authGo").onclick = async () => {
   const body =
     authMode === "login"
-      ? { username: $("aUser").value, password: $("aPass").value }
+      ? { username: $("aUser").value, password: $("aPass").value, code: $("aCode")?.value.trim() || undefined }
       : { invite: ($("aInvite")?.value || inviteCode()).trim(), name: $("aName").value, password: $("aPass").value, email: $("aEmail")?.value.trim() || "" };
   try {
     const res = await fetch(authMode === "login" ? "/api/login" : "/api/signup", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: EUAuth.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) {
-      $("authError").textContent = AUTH_ERRORS[data.error] || "That didn't work — try again.";
+      if (data.error === "totp_required" && !$("aCode")) {
+        // Two-factor is on for this account: ask for the code, keep what was typed.
+        const inp = document.createElement("input");
+        inp.id = "aCode"; inp.inputMode = "numeric"; inp.autocomplete = "one-time-code"; inp.placeholder = "6-digit code from your authenticator app"; inp.maxLength = 7;
+        inp.style.cssText = "border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font-size:0.95rem";
+        inp.onkeydown = (e) => { if (e.key === "Enter") $("authGo").click(); };
+        $("authFields").appendChild(inp);
+        inp.focus();
+      }
+      $("authError").textContent = data.error === "locked" && data.retryAfter
+        ? `Too many wrong passwords — this account is paused for ${Math.ceil(data.retryAfter / 60)} minute${data.retryAfter > 90 ? "s" : ""}.`
+        : AUTH_ERRORS[data.error] || "That didn't work — try again.";
       $("authError").style.display = "block";
       return;
     }
     localStorage.setItem("eyesup_token", data.token);
     localStorage.setItem("eyesup_teacher_name", data.name || data.username);
     localStorage.setItem("eyesup_has_account", "1");
+    EUAuth.refresh();
     $("authOverlay").classList.remove("show");
     if (authMode === "signup") toast(`Welcome, ${data.name}! Sign in next time with your name or "${data.username}".`);
     if (ws && ws.readyState === 1) attach();
-    loadMe();
+    await loadMe();
+    if (data.mustChange) { showAccount(); toast("Please choose your own password now — the one you were given was temporary."); }
   } catch {
     $("authError").textContent = "Couldn't reach the server — try again.";
     $("authError").style.display = "block";
@@ -1884,7 +1938,7 @@ $("authGo").onclick = async () => {
 
 $("inviteBtn").onclick = async () => {
   try {
-    const res = await fetch(`/api/invite?${authQuery()}`);
+    const res = await EUAuth.fetch("/api/invite");
     const data = await res.json();
     if (!res.ok) throw new Error();
     const link = `${location.origin}/teacher${data.invite ? `?invite=${encodeURIComponent(data.invite)}` : ""}`;
@@ -1903,12 +1957,14 @@ const fmtDay = (d) => new Date(d).toLocaleDateString(undefined, { day: "numeric"
 async function loadMe() {
   if (!teacherToken()) return;
   try {
-    const res = await fetch(`/api/me?${authQuery()}`);
+    const res = await EUAuth.fetch("/api/me", { cache: "no-store" });
     if (!res.ok) return;
     me = await res.json();
+    if (me.token) { localStorage.setItem("eyesup_token", me.token); EUAuth.refresh(); } // a sign-in that was getting old has been renewed
     $("accountBtn").style.display = "";
     $("adminLink").style.display = me.admin ? "" : "none";
     renderPlanBanner();
+    if (me.mustChange && !loadMe._nagged) { loadMe._nagged = true; showAccount(); toast("Please choose your own password now — the one you were given was temporary."); }
   } catch { /* offline — the dashboard still works */ }
 }
 
@@ -1935,7 +1991,7 @@ function planLine() {
 
 async function goBilling(route, body) {
   try {
-    const res = await fetch(`/api/billing/${route}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), ...body }) });
+    const res = await fetch(`/api/billing/${route}`, { method: "POST", headers: EUAuth.headers({ "Content-Type": "application/json" }), body: JSON.stringify({ ...body }) });
     const data = await res.json();
     if (!res.ok || !data.url) throw new Error();
     location.href = data.url; // Stripe's own secure page
@@ -1979,6 +2035,14 @@ async function showSubscribe(reason) {
   }
 }
 
+// Everything the dashboard remembers on this computer that is not the sign-in itself:
+// the autosave of recent lessons (student names and answers) and small preferences.
+function forgetLocalLessons() {
+  for (const k of ["eyesup_archive", "eyesup_teacher_name", "eyesup_class_id", "eyesup_dice"]) { try { localStorage.removeItem(k); } catch {} }
+  try { sessionStorage.removeItem("eyesup_teacher_code"); } catch {}
+}
+const postJson = (url, body) => fetch(url, { method: "POST", headers: EUAuth.headers({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
+
 function showAccount() {
   if (!me) return;
   const a = me.access;
@@ -1992,14 +2056,28 @@ function showAccount() {
         ${me.billing && me.canManageBilling ? `<button class="btn" id="acctPortal">💳 Manage subscription</button>` : ""}
       </div>
     </div>
+    ${me.mustChange ? `<p style="margin-top:0.8rem;padding:0.6rem 0.8rem;border-radius:10px;background:#fff3dc;color:#8a5a10;font-weight:700">🔑 You signed in with a temporary password. Choose your own below before you carry on.</p>` : ""}
     <div class="acct-row"><label for="acctEmail">Email</label><input id="acctEmail" type="email" maxlength="120" placeholder="you@school.edu" value="${esc(me.email)}" /></div>
     <button class="btn" id="acctSaveEmail" style="margin-top:0.6rem">Save email</button>
     <div class="acct-msg" id="acctEmailMsg"></div>
     <div class="acct-row"><label for="acctCur">Change password</label>
       <input id="acctCur" type="password" placeholder="Current password" autocomplete="current-password" />
-      <input id="acctNew" type="password" placeholder="New password (6+ characters)" autocomplete="new-password" /></div>
+      <input id="acctNew" type="password" placeholder="New password (10+ characters)" autocomplete="new-password" /></div>
     <button class="btn" id="acctSavePw" style="margin-top:0.6rem">Change password</button>
     <div class="acct-msg" id="acctPwMsg"></div>
+    <div class="acct-row"><label>Two-factor sign-in (authenticator app)</label>
+      <p style="color:var(--ink-soft);font-size:0.85rem;margin:0 0 0.4rem">${me.totp ? "✅ On — signing in needs your password and a 6-digit code from your app." : "Off. With it on, a stolen password alone cannot open your account. Recommended for owners."}</p>
+      <div id="totpBox"></div></div>
+    <button class="btn" id="acctTotp" style="margin-top:0.2rem">${me.totp ? "Turn two-factor off" : "🔐 Turn two-factor on"}</button>
+    <div class="acct-msg" id="acctTotpMsg"></div>
+    <div class="acct-row"><label>This computer and other devices</label>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+        <button class="btn" id="acctSignOutAll" title="Every phone and computer signed in as you must sign in again; this one stays signed in">↪ Sign out everywhere else</button>
+        <button class="btn" id="acctForget" title="Removes the saved copies of recent lessons (names and answers) kept in this browser for recovery">🧹 Forget saved lessons on this computer</button>
+        <a class="btn" id="acctExport" data-dl href="/api/me/export?${authQuery()}" style="text-decoration:none" title="A JSON file of your lessons, classes and plans">⬇ Download my data</a>
+      </div></div>
+    ${me.admin ? "" : `<div class="acct-row"><label>Leaving Eyes Up</label><button class="btn danger-ghost" id="acctDelete">🗑 Delete my account and all its lessons</button></div>`}
+    <div class="acct-msg" id="acctMiscMsg"></div>
     <div style="text-align:right;margin-top:0.6rem"><button class="btn" id="acctClose">Close</button></div>`;
   $("accountOverlay").classList.add("show");
   $("acctClose").onclick = () => $("accountOverlay").classList.remove("show");
@@ -2008,7 +2086,7 @@ function showAccount() {
   const say = (id, text, ok) => { $(id).textContent = text; $(id).style.color = ok ? "var(--green)" : "var(--red)"; };
   $("acctSaveEmail").onclick = async () => {
     try {
-      const res = await fetch("/api/me", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), email: $("acctEmail").value.trim() }) });
+      const res = await postJson("/api/me", { email: $("acctEmail").value.trim() });
       const data = await res.json();
       if (!res.ok) return say("acctEmailMsg", AUTH_ERRORS[data.error] || "Couldn't save — try again.", false);
       me = data;
@@ -2017,13 +2095,76 @@ function showAccount() {
   };
   $("acctSavePw").onclick = async () => {
     try {
-      const res = await fetch("/api/me/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), current: $("acctCur").value, next: $("acctNew").value }) });
+      const res = await postJson("/api/me/password", { current: $("acctCur").value, next: $("acctNew").value });
       const data = await res.json();
       if (!res.ok) return say("acctPwMsg", data.error === "bad_login" ? "The current password isn't right." : AUTH_ERRORS[data.error] || "Couldn't change it — try again.", false);
       localStorage.setItem("eyesup_token", data.token); // this device stays signed in; others are signed out
+      EUAuth.refresh();
       $("acctCur").value = $("acctNew").value = "";
+      me.mustChange = false;
       say("acctPwMsg", "Password changed ✓", true);
     } catch { say("acctPwMsg", "Couldn't reach the server — try again.", false); }
+  };
+  $("acctTotp").onclick = async () => {
+    const box = $("totpBox");
+    if (me.totp) {
+      box.innerHTML = `<input id="totpPw" type="password" placeholder="Your password" autocomplete="current-password" style="margin-bottom:0.4rem" />
+        <input id="totpCode" inputmode="numeric" placeholder="Current 6-digit code" maxlength="7" style="margin-bottom:0.4rem" />
+        <button class="btn" id="totpOff">Turn off</button>`;
+      $("totpOff").onclick = async () => {
+        const res = await postJson("/api/me/totp/disable", { password: $("totpPw").value, code: $("totpCode").value });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) return say("acctTotpMsg", d.error === "bad_login" ? "The password isn't right." : AUTH_ERRORS[d.error] || "Couldn't turn it off.", false);
+        me.totp = false; showAccount(); toast("Two-factor sign-in is off");
+      };
+      return;
+    }
+    box.innerHTML = `<input id="totpPw" type="password" placeholder="Your password, to confirm it's you" autocomplete="current-password" style="margin-bottom:0.4rem" />
+      <button class="btn" id="totpStart">Show the QR code</button>`;
+    $("totpStart").onclick = async () => {
+      const res = await postJson("/api/me/totp/setup", { password: $("totpPw").value });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) return say("acctTotpMsg", d.error === "bad_login" ? "The password isn't right." : "Couldn't start — try again.", false);
+      let qrSvg = "";
+      try { const qr = qrcode(0, "M"); qr.addData(d.url); qr.make(); qrSvg = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); } catch {}
+      box.innerHTML = `<p style="font-size:0.85rem;color:var(--ink-soft)">1. Install an authenticator app (Google Authenticator, Microsoft Authenticator, Authy…). 2. Scan this, or type the key. 3. Enter the code it shows.</p>
+        <div style="display:flex;gap:0.8rem;align-items:center;flex-wrap:wrap;margin:0.5rem 0"><span style="width:150px;display:inline-block;background:#fff;padding:6px;border-radius:8px">${qrSvg}</span><code style="font-size:0.8rem;word-break:break-all">${esc(d.secret)}</code></div>
+        <input id="totpCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code from the app" maxlength="7" style="margin-bottom:0.4rem" />
+        <button class="btn primary" id="totpOn">Turn two-factor on</button>`;
+      $("totpOn").onclick = async () => {
+        const r2 = await postJson("/api/me/totp/enable", { code: $("totpCode").value });
+        const d2 = await r2.json().catch(() => ({}));
+        if (!r2.ok) return say("acctTotpMsg", AUTH_ERRORS[d2.error] || "That code didn't work — try the next one.", false);
+        me.totp = true; showAccount(); toast("Two-factor sign-in is on 🔐");
+      };
+    };
+  };
+  $("acctSignOutAll").onclick = async () => {
+    if (!confirm("Sign out of every other phone and computer? This one stays signed in.")) return;
+    try {
+      const res = await postJson("/api/me/signout-all", {});
+      const d = await res.json();
+      if (!res.ok) throw new Error();
+      localStorage.setItem("eyesup_token", d.token);
+      EUAuth.refresh();
+      say("acctMiscMsg", "Done — every other device has been signed out ✓", true);
+    } catch { say("acctMiscMsg", "Couldn't do that right now — try again.", false); }
+  };
+  $("acctForget").onclick = () => {
+    if (!confirm("Forget the saved copies of recent lessons on this computer?\n\nYour lessons in the archive are not affected; only this browser's recovery copies go.")) return;
+    try { localStorage.removeItem("eyesup_archive"); } catch {}
+    say("acctMiscMsg", "Saved lessons on this computer forgotten ✓", true);
+  };
+  const del = $("acctDelete");
+  if (del) del.onclick = async () => {
+    const pw = prompt("Delete your account and every lesson, class and plan in it?\n\nThis cannot be undone. Type your password to confirm.");
+    if (pw == null) return;
+    try {
+      const res = await postJson("/api/me/delete", { password: pw });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) return say("acctMiscMsg", d.error === "bad_login" ? "The password isn't right." : "Couldn't delete — try again.", false);
+      localStorage.removeItem("eyesup_token"); forgetLocalLessons(); location.href = "/";
+    } catch { say("acctMiscMsg", "Couldn't reach the server — try again.", false); }
   };
 }
 $("accountBtn").onclick = showAccount;
@@ -2040,8 +2181,10 @@ $("accountOverlay").addEventListener("click", (e) => { if (e.target === $("accou
 loadMe();
 
 $("signOutBtn").onclick = () => {
+  // Signing out on a shared computer leaves nothing behind: the sign-in, the recovery copies
+  // of recent lessons (names and answers) and the small preferences all go.
   localStorage.removeItem("eyesup_token");
-  sessionStorage.removeItem("eyesup_teacher_code");
+  forgetLocalLessons();
   location.reload();
 };
 
@@ -2093,18 +2236,18 @@ document.addEventListener("click", (e) => { document.querySelectorAll("details.l
 
 const jsonHeaders = { "Content-Type": "application/json" };
 async function api(method, url, body) {
-  const res = await fetch(url, { method, headers: body ? jsonHeaders : undefined, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(url, { method, headers: EUAuth.headers(body ? jsonHeaders : {}), body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(data.error || "request_failed"), { status: res.status });
   return data;
 }
 const plansApi = {
-  list: () => api("GET", `/api/plans?${authQuery()}`),
-  get: (id) => api("GET", `/api/plans/${id}?${authQuery()}`),
-  create: (title, steps) => api("POST", "/api/plans", { t: teacherToken(), title, steps }),
-  update: (id, title, steps) => api("PUT", `/api/plans/${id}`, { t: teacherToken(), title, steps }),
-  duplicate: (id) => api("POST", `/api/plans/${id}/duplicate`, { t: teacherToken() }),
-  remove: (id) => api("DELETE", `/api/plans/${id}?${authQuery()}`),
+  list: () => api("GET", "/api/plans"),
+  get: (id) => api("GET", `/api/plans/${id}`),
+  create: (title, steps) => api("POST", "/api/plans", { title, steps }),
+  update: (id, title, steps) => api("PUT", `/api/plans/${id}`, { title, steps }),
+  duplicate: (id) => api("POST", `/api/plans/${id}/duplicate`, {}),
+  remove: (id) => api("DELETE", `/api/plans/${id}`),
 };
 
 // Same steps, regardless of the key order the database hands back.
@@ -2261,6 +2404,7 @@ let saveTimer = null;
 let saveSeq = 0;
 
 async function openEditor(id, isNew) {
+  await EUAuth.ready; // slide thumbnails need a download token
   try {
     const pl = await plansApi.get(id);
     editing = { id: pl.id, title: pl.title || "", steps: pl.steps || [] };
@@ -2566,7 +2710,7 @@ function openDeckSheet() {
   wrap.querySelector("#deckAdd").onclick = async () => {
     const err = wrap.querySelector("#deckErr");
     try {
-      const r = await fetch("/api/deck-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: wrap.querySelector("#deckLink").value }) });
+      const r = await fetch("/api/deck-check", { method: "POST", headers: EUAuth.headers({ "Content-Type": "application/json" }), body: JSON.stringify({ url: wrap.querySelector("#deckLink").value }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
       const name = wrap.querySelector("#deckName").value.trim() || { google: "Google Slides", microsoft: "PowerPoint", canva: "Canva slides" }[d.provider];
@@ -2588,16 +2732,14 @@ function openDeckSheet() {
 let pdfjsReady = null;
 function loadPdfJs() {
   if (pdfjsReady) return pdfjsReady;
-  pdfjsReady = new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "/vendor/pdfjs/pdf.min.js"; // pdf.js 3.11.174 (Apache-2.0), served by Eyes Up so school filters can't block it
-    s.onload = () => {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.js";
-      resolve(window.pdfjsLib);
-    };
-    s.onerror = () => { pdfjsReady = null; reject(new Error("pdf_lib")); };
-    document.head.appendChild(s);
-  });
+  // pdf.js 4.10.38 (Apache-2.0, legacy build for older school computers), served by Eyes Up so
+  // school filters can't block it. Updated from 3.11 for CVE-2024-4367 (docs/safety/FIX-LIST.md #9).
+  pdfjsReady = import("/vendor/pdfjs/pdf.min.mjs")
+    .then((lib) => {
+      lib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.mjs";
+      return lib;
+    })
+    .catch((e) => { pdfjsReady = null; throw new Error("pdf_lib"); });
   return pdfjsReady;
 }
 const SLIDE_PX = 1600; // long edge — crisp on a projector, small enough to load instantly
@@ -2652,7 +2794,7 @@ async function importSlides(files) {
     if (editing.steps.length + images.length > 150) throw new Error("too_many");
     const title = (pdfs[0]?.name || "Slides").replace(/\.[a-z0-9]+$/i, "").slice(0, 60);
     const post = async (url, body) => {
-      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), ...body }) });
+      const r = await fetch(url, { method: "POST", headers: EUAuth.headers({ "Content-Type": "application/json" }), body: JSON.stringify({ ...body }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "upload_failed");
       return d;

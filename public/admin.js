@@ -7,7 +7,7 @@ const wrap = document.getElementById("wrap");
 const overlay = document.getElementById("sheetOverlay");
 const sheet = document.getElementById("sheet");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const token = localStorage.getItem("eyesup_token") || "";
+const token = EUAuth.token();
 
 let data = null;
 let search = "";
@@ -35,7 +35,7 @@ async function load() {
     return;
   }
   try {
-    const res = await fetch(`/api/admin/overview?t=${encodeURIComponent(token)}`);
+    const res = await EUAuth.fetch("/api/admin/overview", { cache: "no-store" });
     const body = await res.json();
     if (res.status === 403) {
       wrap.innerHTML = body.error === "not_admin"
@@ -47,7 +47,8 @@ async function load() {
     data = body;
     render();
   } catch {
-    wrap.innerHTML = `<div class="gate">☁️<br/><b>Couldn't load the admin page right now.</b><br/><a href="javascript:location.reload()">Try again</a></div>`;
+    wrap.innerHTML = `<div class="gate">☁️<br/><b>Couldn't load the admin page right now.</b><br/><button class="btn-s" id="retryLoad">Try again</button></div>`;
+    document.getElementById("retryLoad").onclick = () => location.reload();
   }
 }
 
@@ -90,8 +91,9 @@ function render() {
     [b.on, "Card payments (Stripe)", b.on ? `On — new teachers get a ${b.trialDays}-day free trial, then subscribe.` : "Not connected yet. Until it is, every account has full access and nobody is charged."],
     [b.on ? b.webhook : false, "Payment updates from Stripe", b.webhook ? "Connected — subscriptions switch on and off by themselves." : "Not connected yet (set up together with Stripe)."],
     [b.openSignup, "Public sign-up", b.openSignup ? "Anyone can create an account and start a trial." : "Invite-only — new teachers need your invite link."],
-    [data.separateSecret, "Separate sign-in secret", data.separateSecret ? "Set — the invite code can be shared safely." : "Not set yet. Recommended before strangers sign up."],
+    [data.separateSecret, "Separate sign-in secret", data.separateSecret ? "Set — the invite code can be shared safely." : "Not set. Add AUTH_SECRET on the host now (docs/safety/FIX-LIST.md #7)."],
     [data.ai, "AI summaries", data.ai ? "On." : "Off — needs an Anthropic API key."],
+    [!data.legacyLessons, "Lessons without an owner", data.legacyLessons ? `${data.legacyLessons} lesson${data.legacyLessons === 1 ? "" : "s"} from before accounts existed. Only owners can see them now; assign them a teacher_id in Supabase, or delete them.` : "None — every stored lesson belongs to a teacher."],
   ];
 
   wrap.innerHTML = `
@@ -110,6 +112,16 @@ function render() {
       <div class="setup">${setup
         .map(([on, title, text]) => `<div class="item ${on ? "on" : "off"}"><span class="dot">${on ? "✓" : "!"}</span><span><b>${title}</b>${text}</span></div>`)
         .join("")}</div>
+    </div>
+
+    <div class="card">
+      <h2>What owners have done</h2>
+      <div class="sub">The last 50 owner actions: passwords given, accounts switched off or on, plans changed, owners made.</div>
+      ${(data.log || []).length
+        ? `<div class="tscroll"><table class="ttable"><thead><tr><th>When</th><th>Owner</th><th>Action</th><th>Account</th><th>Detail</th></tr></thead><tbody>${data.log
+            .map((l) => `<tr><td>${esc(new Date(l.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }))}</td><td>${esc(l.admin_name || "")}</td><td>${esc(String(l.action).replace(/_/g, " "))}</td><td>${esc(l.target_name || "")}</td><td class="muted">${esc(l.detail || "")}</td></tr>`)
+            .join("")}</tbody></table></div>`
+        : `<p class="muted" style="font-size:0.85rem">Nothing recorded yet.</p>`}
     </div>
 
     <div class="card">
@@ -166,8 +178,16 @@ function downloadCsv() {
   URL.revokeObjectURL(a.href);
 }
 
+// The actions that change who can get in (new password, switch off/on, owner) ask for the owner's
+// own password again, so a dashboard left open on a desk cannot be used for them.
+const NEEDS_PASSWORD = new Set(["reset_password", "disable", "enable", "set_admin"]);
 async function act(id, body) {
-  const res = await fetch(`/api/admin/teacher/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: token, ...body }) });
+  if (NEEDS_PASSWORD.has(body.action)) {
+    const pw = prompt("Your password, to confirm it's you:");
+    if (pw == null) throw new Error("cancelled");
+    body = { ...body, password: pw };
+  }
+  const res = await fetch(`/api/admin/teacher/${id}`, { method: "POST", headers: EUAuth.headers({ "Content-Type": "application/json" }), body: JSON.stringify(body) });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(out.error || "failed");
   return out;
@@ -207,6 +227,7 @@ function openManage(id) {
     <div class="actions">
       <button class="btn-s" id="mReset">🔑 Give a new password</button>
       ${self ? "" : `<button class="btn-s ${t.status === "disabled" ? "" : "danger"}" id="mToggle">${t.status === "disabled" ? "✓ Switch account back on" : "⛔ Switch account off"}</button>`}
+      ${self ? "" : `<button class="btn-s ${t.admin ? "danger" : ""}" id="mOwner" title="Owners can open this page and manage every account">${t.admin ? "Remove owner access" : "👑 Make an owner"}</button>`}
       <span style="flex:1"></span>
       <button class="btn-s" id="mClose">Close</button>
     </div>
@@ -225,7 +246,8 @@ function openManage(id) {
       await load();
       return out;
     } catch (e) {
-      toast({ bad_email: "That email doesn't look right.", bad_date: "Pick an end date.", not_yourself: "You can't do that to your own account." }[e.message] || "That didn't work — try again.");
+      if (e.message === "cancelled") return null;
+      toast({ bad_email: "That email doesn't look right.", bad_date: "Pick an end date.", not_yourself: "You can't do that to your own account.", bad_login: "That password wasn't right." }[e.message] || "That didn't work — try again.");
       return null;
     }
   };
@@ -242,12 +264,18 @@ function openManage(id) {
     if (!confirm(`Give ${t.name} a new password?\n\nTheir current password stops working straight away and they'll be signed out everywhere.`)) return;
     const out = await done(() => act(id, { action: "reset_password" }));
     if (!out) return;
-    sheet.querySelector("#mOut").innerHTML = `<div class="pwbox">New password for <b>${esc(t.name)}</b> (sign-in name <b>${esc(t.username)}</b>):<br/><code>${esc(out.password)}</code><br/><span class="muted" style="font-size:0.8rem">Shown once — send it to them now. They can change it under ☰ Menu → My account.</span></div>`;
+    sheet.querySelector("#mOut").innerHTML = `<div class="pwbox">New password for <b>${esc(t.name)}</b> (sign-in name <b>${esc(t.username)}</b>):<br/><code>${esc(out.password)}</code><br/><span class="muted" style="font-size:0.8rem">Shown once — read it to them by phone or in person, not by email. They must choose their own password when they next sign in.</span></div>`;
     if (out.self) {
       // The owner just changed their own password: this device's sign-in is gone.
       localStorage.removeItem("eyesup_token");
       sheet.querySelector("#mOut").innerHTML += `<p class="muted" style="font-size:0.82rem;margin-top:0.5rem">That was your own account — sign in again with this password.</p>`;
     }
+  };
+  const own = sheet.querySelector("#mOwner");
+  if (own) own.onclick = async () => {
+    const making = !t.admin;
+    if (!confirm(making ? `Make ${t.name} an owner?\n\nThey will be able to see every account, give passwords, switch accounts off and make other owners.` : `Remove ${t.name}'s owner access?`)) return;
+    if (await done(() => act(id, { action: "set_admin", admin: making }), making ? "Owner added" : "Owner access removed")) closeSheet();
   };
   const tog = sheet.querySelector("#mToggle");
   if (tog) tog.onclick = async () => {

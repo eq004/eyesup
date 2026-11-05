@@ -8,6 +8,10 @@ const barCount = document.getElementById("barCount");
 let ws = null;
 let state = null;
 let code = (new URLSearchParams(location.search).get("code") || "").toUpperCase();
+// The room's key, carried by the link the dashboard makes. With it this screen may drive the
+// lesson and download; a screen opened by typing the code can only watch.
+let key = new URLSearchParams(location.search).get("k") || "";
+const joinMsg = () => JSON.stringify({ type: "projector_join", code, key });
 let retryUntil = 0; // after a class has been live, a vanished room is retried quietly for a while (server restart)
 let retryTimer = null;
 const DL_IMAGE_MODES = new Set(["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
@@ -83,7 +87,7 @@ const send = (obj) => ws && ws.readyState === 1 && ws.send(JSON.stringify(obj));
 function connect() {
   ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
   ws.onopen = () => {
-    if (code) ws.send(JSON.stringify({ type: "projector_join", code }));
+    if (code) ws.send(joinMsg());
   };
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
@@ -93,7 +97,7 @@ function connect() {
         // seconds, so keep showing the board and knock again rather than dropping to the code screen.
         barCount.innerHTML = `<span class="dot"></span> reconnecting to ${code}…`;
         clearTimeout(retryTimer);
-        retryTimer = setTimeout(() => send({ type: "projector_join", code }), 3000);
+        retryTimer = setTimeout(() => ws.readyState === 1 && ws.send(joinMsg()), 3000);
         return;
       }
       code = "";
@@ -103,6 +107,10 @@ function connect() {
     if (msg.type === "state") {
       retryUntil = Date.now() + 15 * 60 * 1000;
       state = msg;
+      // "Next class" moves this screen to a fresh room code; a trusted screen keeps its key for it.
+      if (msg.boardKey) key = msg.boardKey;
+      if (msg.code && msg.code !== code) { code = msg.code; history.replaceState(null, "", `/projector?code=${code}${key ? `&k=${encodeURIComponent(key)}` : ""}`); }
+      document.body.classList.toggle("untrusted", !msg.trusted);
       render();
     }
     // The teacher's phone or laptop asked for a tune to play through these speakers.
@@ -124,7 +132,7 @@ function render() {
 function renderInner() {
   if (!state) return renderCodeEntry(false);
   barCode.textContent = state.code;
-  barCount.innerHTML = `<span class="dot"></span> ${state.studentCount} in the room`;
+  barCount.innerHTML = `<span class="dot"></span> ${state.studentCount} in the room${state.trusted ? "" : ` <small title="This screen was opened by typing the code, so it can watch but not control the lesson. Open it from the teacher dashboard's 📽️ Projector button to control it.">· view only</small>`}`;
   const nb = document.getElementById("namesBtn");
   nb.textContent = `🏷 names ${state.showNames ? "ON" : "off"}`;
   nb.classList.toggle("on", !!state.showNames);
@@ -213,12 +221,13 @@ function renderInner() {
   // A slide from the teacher's deck fills the board.
   if (state.phase === "slide" && state.slide) {
     const sl = state.slide;
-    const src = `/api/slide/${sl.img}?code=${encodeURIComponent(state.code)}`;
+    const q = `code=${encodeURIComponent(state.code)}&k=${encodeURIComponent(key)}`;
+    const src = `/api/slide/${sl.img}?${q}`;
     const cur = document.getElementById("slideImg");
     if (cur && cur.dataset.img === String(sl.img)) return; // already showing — don't flash
     stage.innerHTML = `<div class="slide-stage"><img id="slideImg" data-img="${sl.img}" src="${src}" alt="slide ${sl.page} of ${sl.pages}" />
       <div class="slide-count">${sl.page} / ${sl.pages}</div></div>`;
-    if (state.nextSlideImg) new Image().src = `/api/slide/${state.nextSlideImg}?code=${encodeURIComponent(state.code)}`; // next one ready before the click
+    if (state.nextSlideImg) new Image().src = `/api/slide/${state.nextSlideImg}?${q}`; // next one ready before the click
     return;
   }
 
@@ -1298,8 +1307,9 @@ function renderCodeEntry(failed) {
     const c = input.value.trim().toUpperCase();
     if (c.length !== 4) return;
     code = c;
+    key = ""; // typed in by hand: this screen watches; it does not get the room's controls
     history.replaceState(null, "", `/projector?code=${c}`);
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "projector_join", code: c }));
+    if (ws && ws.readyState === 1) ws.send(joinMsg());
   };
   document.getElementById("goBtn").onclick = go;
   input.onkeydown = (e) => { if (e.key === "Enter") go(); };

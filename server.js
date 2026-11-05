@@ -56,9 +56,14 @@ let db = null;
 let storageReady = false;
 if (process.env.DATABASE_URL) {
   const { Pool } = require("pg");
+  // DATABASE_CA: the database host's CA certificate (PEM text), downloadable from
+  // Supabase → Project Settings → Database. With it set, the connection checks it is
+  // really talking to the database; without it, the certificate is not verified.
+  const DB_CA = (process.env.DATABASE_CA || "").trim();
+  if (!DB_CA) console.warn("DATABASE_CA is not set — the database certificate is not verified. See docs/safety/FIX-LIST.md #23.");
   db = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
+    ssl: DB_CA ? { ca: DB_CA, rejectUnauthorized: true } : { rejectUnauthorized: false },
     max: 3,
     // Supabase's pooler drops idle connections; recycle ours first and
     // never wait forever on a dead one.
@@ -187,7 +192,32 @@ if (process.env.DATABASE_URL) {
       times_taught int NOT NULL DEFAULT 0
     )`,
     `CREATE INDEX IF NOT EXISTS lesson_plans_teacher ON lesson_plans (teacher_id, updated_at DESC)`,
+    // Safety review (docs/safety): sign-out-everywhere, forced password change,
+    // two-factor codes, share-link age, and a record of what owners did.
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS token_version int NOT NULL DEFAULT 0`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS must_change boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS totp_secret text`,
+    `ALTER TABLE lessons ADD COLUMN IF NOT EXISTS shared_at timestamptz`,
+    `CREATE TABLE IF NOT EXISTS admin_log (
+      id serial PRIMARY KEY,
+      admin_id int NOT NULL,
+      admin_name text,
+      action text NOT NULL,
+      target_id int,
+      target_name text,
+      detail text,
+      at timestamptz NOT NULL DEFAULT now()
+    )`,
   ];
+  // Optional: forget whole lesson records (names and answers) after this many days.
+  // 0 or unset keeps them until a teacher deletes them.
+  const LESSON_KEEP_DAYS = Math.max(0, parseInt(process.env.LESSON_KEEP_DAYS || "0", 10) || 0);
+  const pruneLessons = () =>
+    LESSON_KEEP_DAYS
+      ? db.query(`DELETE FROM lessons WHERE created_at < now() - ($1 || ' days')::interval`, [String(LESSON_KEEP_DAYS)])
+          .then((r) => r.rowCount && console.log(`Pruned ${r.rowCount} lesson record(s) older than ${LESSON_KEEP_DAYS} days`))
+          .catch((e) => console.error("lesson prune failed:", e.message))
+      : Promise.resolve();
   // Pictures are big; keep them for a season, not forever.
   const IMAGE_KEEP_DAYS = Math.max(7, parseInt(process.env.IMAGE_KEEP_DAYS || "60", 10) || 60);
   const pruneImages = () =>
@@ -204,7 +234,8 @@ if (process.env.DATABASE_URL) {
       storageReady = true;
       console.log("Storage connected — lessons persist to Postgres");
       pruneImages();
-      setInterval(pruneImages, 12 * 3600 * 1000);
+      pruneLessons();
+      setInterval(() => { pruneImages(); pruneLessons(); }, 12 * 3600 * 1000);
     } catch (e) {
       const wait = Math.min(60000, 5000 * 2 ** attempt);
       console.error(`Storage init failed (${e.code || e.message}) — retrying in ${wait / 1000}s`);
@@ -215,13 +246,22 @@ if (process.env.DATABASE_URL) {
 }
 
 /* ---- teacher accounts (active only in database mode) ----
-   Tokens are stateless: HMAC over the account's password hash, so they
-   survive server restarts and die if the password changes. */
+   Tokens are stateless: HMAC over the account's password hash and its
+   token_version, so they survive server restarts, die if the password
+   changes or "Sign out everywhere" is pressed, and expire after 90 days. */
 
 // AUTH_SECRET signs sign-ins. Set it separately on the host so the invite
 // code (TEACHER_PASSWORD) can be shared without also being the signing key.
 const AUTH_SECRET = process.env.AUTH_SECRET || TEACHER_PASSWORD || "eyesup-local-secret";
-const TEACHER_COLS = `id, username, display_name, pass_hash, favs, email, is_admin, status, plan, trial_ends_at, paid_until, stripe_customer, stripe_sub`;
+if (process.env.DATABASE_URL && !process.env.AUTH_SECRET)
+  console.warn("AUTH_SECRET is not set — sign-in tokens are signed with the invite code. Set AUTH_SECRET on the host (docs/safety/FIX-LIST.md #7).");
+const TEACHER_COLS = `id, username, display_name, pass_hash, favs, email, is_admin, status, plan, trial_ends_at, paid_until, stripe_customer, stripe_sub, token_version, must_change, totp_secret`;
+const TOKEN_MAX_AGE_MS = 90 * 86400000; // a sign-in lasts 90 days; the dashboard refreshes it after 30
+const TOKEN_REFRESH_MS = 30 * 86400000;
+const DL_TOKEN_MS = 10 * 60 * 1000; // short-lived tokens for links (reports, pictures, ZIPs)
+const MIN_PASSWORD = 10;
+const hmac = (s) => crypto.createHmac("sha256", AUTH_SECRET).update(s).digest("hex");
+const safeEq = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 // Can this account start a class right now? Past lessons and data stay
 // readable whatever the answer — a lapsed teacher never loses their work.
@@ -244,27 +284,56 @@ function accessOf(t) {
     : { ok: false, reason: plan === "school" ? "licence_ended" : "subscription_ended", plan, until: t.paid_until };
 }
 
-function signToken(id, passHash) {
-  const mac = crypto.createHmac("sha256", AUTH_SECRET).update(`${id}:${passHash}`).digest("hex");
-  return `${id}.${mac}`;
+// A sign-in token: "<id>.<issued>.<mac>". The mac covers the password hash and
+// token_version, so changing either signs that teacher out everywhere.
+function signToken(t, issued = Date.now()) {
+  const id = t.id ?? t, passHash = t.pass_hash, version = t.token_version || 0;
+  return `${id}.${issued}.${hmac(`${id}:${passHash}:${version}:${issued}`)}`;
+}
+// A short-lived token for links that cannot carry a header: "d.<id>.<exp>.<mac>".
+function signDlToken(t, now = Date.now()) {
+  const exp = now + DL_TOKEN_MS;
+  return `d.${t.id}.${exp}.${hmac(`dl:${t.id}:${t.pass_hash}:${t.token_version || 0}:${exp}`)}`;
 }
 
 async function teacherFromToken(token) {
-  if (!db || typeof token !== "string" || !token.includes(".")) return null;
-  const id = parseInt(token.split(".")[0], 10);
-  if (!Number.isInteger(id)) return null;
+  if (!db || typeof token !== "string") return null;
+  const parts = token.split(".");
+  const short = parts[0] === "d";
+  if (short) parts.shift();
+  if (parts.length !== 3) return null;
+  const id = parseInt(parts[0], 10), stamp = parseInt(parts[1], 10);
+  if (!Number.isInteger(id) || !Number.isInteger(stamp)) return null;
+  const now = Date.now();
+  if (short ? stamp < now : now - stamp > TOKEN_MAX_AGE_MS) return null; // expired
   try {
     const { rows } = await db.query(
       `SELECT ${TEACHER_COLS} FROM teachers WHERE id = $1`, [id]
     );
-    if (!rows[0] || rows[0].status === "disabled") return null; // a switched-off account is signed out everywhere
-    const expected = Buffer.from(signToken(rows[0].id, rows[0].pass_hash)), given = Buffer.from(token);
-    return expected.length === given.length && crypto.timingSafeEqual(expected, given) ? rows[0] : null;
+    const t = rows[0];
+    if (!t || t.status === "disabled") return null; // a switched-off account is signed out everywhere
+    const expected = short ? signDlToken(t, stamp - DL_TOKEN_MS) : signToken(t, stamp);
+    if (!safeEq(expected, token)) return null;
+    t._issued = short ? null : stamp;
+    t._short = short;
+    return t;
   } catch (e) {
     // Distinct from a bad token: callers must not treat an outage as
     // "signed out" (the dashboard would throw the token away).
     throw Object.assign(new Error("db_unavailable"), { dbDown: true, cause: e });
   }
+}
+
+// The credential on a request: an Authorization header first, then the JSON
+// body, then (for links that cannot carry a header) the query string. A
+// short-lived download token (?d=) only opens GET routes.
+function credOf(req) {
+  const h = String(req.headers.authorization || "");
+  if (/^bearer\s+/i.test(h)) return h.replace(/^bearer\s+/i, "").trim();
+  if (req.body && typeof req.body.t === "string") return req.body.t;
+  if (typeof req.query?.t === "string") return req.query.t;
+  if (req.method === "GET" && typeof req.query?.d === "string") return req.query.d;
+  return "";
 }
 
 // HTTP flavour: resolves the teacher or answers the request itself.
@@ -278,10 +347,16 @@ async function authHttp(res, token) {
     return null;
   }
 }
+// Writes need a real sign-in, not a download token.
+async function authWrite(req, res) {
+  const t = await authHttp(res, credOf(req));
+  if (t && t._short) { res.status(403).json({ error: "auth_required" }); return null; }
+  return t;
+}
 
 // Owner-only routes.
-async function adminHttp(res, token) {
-  const t = await authHttp(res, token);
+async function adminHttp(req, res) {
+  const t = await authWrite(req, res);
   if (!t) return null;
   if (!t.is_admin) {
     res.status(403).json({ error: "not_admin" });
@@ -289,23 +364,87 @@ async function adminHttp(res, token) {
   }
   return t;
 }
+// What owners do is written down.
+async function logAdmin(me, action, target, detail) {
+  try {
+    await db.query(
+      `INSERT INTO admin_log (admin_id, admin_name, action, target_id, target_name, detail) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [me.id, me.display_name || me.username, action, target?.id ?? null, target?.username ?? null, detail ? String(detail).slice(0, 300) : null]
+    );
+  } catch (e) {
+    console.error("admin log failed:", e.message);
+  }
+}
 
-// Tiny in-memory rate limit for the public sign-in / sign-up doors.
+// Tiny in-memory rate limits. Per-address limits are deliberately generous: a whole
+// school shares one public address, and a class must never be told to slow down.
+// Anything that can lock a person out is limited per account instead (see login).
 const hits = new Map(); // key -> [timestamps]
-function limited(req, res, bucket, max, windowMs) {
-  const ip = String(req.ip || req.socket.remoteAddress || "");
-  const key = `${bucket}:${ip}`;
+function hitLimited(key, max, windowMs) {
   const now = Date.now();
   const list = (hits.get(key) || []).filter((ts) => now - ts < windowMs);
   list.push(now);
   hits.set(key, list);
-  if (hits.size > 5000) for (const [k, v] of hits) if (!v.some((ts) => now - ts < 3600000)) hits.delete(k);
-  if (list.length > max) {
+  if (hits.size > 20000) for (const [k, v] of hits) if (!v.some((ts) => now - ts < 3600000)) hits.delete(k);
+  return list.length > max;
+}
+function limited(req, res, bucket, max, windowMs) {
+  const ip = String(req.ip || req.socket.remoteAddress || "");
+  if (hitLimited(`${bucket}:${ip}`, max, windowMs)) {
     res.status(429).json({ error: "slow_down" });
     return true;
   }
   return false;
 }
+// Shorten an address for the log: enough to tell a school from a stranger, not a device.
+const maskIp = (ip) => {
+  const s = String(ip || "");
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(s)) return s.replace(/\.\d+$/, ".x");
+  return s.includes(":") ? s.split(":").slice(0, 4).join(":") + ":…" : s;
+};
+
+// Sign-in attempts are also counted per account: 8 wrong passwords lock the account
+// for 15 minutes, doubling each time, however many addresses the guesses come from.
+const loginFails = new Map(); // key -> { n, until, locks }
+function accountLocked(key) {
+  const f = loginFails.get(key);
+  return f && f.until > Date.now() ? Math.ceil((f.until - Date.now()) / 1000) : 0;
+}
+function loginFailed(key) {
+  const f = loginFails.get(key) || { n: 0, until: 0, locks: 0 };
+  f.n += 1;
+  if (f.n >= 8) { f.locks += 1; f.n = 0; f.until = Date.now() + 15 * 60 * 1000 * 2 ** Math.min(4, f.locks - 1); }
+  loginFails.set(key, f);
+  if (loginFails.size > 20000) for (const [k, v] of loginFails) if (v.until < Date.now() - 3600000) loginFails.delete(k);
+}
+const loginSucceeded = (key) => loginFails.delete(key);
+
+/* ---- two-factor codes (TOTP, the "authenticator app" kind) ---- */
+const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function base32Encode(buf) {
+  let bits = 0, value = 0, out = "";
+  for (const b of buf) { value = (value << 8) | b; bits += 8; while (bits >= 5) { out += B32[(value >>> (bits - 5)) & 31]; bits -= 5; } }
+  if (bits > 0) out += B32[(value << (5 - bits)) & 31];
+  return out;
+}
+function base32Decode(s) {
+  let bits = 0, value = 0; const out = [];
+  for (const ch of String(s).toUpperCase().replace(/[^A-Z2-7]/g, "")) { value = (value << 5) | B32.indexOf(ch); bits += 5; if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; } }
+  return Buffer.from(out);
+}
+function totpCode(secret, step = Math.floor(Date.now() / 30000)) {
+  const msg = Buffer.alloc(8); msg.writeUInt32BE(Math.floor(step / 2 ** 32), 0); msg.writeUInt32BE(step >>> 0, 4);
+  const h = crypto.createHmac("sha1", base32Decode(secret)).update(msg).digest();
+  const o = h[h.length - 1] & 15;
+  return String(((h.readUInt32BE(o) & 0x7fffffff) % 1000000)).padStart(6, "0");
+}
+function totpOk(secret, code) {
+  const c = String(code || "").replace(/\s+/g, "");
+  if (!/^\d{6}$/.test(c)) return false;
+  const step = Math.floor(Date.now() / 30000);
+  return [-1, 0, 1].some((d) => safeEq(totpCode(secret, step + d), c));
+}
+const totpPending = new Map(); // teacher id -> { secret, expires }
 const cleanEmail = (e) => {
   const v = String(e || "").trim().toLowerCase().slice(0, 120);
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? v : "";
@@ -385,9 +524,27 @@ app.use((req, res, next) => {
   res.set("X-Frame-Options", "SAMEORIGIN");
   res.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=(), payment=()");
+  // Only this site's own scripts may run; a cross-site-scripting slip cannot load or
+  // inject script. Live slide decks may only be framed from the three allowed players.
+  res.set("Content-Security-Policy", CSP);
   if (req.secure || req.headers["x-forwarded-proto"] === "https") res.set("Strict-Transport-Security", "max-age=15552000");
   next();
 });
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob: data:",
+  "connect-src 'self' ws: wss:",
+  "worker-src 'self' blob:",
+  "frame-src 'self' https://docs.google.com https://*.google.com https://onedrive.live.com https://*.sharepoint.com https://*.officeapps.live.com https://*.canva.com",
+  "frame-ancestors 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join("; ");
 const smallJson = express.json({ limit: "16kb" });
 const planJson = express.json({ limit: "12mb" }); // saved lessons can include pictures
 // Stripe signs the exact bytes it sends, so its webhook must stay unparsed.
@@ -403,6 +560,7 @@ app.get("/remote", (_req, res) => res.sendFile(path.join(__dirname, "public/remo
 app.get("/data", (_req, res) => res.sendFile(path.join(__dirname, "public/data.html")));
 app.get("/marks.js", (_req, res) => res.sendFile(path.join(__dirname, "lib/marks.js")));
 app.get("/class-sticker", (_req, res) => res.sendFile(path.join(__dirname, "public/class-sticker.html")));
+app.get("/privacy", (_req, res) => res.sendFile(path.join(__dirname, "public/privacy.html")));
 
 // Health check — also what an uptime pinger should hit: touching the
 // database keeps both the free web service and Supabase from going idle.
@@ -418,10 +576,11 @@ function aiTextOf(it) {
 app.post("/api/lessons/:id/ai-summary", async (req, res) => {
   if (!db) return res.status(404).json({ error: "storage_off" });
   if (!AI_KEY) return res.status(404).json({ error: "ai_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   try {
-    const { rows } = await db.query(`SELECT id, summary FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`, [req.params.id, t.id]);
+    const { rows } = await db.query(`SELECT id, summary FROM lessons WHERE id = $1 AND (teacher_id = $2 OR ($3 AND teacher_id IS NULL))`,
+      [req.params.id, t.id, !!t.is_admin]);
     if (!rows[0]) return res.status(404).json({ error: "not_found" });
     const summary = rows[0].summary;
     const items = summary.items || [];
@@ -478,21 +637,26 @@ app.get("/api/health", async (_req, res) => {
 app.get("/insights", (_req, res) => res.sendFile(path.join(__dirname, "public/insights.html")));
 
 // Teacher-uploaded images (annotate mode), served over HTTP so websocket
-// broadcasts stay light — clients just get a URL.
+// broadcasts stay light — clients just get a URL. Every picture address carries
+// an unguessable key, so knowing a room code is not enough to fetch pictures.
+const imageKey = () => crypto.randomBytes(12).toString("base64url");
 app.get("/api/image/:code/:id", (req, res) => {
+  if (limited(req, res, "img", 6000, 600000)) return;
   const session = sessions.get(String(req.params.code || "").toUpperCase());
-  const dataUrl = session?.images.get(Number(req.params.id)) ?? session?.images.get(String(req.params.id));
-  const m = dataUrl?.match(/^data:(image\/\w+);base64,(.+)$/);
+  const rec = session?.images.get(Number(req.params.id)) ?? session?.images.get(String(req.params.id));
+  if (!rec || session.phase === "ended" || !safeEq(rec.key, String(req.query.key || ""))) return res.status(404).end();
+  const m = rec.data?.match(/^data:(image\/\w+);base64,(.+)$/);
   if (!m) return res.status(404).end();
-  res.set("Cache-Control", "public, max-age=3600");
+  res.set("Cache-Control", "private, max-age=3600");
   res.type(m[1]).send(Buffer.from(m[2], "base64"));
 });
 
 app.get("/api/resp-image/:code/:itx/:sid/:k?", (req, res) => {
+  if (limited(req, res, "img", 6000, 600000)) return;
   const session = sessions.get(String(req.params.code || "").toUpperCase());
   const x = session?.respImages.get(`${req.params.itx}/${req.params.sid}/${parseInt(req.params.k, 10) || 0}`);
-  if (!x) return res.status(404).end();
-  res.set("Cache-Control", "public, max-age=86400");
+  if (!x || session.phase === "ended" || !safeEq(x.key, String(req.query.key || ""))) return res.status(404).end();
+  res.set("Cache-Control", "private, max-age=86400");
   res.type(x.mime).send(x.buf);
 });
 
@@ -519,7 +683,7 @@ app.post("/api/signup", async (req, res) => {
   let base = slugName(username || displayName);
   if (!displayName && !base) return res.status(400).json({ error: "bad_name" });
   if (base.length < 3) base = (base + ".teacher").slice(0, 24);
-  if (String(password || "").length < 6) return res.status(400).json({ error: "bad_pass" });
+  if (String(password || "").length < MIN_PASSWORD) return res.status(400).json({ error: "bad_pass" });
   const hash = bcrypt.hashSync(String(password), 10);
   // If the sign-in name is taken, quietly number it (sarah.jones2, …).
   for (let n = 0; n < 30; n++) {
@@ -527,10 +691,10 @@ app.post("/api/signup", async (req, res) => {
     try {
       const { rows } = await db.query(
         `INSERT INTO teachers (username, display_name, pass_hash, email, plan, trial_ends_at, last_seen_at)
-         VALUES ($1, $2, $3, $4, $5, $6, now()) RETURNING id, username, display_name, pass_hash`,
+         VALUES ($1, $2, $3, $4, $5, $6, now()) RETURNING id, username, display_name, pass_hash, token_version`,
         [u, displayName || u, hash, email || null, plan, trialEnds]
       );
-      return res.json({ token: signToken(rows[0].id, rows[0].pass_hash), name: rows[0].display_name, username: u });
+      return res.json({ token: signToken(rows[0]), name: rows[0].display_name, username: u });
     } catch (e) {
       if (!String(e.message).includes("duplicate")) return res.status(500).json({ error: "db_error" });
     }
@@ -540,30 +704,49 @@ app.post("/api/signup", async (req, res) => {
 
 // Signed-in teachers can hand the invite to a colleague as a link.
 app.get("/api/invite", async (req, res) => {
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   res.json({ invite: TEACHER_PASSWORD || "" });
 });
 
 app.post("/api/login", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  if (limited(req, res, "login", 80, 900000)) return; // a school shares one address at 9am
+  if (limited(req, res, "login", 300, 900000)) return; // a big staffroom shares one address at 9am; the real brake is per account
   try {
     // Accept the plain name too ("Sarah Jones" finds sarah.jones), a
     // display name match, or the email on the account.
     const raw = String(req.body?.username || "").trim();
+    const acct = raw.toLowerCase().slice(0, 120);
+    const wait = accountLocked(acct);
+    if (wait) return res.status(429).json({ error: "locked", retryAfter: wait });
     const { rows } = await db.query(
       `SELECT * FROM teachers WHERE username = $1 OR username = $2 OR lower(display_name) = $3 OR (email IS NOT NULL AND email = $1) ORDER BY id LIMIT 1`,
       [raw.toLowerCase(), slugName(raw), raw.toLowerCase()]
     );
     const t = rows[0];
-    if (!t || !bcrypt.compareSync(String(req.body?.password || ""), t.pass_hash))
+    if (!t || !bcrypt.compareSync(String(req.body?.password || ""), t.pass_hash)) {
+      loginFailed(acct);
       return res.status(403).json({ error: "bad_login" });
+    }
     if (t.status === "disabled") return res.status(403).json({ error: "account_disabled" });
-    res.json({ token: signToken(t.id, t.pass_hash), name: t.display_name, username: t.username, admin: !!t.is_admin });
+    if (t.totp_secret) {
+      // Two-factor is on: the password alone is not enough.
+      if (!req.body?.code) return res.status(403).json({ error: "totp_required" });
+      if (!totpOk(t.totp_secret, req.body.code)) { loginFailed(acct); return res.status(403).json({ error: "bad_code" }); }
+    }
+    loginSucceeded(acct);
+    res.json({ token: signToken(t), name: t.display_name, username: t.username, admin: !!t.is_admin, mustChange: !!t.must_change });
   } catch {
     res.status(500).json({ error: "db_error" });
   }
+});
+
+// A fresh short-lived token for links (reports, pictures, ZIPs) that cannot send a header.
+app.get("/api/dl-token", async (req, res) => {
+  const t = await authHttp(res, credOf(req));
+  if (!t) return;
+  res.set("Cache-Control", "no-store");
+  res.json({ d: signDlToken(t), ttl: DL_TOKEN_MS });
 });
 
 /* ------------------------------------------------------------------ */
@@ -581,7 +764,7 @@ app.post("/api/deck-check", (req, res) => {
 
 app.post("/api/decks", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   const pages = parseInt(req.body?.pages, 10);
   if (!Number.isInteger(pages) || pages < 1 || pages > 120) return res.status(400).json({ error: "bad_pages" });
@@ -596,7 +779,7 @@ app.post("/api/decks", async (req, res) => {
 
 app.post("/api/decks/:id/slides", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   const page = parseInt(req.body?.page, 10);
   const m = String(req.body?.image || "").match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
@@ -629,11 +812,12 @@ app.get("/api/slide/:img", async (req, res) => {
     if (!r) return res.status(404).end();
     let allowed = false;
     if (req.query.code) {
+      // A classroom screen that was opened from the teacher's dashboard (it carries the room's key).
       const s = sessions.get(String(req.query.code).toUpperCase());
-      allowed = !!s && s.phase !== "ended" && s.teacherId === r.teacher_id;
+      allowed = !!s && s.phase !== "ended" && s.teacherId === r.teacher_id && safeEq(boardKey(s), String(req.query.k || ""));
     }
-    if (!allowed && req.query.t) {
-      const t = await teacherFromToken(String(req.query.t)).catch(() => null);
+    if (!allowed && credOf(req)) {
+      const t = await teacherFromToken(credOf(req)).catch(() => null);
       allowed = !!t && t.id === r.teacher_id;
     }
     if (!allowed) return res.status(403).end();
@@ -646,7 +830,7 @@ app.get("/api/slide/:img", async (req, res) => {
 
 // The phone remote asks: "is my class running right now?" — one tap instead of typing a code.
 app.get("/api/my-session", async (req, res) => {
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   const mine = [...sessions.values()]
     .filter((s) => s.teacherId === t.id && s.phase !== "ended")
@@ -663,18 +847,117 @@ app.get("/api/config", (_req, res) => {
 const mePayload = (t) => ({
   id: t.id, name: t.display_name, username: t.username, email: t.email || "", admin: !!t.is_admin,
   billing: BILLING_ON, trialDays: TRIAL_DAYS, hasSubscription: !!t.stripe_sub, canManageBilling: !!t.stripe_customer,
-  access: accessOf(t),
+  access: accessOf(t), mustChange: !!t.must_change, totp: !!t.totp_secret,
 });
 
 app.get("/api/me", async (req, res) => {
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
-  res.json(mePayload(t));
+  const out = mePayload(t);
+  // A sign-in older than 30 days gets a fresh token, so an active teacher is never signed out by the 90-day limit.
+  if (t._issued && Date.now() - t._issued > TOKEN_REFRESH_MS) out.token = signToken(t);
+  res.set("Cache-Control", "no-store");
+  res.json(out);
+});
+
+// Sign out of every device (this one gets a fresh sign-in).
+app.post("/api/me/signout-all", async (req, res) => {
+  const t = await authWrite(req, res);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(`UPDATE teachers SET token_version = token_version + 1 WHERE id = $1 RETURNING ${TEACHER_COLS}`, [t.id]);
+    res.json({ token: signToken(rows[0]) });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+/* ---- two-factor sign-in (authenticator app) ---- */
+app.post("/api/me/totp/setup", async (req, res) => {
+  const t = await authWrite(req, res);
+  if (!t) return;
+  if (!bcrypt.compareSync(String(req.body?.password || ""), t.pass_hash)) return res.status(403).json({ error: "bad_login" });
+  const secret = base32Encode(crypto.randomBytes(20));
+  totpPending.set(t.id, { secret, expires: Date.now() + 10 * 60 * 1000 });
+  const label = encodeURIComponent(`Eyes Up:${t.username}`);
+  res.json({ secret, url: `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent("Eyes Up")}&digits=6&period=30` });
+});
+app.post("/api/me/totp/enable", async (req, res) => {
+  const t = await authWrite(req, res);
+  if (!t) return;
+  const p = totpPending.get(t.id);
+  if (!p || p.expires < Date.now()) return res.status(400).json({ error: "setup_expired" });
+  if (!totpOk(p.secret, req.body?.code)) return res.status(403).json({ error: "bad_code" });
+  try {
+    await db.query(`UPDATE teachers SET totp_secret = $1 WHERE id = $2`, [p.secret, t.id]);
+    totpPending.delete(t.id);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+app.post("/api/me/totp/disable", async (req, res) => {
+  const t = await authWrite(req, res);
+  if (!t) return;
+  if (!bcrypt.compareSync(String(req.body?.password || ""), t.pass_hash)) return res.status(403).json({ error: "bad_login" });
+  if (t.totp_secret && !totpOk(t.totp_secret, req.body?.code)) return res.status(403).json({ error: "bad_code" });
+  try {
+    await db.query(`UPDATE teachers SET totp_secret = NULL WHERE id = $1`, [t.id]);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+setInterval(() => { const now = Date.now(); for (const [k, v] of totpPending) if (v.expires < now) totpPending.delete(k); }, 60000);
+
+// Everything the account holds, as one JSON file.
+app.get("/api/me/export", async (req, res) => {
+  const t = await authHttp(res, credOf(req));
+  if (!t) return;
+  try {
+    const [lessons, classes, plans] = await Promise.all([
+      db.query(`SELECT id, code, title, created_at, saved_at, summary FROM lessons WHERE teacher_id = $1 ORDER BY created_at`, [t.id]),
+      db.query(`SELECT id, name, code, roster, created_at, updated_at FROM classes WHERE teacher_id = $1 ORDER BY name`, [t.id]),
+      db.query(`SELECT id, title, steps, created_at, updated_at, last_taught_at, times_taught FROM lesson_plans WHERE teacher_id = $1 ORDER BY updated_at`, [t.id]),
+    ]);
+    res.set("Content-Disposition", `attachment; filename="eyes-up-${slugName(t.username)}-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.json({
+      exportedAt: new Date().toISOString(),
+      teacher: { id: t.id, username: t.username, name: t.display_name, email: t.email || null },
+      note: "Pictures students sent are not included (they are kept for 60 days and can be downloaded as ZIPs from each lesson).",
+      lessons: lessons.rows, classes: classes.rows, lessonPlans: plans.rows,
+    });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+// Delete the account and everything in it. Owner accounts are protected (switch them off from the admin page instead).
+app.post("/api/me/delete", async (req, res) => {
+  const t = await authWrite(req, res);
+  if (!t) return;
+  if (t.is_admin) return res.status(400).json({ error: "owner_account" });
+  if (!bcrypt.compareSync(String(req.body?.password || ""), t.pass_hash)) return res.status(403).json({ error: "bad_login" });
+  try {
+    await db.query(`DELETE FROM lesson_images i USING lessons l WHERE l.code = i.lesson_code AND l.created_at = i.lesson_created_at AND l.teacher_id = $1`, [t.id]);
+    await db.query(`DELETE FROM lessons WHERE teacher_id = $1`, [t.id]);
+    await db.query(`DELETE FROM classes WHERE teacher_id = $1`, [t.id]);
+    await db.query(`DELETE FROM lesson_plans WHERE teacher_id = $1`, [t.id]);
+    await db.query(`DELETE FROM slide_images i USING slide_decks d WHERE d.id = i.deck_id AND d.teacher_id = $1`, [t.id]);
+    await db.query(`DELETE FROM slide_decks WHERE teacher_id = $1`, [t.id]);
+    await db.query(`DELETE FROM teachers WHERE id = $1`, [t.id]);
+    for (const s of sessions.values()) if (s.teacherId === t.id) { s.phase = "ended"; s.endedAt = Date.now(); broadcast(s); }
+    console.log(`account ${t.id} deleted by its owner`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("account delete failed:", e.message);
+    res.status(500).json({ error: "db_error" });
+  }
 });
 
 // A teacher can add or change their own email.
 app.post("/api/me", async (req, res) => {
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   const email = cleanEmail(req.body?.email);
   if (req.body?.email && !email) return res.status(400).json({ error: "bad_email" });
@@ -689,14 +972,14 @@ app.post("/api/me", async (req, res) => {
 // …and their own password. The old sign-in dies everywhere; this device gets a fresh one.
 app.post("/api/me/password", async (req, res) => {
   if (limited(req, res, "pw", 10, 900000)) return;
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   if (!bcrypt.compareSync(String(req.body?.current || ""), t.pass_hash)) return res.status(403).json({ error: "bad_login" });
-  if (String(req.body?.next || "").length < 6) return res.status(400).json({ error: "bad_pass" });
+  if (String(req.body?.next || "").length < MIN_PASSWORD) return res.status(400).json({ error: "bad_pass" });
   try {
     const hash = bcrypt.hashSync(String(req.body.next), 10);
-    await db.query(`UPDATE teachers SET pass_hash = $1 WHERE id = $2`, [hash, t.id]);
-    res.json({ token: signToken(t.id, hash) });
+    const { rows } = await db.query(`UPDATE teachers SET pass_hash = $1, must_change = false WHERE id = $2 RETURNING ${TEACHER_COLS}`, [hash, t.id]);
+    res.json({ token: signToken(rows[0]) });
   } catch {
     res.status(500).json({ error: "db_error" });
   }
@@ -707,7 +990,7 @@ app.post("/api/me/password", async (req, res) => {
 app.get("/admin", (_req, res) => res.sendFile(path.join(__dirname, "public/admin.html")));
 
 app.get("/api/admin/overview", async (req, res) => {
-  const me = await adminHttp(res, req.query.t);
+  const me = await adminHttp(req, res);
   if (!me) return;
   try {
     const { rows } = await db.query(
@@ -722,8 +1005,12 @@ app.get("/api/admin/overview", async (req, res) => {
         GROUP BY t.id ORDER BY t.created_at DESC`
     );
     const live = [...sessions.values()].filter((s) => s.phase !== "ended" && s.students.size > 0);
+    const log = await db.query(`SELECT id, admin_name, action, target_name, detail, at FROM admin_log ORDER BY id DESC LIMIT 50`).catch(() => ({ rows: [] }));
+    res.set("Cache-Control", "no-store");
     res.json({
       me: me.id,
+      log: log.rows,
+      legacyLessons: (await db.query(`SELECT count(*)::int AS n FROM lessons WHERE teacher_id IS NULL`).catch(() => ({ rows: [{ n: 0 }] }))).rows[0].n,
       billing: { on: BILLING_ON, trialDays: TRIAL_DAYS, openSignup: OPEN_SIGNUP, yearly: !!STRIPE_PRICE_YEARLY, webhook: !!STRIPE_WEBHOOK_SECRET },
       ai: !!AI_KEY,
       separateSecret: !!process.env.AUTH_SECRET,
@@ -743,30 +1030,43 @@ app.get("/api/admin/overview", async (req, res) => {
 });
 
 // A password a person can read out over the phone.
+// Three words and four digits: easy to read out, hard to guess (about 10^10 combinations),
+// and the teacher must change it at their first sign-in.
+const TEMP_WORDS = ["river", "maple", "comet", "pebble", "lantern", "meadow", "harbour", "falcon", "ember", "willow", "summit", "coral",
+  "orchid", "thunder", "marble", "saffron", "glacier", "canyon", "velvet", "tundra", "quartz", "nectar", "juniper", "beacon",
+  "cobalt", "driftwood", "fossil", "granite", "heron", "indigo", "jasmine", "kestrel", "lagoon", "meteor", "nutmeg", "osprey",
+  "pepper", "quiver", "raven", "sundial", "timber", "umber", "violet", "walnut", "yarrow", "zephyr", "anchor", "bramble",
+  "cedar", "dune", "echo", "fern", "garnet", "harvest", "island", "jigsaw", "kayak", "lantern", "mango", "nebula"];
 function tempPassword() {
-  const words = ["river", "maple", "comet", "pebble", "lantern", "meadow", "harbor", "falcon", "ember", "willow", "summit", "coral"];
-  const pick = () => words[crypto.randomInt(words.length)];
-  return `${pick()}-${pick()}-${crypto.randomInt(100, 1000)}`;
+  const pick = () => TEMP_WORDS[crypto.randomInt(TEMP_WORDS.length)];
+  return `${pick()}-${pick()}-${pick()}-${crypto.randomInt(1000, 10000)}`;
 }
 
 app.post("/api/admin/teacher/:id", async (req, res) => {
-  const me = await adminHttp(res, req.body?.t);
+  const me = await adminHttp(req, res);
   if (!me) return;
   const id = parseInt(req.params.id, 10);
   const action = String(req.body?.action || "");
   try {
-    const { rows } = await db.query(`SELECT id, is_admin FROM teachers WHERE id = $1`, [id]);
+    const { rows } = await db.query(`SELECT id, username, is_admin FROM teachers WHERE id = $1`, [id]);
     if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const target = rows[0];
     const self = id === me.id;
+    // The actions that change who can get in need the owner's password again — a stolen
+    // sign-in on an unlocked laptop cannot do them.
+    if (["disable", "enable", "reset_password", "set_admin"].includes(action) && !bcrypt.compareSync(String(req.body?.password || ""), me.pass_hash))
+      return res.status(403).json({ error: "bad_login" });
     if (action === "disable" || action === "enable") {
       if (self) return res.status(400).json({ error: "not_yourself" });
       await db.query(`UPDATE teachers SET status = $1 WHERE id = $2`, [action === "disable" ? "disabled" : "active", id]);
+      await logAdmin(me, action, target);
       return res.json({ ok: true });
     }
     if (action === "reset_password") {
-      // Shown once to the owner, who passes it on; the teacher then changes it under My account.
+      // Shown once to the owner, who passes it on; the teacher must change it at their next sign-in.
       const pw = tempPassword();
-      await db.query(`UPDATE teachers SET pass_hash = $1 WHERE id = $2`, [bcrypt.hashSync(pw, 10), id]);
+      await db.query(`UPDATE teachers SET pass_hash = $1, must_change = true, token_version = token_version + 1 WHERE id = $2`, [bcrypt.hashSync(pw, 10), id]);
+      await logAdmin(me, action, target);
       return res.json({ ok: true, password: pw, self });
     }
     if (action === "set_plan") {
@@ -778,17 +1078,20 @@ app.post("/api/admin/teacher/:id", async (req, res) => {
         `UPDATE teachers SET plan = $1, trial_ends_at = $2, paid_until = $3 WHERE id = $4`,
         [plan, plan === "trial" ? until : null, plan === "paid" || plan === "school" ? until : null, id]
       );
+      await logAdmin(me, action, target, `${plan}${until ? ` until ${until.toISOString().slice(0, 10)}` : ""}`);
       return res.json({ ok: true });
     }
     if (action === "set_admin") {
       if (self) return res.status(400).json({ error: "not_yourself" });
       await db.query(`UPDATE teachers SET is_admin = $1 WHERE id = $2`, [!!req.body?.admin, id]);
+      await logAdmin(me, req.body?.admin ? "make_owner" : "remove_owner", target);
       return res.json({ ok: true });
     }
     if (action === "set_details") {
       const email = cleanEmail(req.body?.email);
       if (req.body?.email && !email) return res.status(400).json({ error: "bad_email" });
       await db.query(`UPDATE teachers SET email = $1, note = $2 WHERE id = $3`, [email || null, String(req.body?.note || "").slice(0, 300) || null, id]);
+      await logAdmin(me, action, target);
       return res.json({ ok: true });
     }
     res.status(400).json({ error: "bad_action" });
@@ -848,7 +1151,7 @@ app.get("/api/billing/info", async (_req, res) => {
 
 app.post("/api/billing/checkout", async (req, res) => {
   if (!BILLING_ON) return res.status(404).json({ error: "billing_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   const price = req.body?.interval === "year" && STRIPE_PRICE_YEARLY ? STRIPE_PRICE_YEARLY : STRIPE_PRICE_MONTHLY;
   try {
@@ -874,7 +1177,7 @@ app.post("/api/billing/checkout", async (req, res) => {
 // Stripe's own page for changing the card, switching plan or cancelling.
 app.post("/api/billing/portal", async (req, res) => {
   if (!BILLING_ON) return res.status(404).json({ error: "billing_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   if (!t.stripe_customer) return res.status(400).json({ error: "no_subscription" });
   try {
@@ -922,7 +1225,14 @@ app.post("/api/stripe/webhook", express.raw({ type: "*/*", limit: "1mb" }), asyn
   const raw = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : "";
   if (!stripeSignatureOk(raw, req.headers["stripe-signature"])) return res.status(400).json({ error: "bad_signature" });
   let event;
+  // An event Stripe (or anyone replaying its signed request) already delivered is not applied twice.
   try { event = JSON.parse(raw); } catch { return res.status(400).json({ error: "bad_json" }); }
+  if (event && typeof event.id === "string") {
+    const seen = stripeSeen.get(event.id);
+    if (seen && Date.now() - seen < 86400000) return res.json({ received: true, duplicate: true });
+    stripeSeen.set(event.id, Date.now());
+    if (stripeSeen.size > 5000) for (const [k, v] of stripeSeen) if (Date.now() - v > 86400000) stripeSeen.delete(k);
+  }
   try {
     const obj = event.data?.object || {};
     if (event.type === "checkout.session.completed" && obj.mode === "subscription") {
@@ -949,10 +1259,11 @@ app.post("/api/stripe/webhook", express.raw({ type: "*/*", limit: "1mb" }), asyn
    the QR logs the phone in automatically. Short-lived, single-use. ---- */
 
 const pairCodes = new Map(); // pair -> {teacherId, expires}
+const stripeSeen = new Map(); // Stripe event id -> when it was applied (replays are ignored for a day)
 
 app.post("/api/pair", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   const pair = crypto.randomBytes(8).toString("base64url");
   pairCodes.set(pair, { teacherId: t.id, expires: Date.now() + 10 * 60 * 1000 });
@@ -967,8 +1278,8 @@ app.post("/api/pair/claim", async (req, res) => {
     return res.status(403).json({ error: "bad_pair" });
   try {
     const { rows } = await db.query(`SELECT * FROM teachers WHERE id = $1`, [rec.teacherId]);
-    if (!rows[0]) return res.status(403).json({ error: "bad_pair" });
-    res.json({ token: signToken(rows[0].id, rows[0].pass_hash), name: rows[0].display_name, username: rows[0].username });
+    if (!rows[0] || rows[0].status === "disabled") return res.status(403).json({ error: "bad_pair" });
+    res.json({ token: signToken(rows[0]), name: rows[0].display_name, username: rows[0].username });
   } catch {
     res.status(500).json({ error: "db_error" });
   }
@@ -982,7 +1293,7 @@ setInterval(() => {
 // Past lessons archive — each teacher sees their own (plus pre-account legacy rows).
 app.get("/api/lessons", async (req, res) => {
   if (!db) return res.json({ storage: false, lessons: [] });
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   try {
     const { rows } = await db.query(
@@ -995,9 +1306,9 @@ app.get("/api/lessons", async (req, res) => {
               (SELECT e->>'prompt' FROM jsonb_array_elements(summary->'items') e
                 WHERE coalesce(e->>'prompt', '') <> '' AND e->>'mode' NOT IN ('link', 'slide', 'deck') LIMIT 1) AS first_prompt
        FROM lessons
-       WHERE teacher_id = $1 OR teacher_id IS NULL
+       WHERE teacher_id = $1 OR ($2 AND teacher_id IS NULL)
        ORDER BY created_at DESC LIMIT 200`,
-      [t.id]
+      [t.id, !!t.is_admin]
     );
     res.json({ storage: true, ai: !!AI_KEY, lessons: rows });
   } catch (e) {
@@ -1007,12 +1318,12 @@ app.get("/api/lessons", async (req, res) => {
 
 app.get("/api/lessons/:id", async (req, res) => {
   if (!db) return res.status(404).json({ error: "storage_off" });
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   try {
     const { rows } = await db.query(
-      `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
-      [req.params.id, t.id]
+      `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR ($3 AND teacher_id IS NULL))`,
+      [req.params.id, t.id, !!t.is_admin]
     );
     if (!rows[0]) return res.status(404).json({ error: "not_found" });
     const r = rows[0];
@@ -1023,7 +1334,7 @@ app.get("/api/lessons/:id", async (req, res) => {
       [r.code, r.created_at]
     );
     if (imgs.rows.length) {
-      const tq = `?t=${encodeURIComponent(req.query.t)}`;
+      const tq = `?d=${signDlToken(t)}`; // a short-lived link token, never the sign-in itself
       for (const it of summary.items || []) {
         const mine = imgs.rows.filter((x) => x.itx_id === it.id);
         if (mine.length) it.images = mine.map((x) => ({ name: x.student_name, text: x.text || undefined, image: `/api/lesson-image/${x.id}${tq}` }));
@@ -1038,14 +1349,14 @@ app.get("/api/lessons/:id", async (req, res) => {
 // One stored picture — only the lesson's owner.
 app.get("/api/lesson-image/:img", async (req, res) => {
   if (!db) return res.status(404).end();
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   try {
     const { rows } = await db.query(
       `SELECT i.mime, i.data FROM lesson_images i
        JOIN lessons l ON l.code = i.lesson_code AND l.created_at = i.lesson_created_at
-       WHERE i.id = $1 AND (l.teacher_id = $2 OR l.teacher_id IS NULL)`,
-      [req.params.img, t.id]
+       WHERE i.id = $1 AND (l.teacher_id = $2 OR ($3 AND l.teacher_id IS NULL))`,
+      [req.params.img, t.id, !!t.is_admin]
     );
     if (!rows[0]) return res.status(404).end();
     res.set("Cache-Control", "private, max-age=86400");
@@ -1058,12 +1369,12 @@ app.get("/api/lesson-image/:img", async (req, res) => {
 // ZIP of an archived lesson's pictures (whole lesson, or one activity).
 app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
   if (!db) return res.status(404).end();
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   try {
     const { rows } = await db.query(
-      `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
-      [req.params.id, t.id]
+      `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR ($3 AND teacher_id IS NULL))`,
+      [req.params.id, t.id, !!t.is_admin]
     );
     if (!rows[0]) return res.status(404).json({ error: "not_found" });
     const lesson = rows[0];
@@ -1266,7 +1577,7 @@ const classRow = (r) => ({ id: r.id, name: r.name, code: r.code, roster: r.roste
 
 app.get("/api/classes", async (req, res) => {
   if (!db) return res.json({ storage: false, classes: [] });
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   try {
     const { rows } = await db.query(`SELECT * FROM classes WHERE teacher_id = $1 ORDER BY lower(name)`, [t.id]);
@@ -1276,7 +1587,7 @@ app.get("/api/classes", async (req, res) => {
 
 app.post("/api/classes", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   const name = String(req.body?.name || "").trim().slice(0, 60);
   if (!name) return res.status(400).json({ error: "name_required" });
@@ -1306,7 +1617,7 @@ app.post("/api/classes", async (req, res) => {
 
 app.delete("/api/classes/:id", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   try {
     const { rowCount } = await db.query(`DELETE FROM classes WHERE id = $1 AND teacher_id = $2`, [req.params.id, t.id]);
@@ -1327,15 +1638,22 @@ function liveSessionFor(code) {
 // What the join page needs before anyone joins: is the class live, what is
 // it called, and whose names to show as tiles. Public, like the join page.
 app.get("/api/join-info", async (req, res) => {
+  // Generous per-address limit (a school is one address), plus a per-code limit so
+  // guessing codes to harvest class lists is impractical.
+  if (limited(req, res, "joininfo", 3000, 600000)) return;
   const code = String(req.query.code || "").toUpperCase().slice(0, 5);
+  if (hitLimited(`joininfo-code:${code}`, 300, 600000)) return res.status(429).json({ error: "slow_down" });
+  res.set("Cache-Control", "no-store");
   const session = liveSessionFor(code);
   const joined = (s) => [...new Set([...s.students.values()].map((x) => x.name).filter((n) => n && n !== "👁 Preview"))];
   if (session && session.phase !== "ended")
     return res.json({ live: true, code: session.code, className: session.className || null, roster: session.roster || [], joined: joined(session) });
   if (code.length === 5 && db) {
+    // Not live: the sticker page needs the class name, but the names of the children stay
+    // private until their teacher has actually started a lesson.
     try {
-      const { rows } = await db.query(`SELECT name, roster FROM classes WHERE code = $1`, [code]);
-      if (rows[0]) return res.json({ live: false, className: rows[0].name, roster: rows[0].roster || [] });
+      const { rows } = await db.query(`SELECT name FROM classes WHERE code = $1`, [code]);
+      if (rows[0]) return res.json({ live: false, className: rows[0].name, roster: [] });
     } catch { /* fall through */ }
   }
   res.json({ live: false });
@@ -1343,7 +1661,7 @@ app.get("/api/join-info", async (req, res) => {
 
 app.get("/api/plans", async (req, res) => {
   if (!db) return res.json({ storage: false, plans: [] });
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   try {
     const { rows } = await db.query(
@@ -1362,7 +1680,7 @@ app.get("/api/plans", async (req, res) => {
 
 app.get("/api/plans/:id", async (req, res) => {
   if (!db) return res.status(404).json({ error: "storage_off" });
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   try {
     const { rows } = await db.query(`SELECT * FROM lesson_plans WHERE id = $1 AND teacher_id = $2`, [req.params.id, t.id]);
@@ -1381,7 +1699,7 @@ const cleanPlanBody = (b) => ({
 
 app.post("/api/plans", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   const { title, steps } = cleanPlanBody(req.body);
   try {
@@ -1397,7 +1715,7 @@ app.post("/api/plans", async (req, res) => {
 
 app.put("/api/plans/:id", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   const { title, steps } = cleanPlanBody(req.body);
   try {
@@ -1421,7 +1739,7 @@ app.put("/api/plans/:id", async (req, res) => {
 
 app.post("/api/plans/:id/duplicate", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   try {
     const { rows } = await db.query(
@@ -1439,7 +1757,7 @@ app.post("/api/plans/:id/duplicate", async (req, res) => {
 
 app.delete("/api/plans/:id", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.query.t);
+  const t = await authHttp(res, credOf(req));
   if (!t) return;
   try {
     const r = await db.query(`DELETE FROM lesson_plans WHERE id = $1 AND teacher_id = $2`, [req.params.id, t.id]);
@@ -1455,41 +1773,85 @@ app.delete("/api/plans/:id", async (req, res) => {
 
 app.post("/api/lessons/:id/share", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   try {
     const { rows } = await db.query(
-      `SELECT id, share_key FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
-      [req.params.id, t.id]
+      `SELECT id, share_key FROM lessons WHERE id = $1 AND (teacher_id = $2 OR ($3 AND teacher_id IS NULL))`,
+      [req.params.id, t.id, !!t.is_admin]
     );
     if (!rows[0]) return res.status(404).json({ error: "not_found" });
     let key = rows[0].share_key;
     if (!key) {
       key = crypto.randomBytes(9).toString("base64url");
-      await db.query(`UPDATE lessons SET share_key = $1 WHERE id = $2`, [key, rows[0].id]);
+      await db.query(`UPDATE lessons SET share_key = $1, shared_at = now() WHERE id = $2`, [key, rows[0].id]);
     }
-    res.json({ key });
+    res.json({ key, days: SHARE_DAYS });
   } catch {
     res.status(500).json({ error: "db_error" });
   }
 });
 
+// Stop sharing: the link stops working at once.
+app.delete("/api/lessons/:id/share", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authWrite(req, res);
+  if (!t) return;
+  try {
+    const r = await db.query(`UPDATE lessons SET share_key = NULL, shared_at = NULL WHERE id = $1 AND (teacher_id = $2 OR ($3 AND teacher_id IS NULL))`, [req.params.id, t.id, !!t.is_admin]);
+    if (!r.rowCount) return res.status(404).json({ error: "not_found" });
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+// Delete a stored lesson: its record, its pictures and its share link. A lesson that is
+// still running cannot be deleted until it is finished.
+app.delete("/api/lessons/:id", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  const t = await authWrite(req, res);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(`SELECT id, code, created_at FROM lessons WHERE id = $1 AND (teacher_id = $2 OR ($3 AND teacher_id IS NULL))`, [req.params.id, t.id, !!t.is_admin]);
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const row = rows[0];
+    const live = sessions.get(row.code);
+    if (live && live.phase !== "ended" && Math.abs(new Date(live.createdAt) - new Date(row.created_at)) < 2000) return res.status(409).json({ error: "lesson_live" });
+    if (live && Math.abs(new Date(live.createdAt) - new Date(row.created_at)) < 2000) sessions.delete(row.code); // nothing to revive
+    await db.query(`DELETE FROM lesson_images WHERE lesson_code = $1 AND lesson_created_at = $2`, [row.code, row.created_at]);
+    await db.query(`DELETE FROM lessons WHERE id = $1`, [row.id]);
+    console.log(`lesson ${row.id} deleted by teacher ${t.id}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("lesson delete failed:", e.message);
+    res.status(500).json({ error: "db_error" });
+  }
+});
+
+const SHARE_DAYS = 90; // a share link works for a season, then needs re-sharing
 app.get("/api/shared/:key", async (req, res) => {
   if (!db) return res.status(404).json({ error: "storage_off" });
+  if (limited(req, res, "shared", 600, 600000)) return;
   try {
-    const { rows } = await db.query(`SELECT * FROM lessons WHERE share_key = $1`, [
-      String(req.params.key).slice(0, 40),
+    const { rows } = await db.query(`SELECT * FROM lessons WHERE share_key = $1 AND coalesce(shared_at, now()) > now() - ($2 || ' days')::interval`, [
+      String(req.params.key).slice(0, 40), String(SHARE_DAYS),
     ]);
     if (!rows[0]) return res.status(404).json({ error: "not_found" });
     const row = rows[0];
-    // Public view: aggregates and anonymised answers only — never names.
+    // Public view: aggregates and anonymised answers only — never a name of any kind:
+    // no per-student rows, no roster, no class, no teacher, no hand-marks keyed by name.
     const s = JSON.parse(JSON.stringify(row.summary));
     (s.items || []).forEach((it) => {
       if (!it.answers?.length && it.students?.length)
         it.answers = it.students.map((x) => x.response).filter(Boolean).slice(0, 60);
       delete it.students;
       delete it.noResponse;
+      delete it.manual;
+      delete it.images;
+      if (Array.isArray(it.tunes)) it.tunes = it.tunes.map((x) => ({ tune: x.tune }));
     });
+    for (const k of ["roster", "classRoster", "className", "classId", "teacherName", "ai"]) delete s[k];
     res.json({ ...s, title: row.title || s.title, createdAt: new Date(row.created_at).getTime(), shared: true });
   } catch {
     res.status(500).json({ error: "db_error" });
@@ -1500,12 +1862,12 @@ app.get("/api/shared/:key", async (req, res) => {
 // wording (and a title) on the record afterwards.
 app.post("/api/lessons/:id/edit", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
-  const t = await authHttp(res, req.body?.t);
+  const t = await authWrite(req, res);
   if (!t) return;
   try {
     const { rows } = await db.query(
-      `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
-      [req.params.id, t.id]
+      `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR ($3 AND teacher_id IS NULL))`,
+      [req.params.id, t.id, !!t.is_admin]
     );
     if (!rows[0]) return res.status(404).json({ error: "not_found" });
     const row = rows[0];
@@ -1560,13 +1922,20 @@ app.post("/api/lessons/:id/edit", async (req, res) => {
 // The live session behind a code, if this request is allowed to see it:
 // the owning teacher's token in account mode, the shared password otherwise.
 // Answers the request itself on failure.
-const dlToken = (code) => crypto.createHmac("sha256", AUTH_SECRET).update(`dl:${code}`).digest("hex").slice(0, 24);
+// The room's key: known to the teacher's screens, put in the projector link by the dashboard, never
+// shown on the board. It is derived (not stored) so a room revived after a restart keeps the same key.
+const boardKey = (session) => hmac(`board:${session.code}:${session.createdAt}`).slice(0, 24);
+// The download token a trusted classroom screen holds for its own room.
+const dlToken = (session) => hmac(`dl:${session.code}:${session.createdAt}`).slice(0, 24);
 async function ownedSession(req, res) {
   const session = sessions.get(String(req.params.code || "").toUpperCase());
-  // The classroom screen carries a token for its own room, so a teacher can download from the board.
-  if (session && req.query.pt && req.query.pt === dlToken(session.code)) return session;
+  // A classroom screen opened from the dashboard carries a token for its own room, so a teacher can download from the board.
+  if (session && req.query.pt && safeEq(String(req.query.pt), dlToken(session))) {
+    console.log(`download from board: room ${session.code} ${req.path} ip=${maskIp(req.ip)}`);
+    return session;
+  }
   if (db) {
-    const t = await authHttp(res, req.query.t);
+    const t = await authHttp(res, credOf(req));
     if (!t) return null;
     if (!session) { res.status(404).json({ error: "no_session" }); return null; }
     if (session.teacherId != null && session.teacherId !== t.id) { res.status(403).json({ error: "auth_required" }); return null; }
@@ -1710,7 +2079,7 @@ function wsLimited(ws, bucket, max, windowMs, perSocket = false) {
   if (wsHits.size > 5000) for (const [k, v] of wsHits) if (!v.some((ts) => now - ts < 3600000)) wsHits.delete(k);
   return list.length > max;
 }
-const MAX_RESP_IMAGE_BYTES = (parseInt(process.env.MAX_RESP_IMAGE_MB, 10) || 64) * 1024 * 1024; // per room, across all students (decoded bytes)
+const MAX_RESP_IMAGE_BYTES = (parseInt(process.env.MAX_RESP_IMAGE_MB, 10) || 48) * 1024 * 1024; // per room, across all students (decoded bytes)
 const MAX_ALL_RESP_IMAGE_BYTES = 192 * 1024 * 1024; // across every live room — the server has 512 MB in all
 // Photos live as raw bytes ({ mime, buf }) rather than base64 strings: a Buffer
 // sits outside the V8 heap and is a quarter smaller, so a class of photos no
@@ -1766,9 +2135,7 @@ async function reviveSession(code, teacher, ws) {
 function newCode() {
   let code;
   do {
-    code = Array.from({ length: 4 }, () =>
-      CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]
-    ).join("");
+    code = Array.from({ length: 4 }, () => CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)]).join("");
   } while (sessions.has(code));
   return code;
 }
@@ -1785,6 +2152,8 @@ function createSession(teacherWs, opts = {}) {
     projectors: new Set(),
     students: new Map(), // id -> {id, name, ws}
     everJoined: new Map(), // id -> name (for summary even after disconnects)
+    seatSecrets: new Map(), // id -> secret the device must present to take the seat back
+    endedAt: null, // when the teacher finished; the room is dropped from memory soon after
     classId: null, className: null, classCode: null, roster: [], // the class this room is teaching, if the teacher picked one
     phase: "lobby", // lobby | interaction | eyesup | ended
     interaction: null,
@@ -1888,8 +2257,9 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     const urls = list.slice(0, 10).map((x, i) => {
       if (!(typeof x === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(x) && x.length < 300000)) return null;
       const key = `${session.counter}${tag}${i}`;
-      session.images.set(key, x);
-      return `/api/image/${session.code}/${key}`;
+      const secret = imageKey();
+      session.images.set(key, { data: x, key: secret });
+      return `/api/image/${session.code}/${key}?key=${secret}`;
     });
     return urls.some(Boolean) ? urls : null;
   };
@@ -1955,8 +2325,9 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     /^data:image\/(png|jpeg|webp);base64,/.test(image) &&
     image.length < 900000
   ) {
-    session.images.set(session.counter, image);
-    imageUrl = `/api/image/${session.code}/${session.counter}`;
+    const secret = imageKey();
+    session.images.set(session.counter, { data: image, key: secret });
+    imageUrl = `/api/image/${session.code}/${session.counter}?key=${secret}`;
   }
   // Answers each for the activities that take several: the room's limit, the composer's "one each", or 12.
   const maxEach = MULTI_MODES.has(mode) ? Math.min(session.answerLimit ?? 12, multi === false ? 1 : 12) : null;
@@ -2374,6 +2745,7 @@ function teacherState(session) {
     title: session.title,
     classId: session.classId, className: session.className, classCode: session.classCode, roster: session.roster,
     lanHost: `${lanAddress()}:${PORT}`, // so the dashboard can QR the phone remote locally
+    boardKey: boardKey(session), // goes into the projector link; a screen without it can watch but not control or download
     storage: !!db, // lessons persist to Postgres
     teacherName: session.teacherName || null,
     favs: session.favs || [],
@@ -2445,12 +2817,14 @@ function teacherState(session) {
   };
 }
 
-function projectorState(session) {
+function projectorState(session, trusted = false) {
   const itx = session.interaction;
   return {
     type: "state",
     role: "projector",
-    dl: dlToken(session.code), // lets the classroom screen download this room's answers
+    trusted, // opened from the teacher's dashboard (carries the room's key): may control and download
+    dl: trusted ? dlToken(session) : null, // lets a trusted classroom screen download this room's answers
+    boardKey: trusted ? boardKey(session) : null, // so the screen keeps its trust across a new lesson code
     code: session.code,
     title: session.title,
     className: session.className,
@@ -2551,7 +2925,7 @@ function studentState(session, student) {
 function broadcast(session) {
   const ts = teacherState(session);
   for (const t of session.teachers) safeSend(t, ts);
-  for (const p of session.projectors) safeSend(p, projectorState(session));
+  for (const p of session.projectors) safeSend(p, projectorState(session, !!p.meta?.trusted));
   for (const s of session.students.values()) safeSend(s.ws, studentState(session, s));
   persistSession(session); // debounced; no-op without a database
 }
@@ -2957,18 +3331,23 @@ async function handle(ws, msg) {
   }
 
   if (type === "projector_join") {
+    if (wsLimited(ws, "proj", 20, 60000, true) || wsLimited(ws, "proj", 2000, 600000)) return safeSend(ws, { type: "error", error: "slow_down" });
     const session = sessions.get(String(msg.code || "").toUpperCase());
     if (!session) return safeSend(ws, { type: "error", error: "no_session" });
+    // Opened from the dashboard (the link carries the room's key)? Then it may drive the lesson and
+    // download. Opened by typing the code? It can watch, like the class does — nothing more.
+    const trusted = typeof msg.key === "string" && safeEq(msg.key, boardKey(session));
     session.projectors.add(ws);
-    ws.meta = { role: "projector", code: session.code };
-    safeSend(ws, projectorState(session));
+    ws.meta = { role: "projector", code: session.code, trusted };
+    console.log(`projector joined: room ${session.code} trusted=${trusted} ip=${maskIp(ws.ip)}`);
+    safeSend(ws, projectorState(session, trusted));
     return;
   }
 
   if (type === "student_join") {
     const code = String(msg.code || "").toUpperCase();
     // Every refused join is logged, so a "students couldn't get in" report can be checked in the server logs.
-    const refuse = (error) => { console.warn(`join refused: ${error} code=${code} ip=${ws.ip}`); return safeSend(ws, { type: "error", error, code }); };
+    const refuse = (error) => { console.warn(`join refused: ${error} code=${code} ip=${maskIp(ws.ip)}`); return safeSend(ws, { type: "error", error, code }); };
     if (wsLimited(ws, "join", 30, 60000, true) || wsLimited(ws, "join", 3000, 600000)) return refuse("slow_down");
     const session = liveSessionFor(code); // a 4-letter room code, or the 5-letter class code on a sticker
     if (!session) return refuse("no_session");
@@ -2980,8 +3359,14 @@ async function handle(ws, msg) {
     }
     if (session.phase === "ended") return refuse("session_ended");
     let student;
-    const typed = String(msg.name || "").trim().slice(0, 24);
-    const sid = typeof msg.studentId === "string" && session.everJoined.has(msg.studentId) ? msg.studentId : null;
+    let typed = String(msg.name || "").trim().slice(0, 24);
+    // Only the dashboard's own preview (it carries the room's key) may use the preview name,
+    // which is left out of rosters and exports.
+    if (typed === "👁 Preview" && !(typeof msg.key === "string" && safeEq(msg.key, boardKey(session)))) typed = "Student";
+    // A seat can be taken back by number only with the secret that device was given when it sat down.
+    const sid = typeof msg.studentId === "string" && session.everJoined.has(msg.studentId)
+      && typeof msg.secret === "string" && session.seatSecrets.has(msg.studentId) && safeEq(session.seatSecrets.get(msg.studentId), msg.secret)
+      ? msg.studentId : null;
     // A seat that went quiet (tab closed, phone locked, browser restarted) and the same first name
     // typed or tapped again: that is the same child — same seat, same answers. Only a seat with no
     // live connection is matched by name, so two children sharing a name never displace each other.
@@ -3000,10 +3385,11 @@ async function handle(ws, msg) {
       const name = typed || "Student";
       student = { id, name, ws };
       session.everJoined.set(id, name);
+      session.seatSecrets.set(id, crypto.randomBytes(9).toString("base64url"));
     }
     session.students.set(student.id, student);
     ws.meta = { role: "student", code: session.code, studentId: student.id };
-    safeSend(ws, { type: "joined", studentId: student.id, code: session.code });
+    safeSend(ws, { type: "joined", studentId: student.id, code: session.code, secret: session.seatSecrets.get(student.id) });
     broadcast(session);
     return;
   }
@@ -3042,17 +3428,19 @@ async function handle(ws, msg) {
       }
       const v = Date.now();
       payload.images = incoming.map((x, k) => {
+        x.key = imageKey(); // an unguessable address per picture
         session.respImages.set(prefix + k, x);
-        return `/api/resp-image/${session.code}/${prefix}${k}?v=${v}`;
+        return `/api/resp-image/${session.code}/${prefix}${k}?v=${v}&key=${x.key}`;
       });
       payload.image = payload.images[0];
     }
     const record = {
       name: student.name,
       payload,
-      // Everything goes straight to the screen by default — the teacher's
-      // controls take things down rather than put things up.
-      revealed: true,
+      // Text and votes go straight to the screen (the teacher's controls take things down).
+      // Pictures and drawings wait for the teacher: a child's photo or sketch is seen by the
+      // teacher first, and reaches the board only when revealed.
+      revealed: !IMAGE_MODES.has(itx.mode),
       at: Date.now(),
     };
     if (itx.mode === "post_its") {
@@ -3074,7 +3462,11 @@ async function handle(ws, msg) {
 
   // Room tools a teacher can also drive from the board's corner dock.
   const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "set_answer_limit", "show_results", "hide_results", "reveal_random", "clear_peek", "next", "seq_prev"]);
-  if (ws.meta.role !== "teacher" && !(ws.meta.role === "projector" && BOARD_ACTIONS.has(type))) {
+  // Only a classroom screen opened from the teacher's dashboard (trusted) may drive the lesson.
+  // A screen opened by typing the room code — a student's phone, say — can only watch.
+  const board = ws.meta.role === "projector" && !!ws.meta.trusted;
+  if (ws.meta.role === "projector" && !ws.meta.trusted) return;
+  if (ws.meta.role !== "teacher" && !(board && BOARD_ACTIONS.has(type))) {
     // The projector often runs on an interactive whiteboard: allow
     // tap-to-spotlight and the corner tools straight from the board — and only those.
     if (ws.meta.role === "projector" && type === "timer_big") {
@@ -3425,6 +3817,20 @@ async function handle(ws, msg) {
       session.title = String(msg.title || "").trim().slice(0, 80);
       break;
     }
+    case "kick_student": {
+      // Remove a seat from the room (a silly or offensive join name, a child who should not be in this
+      // class). The device is told why and does not rejoin by itself; the name leaves the roster, and
+      // anything sent to the current question under that seat goes with it.
+      const id = String(msg.studentId || "");
+      const st = session.students.get(id);
+      if (st?.ws) { safeSend(st.ws, { type: "removed" }); try { st.ws.close(4002, "removed by teacher"); } catch {} }
+      session.students.delete(id);
+      session.everJoined.delete(id);
+      session.seatSecrets.delete(id);
+      session.picked.delete(id);
+      if (session.interaction) session.interaction.responses.delete(id);
+      break;
+    }
     case "set_class": {
       // Teach this room to one of the teacher's classes: names become tap-to-join tiles.
       if (!msg.classId) { session.classId = null; session.className = null; session.classCode = null; session.roster = []; break; }
@@ -3458,6 +3864,7 @@ async function handle(ws, msg) {
         session.interaction = null;
       }
       session.phase = "ended";
+      session.endedAt = Date.now();
       if (session.persistTimer) {
         clearTimeout(session.persistTimer);
         session.persistTimer = null;
@@ -3482,7 +3889,7 @@ async function handle(ws, msg) {
       session.teachers = new Set();
       session.projectors = new Set();
       for (const t of fresh.teachers) t.meta = { role: "teacher", code: fresh.code };
-      for (const p of fresh.projectors) p.meta = { role: "projector", code: fresh.code };
+      for (const p of fresh.projectors) p.meta = { ...p.meta, role: "projector", code: fresh.code }; // a trusted board stays trusted
 
       broadcast(session); // the outgoing class sees "that's a wrap"
       broadcast(fresh); // the projector flips to the new join screen
@@ -3494,6 +3901,7 @@ async function handle(ws, msg) {
         session.interaction = null;
       }
       session.phase = "ended";
+      session.endedAt = Date.now();
       const summary = buildSummary(session);
       for (const t of session.teachers) safeSend(t, summary);
       break;
@@ -3816,11 +4224,18 @@ setInterval(() => {
   }
 }, 15000);
 
-// Tidy sessions older than 6 hours.
+// Tidy rooms: a finished lesson leaves memory (answers, pictures, download token) 15 minutes after the
+// teacher ended it; a room nobody finished goes 6 hours after it was created.
+const ENDED_GRACE_MS = 15 * 60 * 1000;
 setInterval(() => {
-  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
-  for (const [code, s] of sessions) if (s.createdAt < cutoff) sessions.delete(code);
-}, 10 * 60 * 1000);
+  const now = Date.now();
+  for (const [code, s] of sessions) {
+    if (s.createdAt < now - 6 * 60 * 60 * 1000 || (s.endedAt && s.endedAt < now - ENDED_GRACE_MS)) {
+      for (const st of s.students.values()) { try { st.ws.close(4003, "room closed"); } catch {} }
+      sessions.delete(code);
+    }
+  }
+}, 60 * 1000);
 
 server.listen(PORT, () => {
   console.log(`Eyes Up running → http://localhost:${PORT}`);

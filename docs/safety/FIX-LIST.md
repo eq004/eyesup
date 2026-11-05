@@ -1,7 +1,15 @@
 # Eyes Up — Fix list
 
 **Date:** 4 November 2026 · **Code reviewed:** commit `0d0cfb0`.
-**This branch changes no behaviour.** Every item here is a recommendation for a separate change. Each has the risk in one sentence, a rough size, and a pointer for the developer.
+**Status, 5 November 2026:** the `safety-fixes` branch (a separate pull request from the review) implements every item below that can be done in code. What is left is done in Render, Supabase or GitHub settings, or needs an outside service:
+
+| Done in code (`safety-fixes`) | Still for the owner to do (no code) | Not done, and why |
+| --- | --- | --- |
+| #1, #2, #3, #4, #5, #6, #9, #10, #11 (owners-only), #12, #13, #14, #15, #16, #17, #18, #19, #20, #21, #22, #23 (via `DATABASE_CA`), #24, #25 (files added), #26, #28, #29, #30, #31, #32, #33, #34, #35, #37 | #7 set `AUTH_SECRET` and `PUBLIC_URL` on Render · #8 two-factor on Render, Supabase, GitHub · #11 assign or delete the ownerless lessons in Supabase · #23 paste Supabase's CA certificate into `DATABASE_CA` · #25 turn on Dependabot alerts in GitHub → Settings → Code security | #27 forgot-password by email (needs an email service) · #36 Express 5 (no safety gain; do when convenient) |
+
+Two things to know before deploying `safety-fixes`: the sign-in format changed, so **every teacher is signed out once** and must sign in again; and new passwords must be 10+ characters (existing ones keep working). The automated tests (`npm test`) cover the projector, picture, seat and reveal rules.
+
+Each item below has the risk in one sentence, a rough size, and a pointer for the developer.
 
 Sizes: **tiny** = under an hour, often a setting · **small** = a few hours · **medium** = a day or two · **large** = a week or more.
 "No code" means it is done in Render, Supabase or GitHub settings, not in the repository.
