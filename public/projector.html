@@ -349,6 +349,10 @@
   #deckLayer.on iframe.on { visibility: visible; }
   .deck-next { position: absolute; top: 0.6rem; right: 0.8rem; z-index: 2; font: inherit; font-weight: 800; font-size: 0.85rem; padding: 0.45rem 0.9rem; border-radius: 999px; border: 1px solid rgba(255,255,255,0.35); background: rgba(8,20,44,0.72); color: #fff; cursor: pointer; opacity: 0.6; }
   .deck-next:hover { opacity: 1; }
+  .deck-next.none { opacity: 0.7; border-style: dashed; font-weight: 700; }
+  .deck-next.none:disabled { cursor: default; }
+  .names-btn.back-slides { color: #fff; background: #1270b8; border-color: #1270b8; font-size: 1rem; padding: 0.4rem 1rem; }
+  .names-btn.back-slides:hover { background: #0f5f9d; }
   .deck-hint { position: absolute; left: 50%; bottom: 3.5rem; transform: translateX(-50%); z-index: 2; background: rgba(8,20,44,0.85); color: #fff; padding: 0.5rem 1rem; border-radius: 999px; font-weight: 700; font-size: 0.9rem; }
   /* slides */
   .slide-stage { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; }
@@ -747,6 +751,7 @@
     <button class="names-btn" id="holdBtn" title="Hold every activity's answers back until you tap Reveal">🙈 hold answers: off</button>
     <button class="names-btn" id="namesBtn" title="Show or hide student names on this screen">🏷 names off</button>
     <button class="names-btn" id="fullBtn" title="Fill the whole screen (F toggles, Esc leaves)">⛶ full screen</button>
+    <button class="names-btn back-slides" id="backSlides" hidden title="Back to your slides, exactly where you left them — ▶ then carries on with the step after this one">🎞 Back to slides</button>
     <span class="code" id="barCode"></span>
   </div>
   <div class="corner-code" id="cornerCode"></div>

@@ -368,7 +368,7 @@ function renderLive() {
   const slidesUp = state.phase === "slide" || state.phase === "deck";
   const slidesBehind = !slidesUp && seq.slice(0, Math.max(0, state.seqIndex) + 1).some(isBoardStep);
   const backToSlides = slidesBehind
-    ? `<button class="rbtn back-slides" data-act="seq_prev">🎞 Back to the slides<small>${seq.slice(0, state.seqIndex + 1).some((st) => st.mode === "deck") ? "they're exactly where you left them" : "returns to your last slide"}</small></button>`
+    ? `<button class="rbtn back-slides" data-act="back_to_slides">🎞 Back to the slides<small>${seq.slice(0, state.seqIndex + 1).some((st) => st.mode === "deck") ? "exactly where you left them · ▶ then moves on" : "returns to your last slide · ▶ then moves on"}</small></button>`
     : "";
   // Tape-recorder row: one step at a time in either direction, back to the start, or skip one.
   const planNav = inPlan ? `<div class="tape" style="margin-top:0.5rem">

@@ -158,6 +158,7 @@ function renderInner() {
   // Slides and live decks fill the whole display; everything else keeps the bar.
   const board = (state.phase === "slide" || state.phase === "deck") && !state.focus && !state.showJoin;
   document.body.classList.toggle("board", board);
+  document.getElementById("backSlides").hidden = board || !state.slidesBehind;
   document.getElementById("cornerCode").textContent = `${state.code} · ${state.studentCount} in`;
 
   updateJoinBadge();
@@ -1368,11 +1369,17 @@ function syncDecks() {
   deckLayer.style.top = `${bar ? bar.offsetHeight : 0}px`;
   deckLayer.classList.toggle("on", !!showUrl);
   for (const [url, f] of deckFrames) f.classList.toggle("on", url === showUrl);
+  // Corner button: what Eyes Up will ask next — or a plain "no question next" so the teacher knows
+  // the plan has nothing waiting before the slides carry on.
   const nb = document.getElementById("deckNext");
   const label = state.nextStepLabel;
-  nb.hidden = !showUrl || !label;
-  if (label) nb.textContent = `Next: ${label === "live slides" ? "more slides" : label.startsWith("slide ") ? label : MODE_TAGS[label] || label} ▶`;
-  nb.onclick = () => send({ type: "next" });
+  const isBoardNext = !label || label === "live slides" || label.startsWith("slide ");
+  nb.hidden = !showUrl;
+  nb.classList.toggle("none", isBoardNext);
+  nb.disabled = !label;
+  if (!isBoardNext) nb.textContent = `${state.nextStepAfterSlide ? `After slide ${state.nextStepAfterSlide}: ` : "Next: "}${MODE_TAGS[label] || label} ▶`;
+  else nb.textContent = label ? `No Eyes Up question next · ${label === "live slides" ? "more slides" : label} ▶` : "No Eyes Up question next";
+  nb.onclick = () => label && send({ type: "next" });
   if (showUrl && deckShowing !== showUrl) setTimeout(() => deckFrames.get(showUrl)?.focus(), 60); // clicker works straight away
   deckShowing = showUrl;
 }
@@ -1386,4 +1393,5 @@ function toggleFull() {
   else p.catch(() => deckHint("Press F11 (or ⌃⌘F on a Mac) for full screen"));
 }
 fullBtn.onclick = toggleFull;
+document.getElementById("backSlides").onclick = () => send({ type: "back_to_slides" });
 document.addEventListener("fullscreenchange", () => { fullBtn.textContent = document.fullscreenElement ? "⛶ leave full screen" : "⛶ full screen"; });

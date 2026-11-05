@@ -1002,6 +1002,9 @@ function renderLive() {
         : `<button class="btn" data-act="reveal_answer">🎯 Reveal answer</button>`
       : ""}
     <button class="btn danger-ghost" data-act="clear">Clear</button>
+    ${(state.sequence || []).slice(0, Math.max(0, state.seqIndex) + 1).some((st) => st.mode === "slide" || st.mode === "deck")
+      ? `<button class="btn" data-act="back_to_slides" title="Back to your slides, where you left them — ▶ then carries on with the next step">🎞 Back to slides</button>`
+      : ""}
     <button class="btn dark" data-act="eyes_up">👀 EYES UP</button>
   `;
 
@@ -1572,6 +1575,7 @@ $("saveStepBtn").onclick = () => {
   let at;
   if (composerTarget.kind === "plan-edit") {
     at = composerTarget.index;
+    if (editing.steps[at]?.afterSlide) data.afterSlide = editing.steps[at].afterSlide;
     editing.steps[at] = data;
   } else {
     editing.steps.push(data);
@@ -2319,6 +2323,9 @@ function renderEditor(flashIndex) {
             <div class="step-type">${stepTag(st)}</div>
             <div class="step-q ${st.prompt || st.mode === "slide" || st.mode === "deck" ? "" : "aloud"}">${st.prompt ? esc(st.prompt) : st.mode === "slide" || st.mode === "deck" ? "" : "You'll ask this one aloud"}</div>
             ${stepDetail(st) ? `<div class="step-extra">${stepDetail(st)}</div>` : ""}
+            ${st.mode !== "slide" && st.mode !== "deck" && steps.slice(0, i).some((p) => p.mode === "deck")
+              ? `<label class="step-after" title="Which slide of your live deck comes before this question — shown on the classroom screen's corner button so you know when to press it">🎞 Ask after slide <input type="number" min="1" max="999" inputmode="numeric" placeholder="№" data-after="${i}" value="${st.afterSlide || ""}" /></label>`
+              : ""}
           </div>
           <div class="step-actions">
             <button class="btn" data-up="${i}" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button>
@@ -2385,6 +2392,12 @@ function renderEditor(flashIndex) {
     scheduleSave();
   }));
   ed.querySelectorAll("[data-edit-step]").forEach((b) => (b.onclick = () => editStep(+b.dataset.editStep)));
+  ed.querySelectorAll("[data-after]").forEach((inp) => (inp.onchange = () => {
+    const st = editing.steps[+inp.dataset.after];
+    const v = parseInt(inp.value, 10);
+    if (v > 0) st.afterSlide = Math.min(999, v); else delete st.afterSlide;
+    scheduleSave();
+  }));
   if (flashIndex != null) ed.querySelector(`.step-card[data-i="${flashIndex}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
@@ -2822,7 +2835,7 @@ function renderLessonStrip() {
     nextBlock = `
       <div class="ls-next-info">
         <div class="ls-kicker">${label}</div>
-        <div class="ls-next-type">${stepTag(nextSt)}</div>
+        <div class="ls-next-type">${stepTag(nextSt)}${nextSt.afterSlide ? ` · 🎞 after slide ${nextSt.afterSlide}` : ""}</div>
         <div class="ls-next-q ${nextSt.prompt ? "" : "aloud"}">${nextSt.prompt ? esc(nextSt.prompt) : "Ask this one aloud"}</div>
       </div>
       <button class="btn primary big" data-strip="next">${idx < 0 ? "▶ Start the lesson" : nextSt.mode === "slide" ? `▶ Show slide ${nextSt.page}` : nextSt.mode === "deck" ? "▶ Show live slides" : `▶ Launch step ${upcoming + 1}`}</button>
@@ -2861,7 +2874,7 @@ function renderLessonStrip() {
           const cls = wasSkipped ? "skipped" : i < idx ? "done" : i === idx ? "now" : "";
           const badge = wasSkipped ? "⏭" : i < idx ? "✓" : i + 1;
           return `
-        <span class="ls-chip ${cls}" title="Step ${i + 1}: ${esc(MODES[keyForStep(st)]?.name || st.mode)}${st.prompt ? " — " + esc(st.prompt) : ""}${wasSkipped ? " (skipped)" : ""}">
+        <span class="ls-chip ${cls}" title="Step ${i + 1}: ${esc(MODES[keyForStep(st)]?.name || st.mode)}${st.prompt ? " — " + esc(st.prompt) : ""}${st.afterSlide ? ` (after slide ${st.afterSlide})` : ""}${wasSkipped ? " (skipped)" : ""}">
           <button class="ls-run" data-jump="${i}" title="Run step ${i + 1} now">
             <span class="n">${badge}</span><span>${stepIcon(st)}</span>
             <span class="t">${st.mode === "slide" ? `Slide ${st.page}` : st.prompt ? esc(st.prompt) : esc(MODES[keyForStep(st)]?.name || st.mode)}</span>

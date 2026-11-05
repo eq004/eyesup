@@ -1182,6 +1182,8 @@ function sanitizeStep(it) {
   return {
     mode: String(it.mode),
     prompt: String(it.prompt || "").slice(0, 300),
+    // "Ask this after slide N" of the live deck before it: a note for the teacher, shown on the board's corner button.
+    afterSlide: Number.isInteger(it.afterSlide) && it.afterSlide > 0 && it.afterSlide < 1000 ? it.afterSlide : undefined,
     options: Array.isArray(it.options) ? it.options.slice(0, 10).map((o) => String(o).slice(0, 200)) : null,
     correct: Number.isInteger(it.correct) ? it.correct : null,
     moderated: typeof it.moderated === "boolean" ? it.moderated : undefined,
@@ -2462,6 +2464,9 @@ function projectorState(session) {
     lessonDecks: [...new Set((session.sequence || []).filter((st) => st.mode === "deck").map((st) => st.url))].slice(0, 4),
     nextStepLabel: (() => { const st = session.sequence?.[session.seqIndex + 1]; return st ? (st.mode === "slide" ? `slide ${st.page}` : st.mode === "deck" ? "live slides" : st.mode) : null; })(),
     nextSlideImg: session.sequence?.[session.seqIndex + 1]?.mode === "slide" ? session.sequence[session.seqIndex + 1].img : null,
+    nextStepAfterSlide: session.sequence?.[session.seqIndex + 1]?.afterSlide || null,
+    // slides (a live deck or a slide step) are waiting behind the current activity, so the board offers a way back
+    slidesBehind: session.phase !== "slide" && session.phase !== "deck" && (!!session.deck || (session.sequence || []).slice(0, Math.max(0, session.seqIndex) + 1).some((st) => st.mode === "slide" || st.mode === "deck")),
     timer: session.timer,
     focus: session.focus,
     showJoin: session.showJoin,
@@ -3073,7 +3078,7 @@ async function handle(ws, msg) {
   /* ---- teacher actions ---- */
 
   // Room tools a teacher can also drive from the board's corner dock.
-  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "set_answer_limit", "show_results", "hide_results", "reveal_random", "clear_peek", "next", "seq_prev"]);
+  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "set_answer_limit", "show_results", "hide_results", "reveal_random", "clear_peek", "next", "seq_prev", "back_to_slides"]);
   if (ws.meta.role !== "teacher" && !(ws.meta.role === "projector" && BOARD_ACTIONS.has(type))) {
     // The projector often runs on an interactive whiteboard: allow
     // tap-to-spotlight and the corner tools straight from the board — and only those.
@@ -3326,6 +3331,32 @@ async function handle(ws, msg) {
         session.seqIndex = j;
         session.skipped = session.skipped.filter((k) => k !== j);
         runStep(session, session.sequence[j]);
+      }
+      break;
+    }
+    case "back_to_slides": {
+      // Back to the slides without moving the plan: the question just asked stays done, so ▶ goes on
+      // to the step after it (unlike seq_prev, which would offer the same question again). A live
+      // deck is still loaded on the board, so it is exactly where it was left.
+      if (session.phase === "slide" || session.phase === "deck") break;
+      const isBoard = (st) => st && (st.mode === "slide" || st.mode === "deck");
+      let j = Math.min(session.seqIndex, session.sequence.length - 1);
+      while (j >= 0 && !isBoard(session.sequence[j])) j--;
+      const st = j >= 0 ? session.sequence[j] : session.deck ? { mode: "deck", url: session.deck.url, provider: session.deck.provider, prompt: session.deck.title } : null;
+      if (!st) break;
+      if (session.interaction) {
+        session.interaction.open = false;
+        session.history.push(session.interaction);
+        session.interaction = null;
+      }
+      session.focus = null;
+      if (st.mode === "deck") {
+        session.slide = null;
+        session.deck = { url: st.url, provider: st.provider, title: st.prompt || "" };
+        session.phase = "deck";
+      } else {
+        session.slide = { img: st.img, deck: st.deck, page: st.page, pages: st.pages, title: st.prompt || "" };
+        session.phase = "slide";
       }
       break;
     }
