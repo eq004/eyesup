@@ -348,7 +348,8 @@
   #activityFormHost .composer { margin: 0.7rem 0 0; }
 
   /* ---------- teaching: the lesson strip ---------- */
-  .lesson-strip { margin-bottom: 1.25rem; overflow: hidden; }
+  #lessonStrip { margin-top: 1.25rem; }
+  .lesson-strip { margin-bottom: 0; overflow: hidden; }
   .ls-head { display: flex; align-items: center; gap: 0.7rem; padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .ls-kicker { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
   .ls-title { font-family: var(--font-display); font-size: 1.3rem; font-weight: 600; line-height: 1.2; }
@@ -387,8 +388,13 @@
   .no-plan-bar {
     display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
     background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
-    padding: 0.75rem 1rem; margin-bottom: 1.25rem; color: var(--ink-soft); font-size: 0.92rem;
+    padding: 0.75rem 1rem; margin-bottom: 0; color: var(--ink-soft); font-size: 0.92rem;
   }
+  /* Live now stays in view under the Teach bar; a long list of responses scrolls inside it. */
+  #livePanel { position: sticky; top: calc(var(--head-h, 104px) + var(--top-h, 0px)); z-index: 14; display: flex; flex-direction: column; max-height: calc(100vh - var(--head-h, 104px) - var(--top-h, 0px) - 0.75rem); min-height: 0; }
+  #livePanel .panel-head { flex: none; }
+  #liveArea { overflow: auto; min-height: 0; overscroll-behavior: contain; }
+  @media (max-width: 1040px) { #livePanel { position: static; max-height: none; } #liveArea { overflow: visible; } }
   #launchPanel.collapsed #launchBody { display: none; }
   #launchPanel .composer { margin-top: 1.1rem; }
 
@@ -963,11 +969,8 @@
   <div class="view" id="viewTeach">
   <div class="layout">
     <main>
-      <!-- The lesson plan being taught -->
-      <div id="lessonStrip"></div>
-
-      <!-- Live interaction -->
-      <section class="panel">
+      <!-- Live interaction: docked under the Teach bar, scrolls inside when long -->
+      <section class="panel" id="livePanel">
         <div class="panel-head">Live now <span class="sub" id="liveSub"></span></div>
         <div id="liveArea">
           <div class="live-empty">
@@ -975,6 +978,9 @@
           </div>
         </div>
       </section>
+
+      <!-- The lesson plan being taught -->
+      <div id="lessonStrip"></div>
 
       <!-- Ask something on the spot -->
       <section class="panel" id="launchPanel" style="margin-top:1.25rem">

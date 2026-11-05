@@ -973,7 +973,7 @@ function renderLive() {
     const msg =
       state.phase === "eyesup"
         ? `<p class="big">👀 Eyes up — the class is looking at you.</p><p>Talk about what just came in, then launch the next step when you're ready.</p>`
-        : `<p class="big">Nothing live — the room is yours. 🎤</p><p>${(state.sequence || []).length ? "Press ▶ above to launch the next step of your lesson." : "Pick an activity below to ask the class something."}</p>`;
+        : `<p class="big">Nothing live — the room is yours. 🎤</p><p>${(state.sequence || []).length ? "Press ▶ below to launch the next step of your lesson." : "Pick an activity below to ask the class something."}</p>`;
     area.innerHTML = `<div class="live-empty">${msg}</div>`;
     return;
   }
@@ -2083,10 +2083,16 @@ $("menuBtn").onclick = (e) => {
 document.addEventListener("click", () => $("menu").classList.remove("show"));
 // The Lesson settings drop-down closes like the menu: a click anywhere else puts it away.
 // The docked teach top sits exactly under the sticky header, whatever height the header wraps to.
-const setHeadH = () => document.documentElement.style.setProperty("--head-h", `${document.querySelector("header").offsetHeight}px`);
+// The header and the Teach bar are docked; Live now docks under both, so their heights are measured.
+const setHeadH = () => {
+  const root = document.documentElement.style;
+  root.setProperty("--head-h", `${document.querySelector("header").offsetHeight}px`);
+  const bar = $("classBar");
+  root.setProperty("--top-h", `${bar && !bar.hidden ? bar.offsetHeight : 0}px`);
+};
 setHeadH();
 window.addEventListener("resize", setHeadH);
-if (window.ResizeObserver) new ResizeObserver(setHeadH).observe(document.querySelector("header"));
+if (window.ResizeObserver) { const ro = new ResizeObserver(setHeadH); ro.observe(document.querySelector("header")); ro.observe($("classBar")); }
 document.addEventListener("click", (e) => { document.querySelectorAll("details.lesson-settings").forEach((d) => { if (d.open && !d.contains(e.target)) d.open = false; }); });
 
 /* ---------------- saved lesson plans: server calls ---------------- */
