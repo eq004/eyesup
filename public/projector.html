@@ -724,6 +724,9 @@
     border-radius: 12px; padding: 0.8rem 2rem;
   }
   .opt-pic { height: clamp(44px, 7vh, 84px); width: clamp(44px, 7vh, 84px); object-fit: cover; border-radius: 12px; vertical-align: middle; margin-right: 0.7rem; box-shadow: 0 6px 18px rgba(0,0,0,0.35); }
+  /* A screen opened by typing the code (not from the dashboard) watches only: no controls, no downloads. */
+  body.untrusted #namesBtn, body.untrusted #holdBtn, body.untrusted #limitSel, body.untrusted #toolsDock,
+  body.untrusted #dlBtn, body.untrusted [data-board], body.untrusted .reveal-big, body.untrusted .reveal-small, body.untrusted #deckNext { display: none !important; }
 </style>
 </head>
 <body>

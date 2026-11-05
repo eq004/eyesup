@@ -919,7 +919,7 @@
         <span class="join-sep"></span>
         <span class="pill"><span class="dot"></span><span id="studentCount">0</span>&nbsp;joined</span>
         <button class="btn" id="togglePreview" title="See exactly what students see">👁 Student view</button>
-        <a class="btn" id="zipAll" style="display:none;text-decoration:none" title="Every picture students have sent in this class so far, as one ZIP (a folder per activity, a file per student)">🖼 Pictures ZIP</a>
+        <a class="btn" id="zipAll" data-dl style="display:none;text-decoration:none" title="Every picture students have sent in this class so far, as one ZIP (a folder per activity, a file per student)">🖼 Pictures ZIP</a>
       </div>
     </div>
     <aside class="setup-card">
@@ -1200,6 +1200,7 @@
   <div class="drop-hint" id="dropHint"><span>🖼️ Drop the image — it becomes the question</span></div>
 
   <script src="/vendor/qrcode.js"></script>
+  <script src="/auth.js"></script>
   <script src="/tune.js"></script>
   <script src="/teacher.js"></script>
 </body>

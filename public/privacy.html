@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0e2445" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<title>Eyes Up — Privacy</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  body { background: var(--paper); }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 2rem 1.2rem 4rem; line-height: 1.6; }
+  h1 { font-family: var(--font-display); font-size: 1.8rem; margin-bottom: 0.3rem; }
+  h2 { font-size: 1.05rem; font-weight: 800; margin: 1.4rem 0 0.3rem; }
+  p, li { color: var(--ink); }
+  .muted { color: var(--muted); font-size: 0.85rem; }
+  a { color: var(--accent); font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p><a href="/">← Eyes Up</a></p>
+    <h1>Privacy — what Eyes Up keeps about students</h1>
+    <p class="muted">Plain-English version. The full description, kept with the code, is in <code>docs/safety/STUDENT-DATA.md</code>.</p>
+
+    <h2>What Eyes Up is</h2>
+    <p>A classroom tool a teacher runs live on the board. Students join from any device with a 4-letter code and their first name. No student accounts, logins, emails or downloads.</p>
+
+    <h2>What we collect from students</h2>
+    <p>The first name a student types or taps, and the answers, drawings and photos they choose to send during the lesson. Nothing else. Photos are shrunk on the student's own device before they are sent, which removes location and camera information. We do not use cookies for tracking, analytics scripts or advertising.</p>
+
+    <h2>Why</h2>
+    <p>So the teacher can see who has answered, show responses on the classroom screen when they choose to, and look back at the lesson afterwards.</p>
+
+    <h2>Who can see it</h2>
+    <p>The teacher who ran the lesson, and the classroom screen when the teacher reveals an answer. Names appear on the screen only when the teacher switches them on; some activities are always anonymous. Pictures and drawings are seen by the teacher first and reach the board only when the teacher reveals them. If a teacher creates a share link, that page shows class results only: no student names, no class name, no teacher name, and it stops working after 90 days. The Eyes Up owner can reach the database for support and maintenance only. We never sell or share student data.</p>
+
+    <h2>Where</h2>
+    <p>On servers run by Render (web hosting) and Supabase (database). If a teacher uses the optional AI summary, the written answer text (never student names) is sent to Anthropic to be summarised.</p>
+
+    <h2>How long</h2>
+    <p>Photos and drawings are deleted automatically after 60 days. Written and tapped answers, with first names, are kept with the lesson record so the teacher can refer back to them, until the teacher deletes the lesson or the school asks for it to be removed.</p>
+
+    <h2>Deleting data</h2>
+    <p>Teachers can delete any lesson (every answer and picture in it) from their Data page, delete a class list, and delete their whole account. A school or parent can also ask the owner by email; deletions are completed within 30 days and confirmed in writing.</p>
+
+    <h2>Security</h2>
+    <p>Connections are encrypted (HTTPS). Teacher passwords are hashed and two-factor sign-in is available. Student answers are only ever visible to the teacher who ran the lesson. The security of Eyes Up is reviewed regularly and fixes are published promptly.</p>
+
+    <h2>If something goes wrong</h2>
+    <p>If we become aware that student data has been accessed by someone who should not have seen it, we will tell the affected school within 72 hours of confirming it, say what was involved, and what we are doing about it.</p>
+
+    <h2>Contact</h2>
+    <p>Eyes Up is made by <a href="https://peakyou.com.au" target="_blank" rel="noopener">PeakYou</a>, Australia. Questions and deletion requests: see the contact details on peakyou.com.au.</p>
+  </div>
+</body>
+</html>

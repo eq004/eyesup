@@ -26,8 +26,9 @@ const modeIcon = (m) => (MODE_META[m] || ["▫️", m])[0];
 const modeName = (m, ck) => (m === "counters" && ck === "base10" ? "Tens & Ones" : (MODE_META[m] || ["", m])[1]);
 
 
-const token = localStorage.getItem("eyesup_token") || "";
-const authQ = token ? `t=${encodeURIComponent(token)}` : "";
+const token = EUAuth.token();
+// Links (print, ZIP) carry a short-lived download token (auth.js); fetches send the sign-in as a header.
+const authQ = { toString: () => EUAuth.query() };
 const canonical = LV.canonical;
 
 let lessons = []; // [{meta, summary}]
@@ -48,7 +49,7 @@ async function load(attempt = 0) {
   }
   let list;
   try {
-    const res = await fetch(`/api/lessons?${authQ}`);
+    const res = await EUAuth.fetch("/api/lessons");
     const data = await res.json();
     if (res.status === 403) {
       wrap.innerHTML = `<div class="gate">🔒<br/><b>Your sign-in has expired on this device.</b><br/><span class="muted">Sign out and back in on the <a href="/teacher">teacher dashboard</a>, then come back here.</span></div>`;
@@ -67,7 +68,8 @@ async function load(attempt = 0) {
       setTimeout(() => load(attempt + 1), 5000);
       return;
     }
-    wrap.innerHTML = `<div class="gate">☁️<br/><b>Couldn't reach the lesson archive right now.</b><br/><span class="muted">Your lessons are safe — this is a connection hiccup, not lost data.</span><br/><br/><a href="javascript:location.reload()">Try again</a></div>`;
+    wrap.innerHTML = `<div class="gate">☁️<br/><b>Couldn't reach the lesson archive right now.</b><br/><span class="muted">Your lessons are safe — this is a connection hiccup, not lost data.</span><br/><br/><button class="share-btn ghost" id="retryLoad">Try again</button></div>`;
+    document.getElementById("retryLoad").onclick = () => location.reload();
     return;
   }
   if (!list.length) {
@@ -83,7 +85,7 @@ async function load(attempt = 0) {
   }
   const detail = await Promise.all(
     recent.map((l) =>
-      fetch(`/api/lessons/${l.id}?${authQ}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      EUAuth.fetch(`/api/lessons/${l.id}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
     )
   );
   lessons = recent
@@ -216,11 +218,12 @@ function renderDetail() {
       </div>
       <div class="export-row">
         <span class="muted" style="font-size:0.78rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em">Export</span>
-        <a class="xbtn" href="/report?lesson=${x.meta.id}&${authQ}" target="_blank" rel="noopener" title="Every answer with names, laid out for printing or saving as PDF">🖨 Print / PDF</a>
+        <a class="xbtn" data-dl href="/report?lesson=${x.meta.id}&${authQ}" target="_blank" rel="noopener" title="Every answer with names, laid out for printing or saving as PDF">🖨 Print / PDF</a>
         <button class="xbtn" id="csvBtn" title="One row per student, one column per activity — opens in Excel or Google Sheets">📊 Spreadsheet</button>
-        ${hasPics ? `<a class="xbtn" href="/api/lessons/${x.meta.id}/images?${authQ}" title="Every picture students sent, as a ZIP">🖼 Pictures</a>` : ""}
-        <button class="xbtn" id="shareBtn" title="A view-only link for anyone; student names are hidden on it">🔗 ${shareLink ? "Copy share link again" : "Share link"}</button>
-        ${shareLink ? `<span class="share-link">${esc(shareLink)}</span><span class="muted" style="font-size:0.76rem">Copied — names are hidden on the shared page.</span>` : ""}
+        ${hasPics ? `<a class="xbtn" data-dl href="/api/lessons/${x.meta.id}/images?${authQ}" title="Every picture students sent, as a ZIP">🖼 Pictures</a>` : ""}
+        <button class="xbtn" id="shareBtn" title="A view-only link for anyone: class results only — no student names, no class or teacher name. Works for 90 days.">🔗 ${shareLink ? "Copy share link again" : "Share link"}</button>
+        ${shareLink ? `<span class="share-link">${esc(shareLink)}</span><span class="muted" style="font-size:0.76rem">Copied — no names on the shared page; the link works for 90 days.</span> <button class="xbtn" id="unshareBtn" title="The link stops working at once">✕ Stop sharing</button>` : ""}
+        <button class="xbtn" id="deleteLessonBtn" title="Remove this lesson's record, its pictures and any share link for good" style="margin-left:auto;color:#a33">🗑 Delete lesson</button>
       </div>
       ${detailTab === "snap" ? renderSnapshotTab(x) : detailTab === "stu" ? renderStudents(x) : renderActivities(x)}
     </div>`;
@@ -615,7 +618,7 @@ function bindAi(ov, x) {
   const run = async (force) => {
     box.innerHTML = `<p class="muted">⏳ Reading the answers…</p>`;
     try {
-      const res = await fetch(`/api/lessons/${x.meta.id}/ai-summary`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: token, item: "all", force }) });
+      const res = await fetch(`/api/lessons/${x.meta.id}/ai-summary`, { method: "POST", headers: EUAuth.headers({ "Content-Type": "application/json" }), body: JSON.stringify({ item: "all", force }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || data.error);
       x.summary.ai = x.summary.ai || {};
@@ -641,8 +644,8 @@ async function shareLesson(x) {
   try {
     const res = await fetch(`/api/lessons/${x.meta.id}/share`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ t: token }),
+      headers: EUAuth.headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({}),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
@@ -672,7 +675,7 @@ function renameLesson(x) {
     const v = input.value.trim();
     if (save && v !== (x.meta.title || "")) {
       try {
-        const res = await fetch(`/api/lessons/${x.meta.id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: token, title: v }) });
+        const res = await fetch(`/api/lessons/${x.meta.id}/edit`, { method: "POST", headers: EUAuth.headers({ "Content-Type": "application/json" }), body: JSON.stringify({ title: v }) });
         if (!res.ok) throw new Error();
         x.meta.title = v;
         x.summary.title = v;
@@ -689,7 +692,7 @@ function renameLesson(x) {
 // Save an answer key or a hand mark; the server re-marks the whole lesson and
 // sends the result back, so every tab, print and spreadsheet follows.
 async function saveMarks(x, edit) {
-  const res = await fetch(`/api/lessons/${x.meta.id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: token, marks: [edit] }) });
+  const res = await fetch(`/api/lessons/${x.meta.id}/edit`, { method: "POST", headers: EUAuth.headers({ "Content-Type": "application/json" }), body: JSON.stringify({ marks: [edit] }) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.summary) throw new Error(data.error || "save failed");
   // Keep what the archive doesn't store (pictures, the lesson name shown on this page).
@@ -773,6 +776,29 @@ function bindDetail() {
   bindMarking(x);
   const sb = document.getElementById("shareBtn");
   if (sb) sb.onclick = () => shareLesson(x);
+  const ub = document.getElementById("unshareBtn");
+  if (ub) ub.onclick = async () => {
+    try {
+      const res = await EUAuth.fetch(`/api/lessons/${x.meta.id}/share`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      shareLink = "";
+      refreshDetail();
+    } catch { alert("Couldn't stop sharing right now — try again."); }
+  };
+  const db = document.getElementById("deleteLessonBtn");
+  if (db) db.onclick = async () => {
+    if (!confirm(`Delete “${lessonTitle(x)}” for good?\n\nEvery student's answers and pictures from this lesson, and any share link, are removed. This cannot be undone.`)) return;
+    try {
+      const res = await EUAuth.fetch(`/api/lessons/${x.meta.id}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error);
+      lessons = lessons.filter((l) => l.meta.id !== x.meta.id);
+      selectedId = lessons[lessons.length - 1]?.meta.id ?? null;
+      shareLink = "";
+      if (!lessons.length) { wrap.innerHTML = `<div class="gate muted">No lessons stored yet — run one and come back. 📚</div>`; return; }
+      render();
+    } catch (e) { alert(e.message === "lesson_live" ? "That lesson is still running — finish it on the dashboard first." : "Couldn't delete it right now — try again."); }
+  };
   const rb = document.getElementById("renameBtn");
   if (rb) rb.onclick = () => renameLesson(x);
   const cb = document.getElementById("csvBtn");

@@ -165,9 +165,11 @@ function creds() {
     token: localStorage.getItem("eyesup_token") || "",
   };
 }
+// For links only (reports, ZIPs, slides): a short-lived download token, never the sign-in
+// itself (see auth.js). Fetches send the sign-in as a header (EUAuth.fetch).
 function authQuery() {
   const { token, password } = creds();
-  if (token) return `t=${encodeURIComponent(token)}`;
+  if (token) return EUAuth.query();
   return password ? `pw=${encodeURIComponent(password)}` : "";
 }
 
@@ -763,7 +765,7 @@ async function loadRemotePlans() {
   };
   if (remotePlans) draw(); // show what we have straight away
   try {
-    const res = await fetch(`/api/plans?${authQuery()}`);
+    const res = await EUAuth.fetch("/api/plans");
     const data = await res.json();
     if (!res.ok) throw new Error();
     remotePlans = data.storage === false ? "off" : data.plans || [];
@@ -777,7 +779,7 @@ async function loadRemotePlans() {
 async function teachRemotePlan(id) {
   let pl;
   try {
-    const res = await fetch(`/api/plans/${id}?${authQuery()}`);
+    const res = await EUAuth.fetch(`/api/plans/${id}`);
     pl = await res.json();
     if (!res.ok) throw new Error();
   } catch { return toast("Couldn't open that plan"); }
@@ -892,7 +894,7 @@ function renderMore() {
 
     <h3 class="sec">Sharing</h3>
     <button class="rbtn" id="copyJoin">🔗 Copy student join link</button>
-    <a class="rbtn" style="text-decoration:none" href="/projector?code=${esc(state.code)}" target="_blank" rel="noopener">📽 Open projector view</a>
+    <a class="rbtn" style="text-decoration:none" href="/projector?code=${esc(state.code)}&k=${encodeURIComponent(state.boardKey || "")}" target="_blank" rel="noopener">📽 Open projector view</a>
 
     ${state.storage ? `<h3 class="sec">Archive</h3>
       <a class="rbtn" style="text-decoration:none" href="/data" target="_blank" rel="noopener">📈 Data dashboard</a>
@@ -905,7 +907,7 @@ function renderMore() {
   const ib = $("inviteBtn");
   if (ib) ib.onclick = async () => {
     try {
-      const res = await fetch(`/api/invite?${authQuery()}`);
+      const res = await EUAuth.fetch("/api/invite");
       const data = await res.json();
       if (!res.ok) throw new Error();
       await navigator.clipboard.writeText(`${location.origin}/teacher${data.invite ? `?invite=${encodeURIComponent(data.invite)}` : ""}`);
@@ -924,7 +926,7 @@ function renderMore() {
   const loadLessons = async (attempt = 0) => {
     $("lessonsList").innerHTML = `<p style="color:var(--rdim)">${attempt ? "Still connecting…" : "Loading…"}</p>`;
     try {
-      const res = await fetch(`/api/lessons${authQuery() ? `?${authQuery()}` : ""}`);
+      const res = await EUAuth.fetch("/api/lessons");
       const data = await res.json();
       if (res.status === 403) {
         $("lessonsList").innerHTML = `<p style="color:#e79191">Your sign-in has expired — sign out and back in.</p>`;
@@ -932,7 +934,7 @@ function renderMore() {
       }
       if (!res.ok) throw new Error();
       $("lessonsList").innerHTML = data.lessons.length
-        ? data.lessons.map((l) => `<a class="lesson-row" href="/report?lesson=${l.id}${authQuery() ? `&${authQuery()}` : ""}" target="_blank" rel="noopener">
+        ? data.lessons.map((l) => `<a class="lesson-row" data-dl href="/report?lesson=${l.id}${authQuery() ? `&${authQuery()}` : ""}" target="_blank" rel="noopener">
             <b>${esc(l.title || "Untitled lesson")}</b>
             <span>${esc(new Date(l.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }))} · ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions</span>
           </a>`).join("")
@@ -949,7 +951,7 @@ function renderMore() {
   };
   if (lb) lb.onclick = () => loadLessons(0);
   const so = $("signOut");
-  if (so) so.onclick = () => { localStorage.removeItem("eyesup_token"); sessionStorage.clear(); location.reload(); };
+  if (so) so.onclick = () => { localStorage.removeItem("eyesup_token"); localStorage.removeItem("eyesup_teacher_name"); sessionStorage.clear(); location.reload(); };
 }
 
 function renderSummarySheet(s) {
@@ -961,7 +963,7 @@ function renderSummarySheet(s) {
     </div>
     ${s.commonWords.length ? `<div style="margin-bottom:0.7rem">${s.commonWords.map((w) => `<span class="word-chip-r">${esc(w.word)} ×${w.count}</span>`).join("")}</div>` : ""}
     ${s.items.map((it) => `<div class="resp-row"><span class="rr-what"><b>${modeName(it.mode)}</b> ${esc(it.prompt || "")} — ${it.responses} responses</span></div>`).join("")}
-    <a class="rbtn accent" style="text-decoration:none;margin-top:0.7rem" href="/report?code=${esc(state.code)}${authQuery() ? `&${authQuery()}` : ""}" target="_blank" rel="noopener">🖨 Open full report / export PDF</a>`;
+    <a class="rbtn accent" style="text-decoration:none;margin-top:0.7rem" data-dl href="/report?code=${esc(state.code)}${authQuery() ? `&${authQuery()}` : ""}" target="_blank" rel="noopener">🖨 Open full report / export PDF</a>`;
   $("summaryWrap").classList.add("show");
   $("sumClose").onclick = () => $("summaryWrap").classList.remove("show");
 }
@@ -972,7 +974,7 @@ let myLive = null; // {code, students} — the class this teacher has running, i
 async function findMyClass() {
   if (!creds().token) return null;
   try {
-    const res = await fetch(`/api/my-session?${authQuery()}`);
+    const res = await EUAuth.fetch("/api/my-session");
     if (!res.ok) return null;
     const d = await res.json();
     return d.code ? d : null;
@@ -1003,8 +1005,12 @@ function renderGate(err) {
       <input id="codeIn" maxlength="4" placeholder="SESSION CODE" value="${esc(preset)}" autocomplete="off" />
       ${hasToken && err !== "auth_required" ? "" : `
         <input id="userIn" placeholder="Your name" autocomplete="username" />
-        <input id="pwIn" type="password" placeholder="Your password" autocomplete="current-password" />`}
+        <input id="pwIn" type="password" placeholder="Your password" autocomplete="current-password" />
+        ${err === "totp_required" || err === "bad_code" ? `<input id="codeIn2" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code from your authenticator app" maxlength="7" />` : ""}`}
       ${err === "bad_password" || err === "auth_required" ? `<p class="err">Sign-in didn't match — try again.</p>` : ""}
+      ${err === "totp_required" ? `<p class="err">Two-factor is on for this account: enter the code from your app.</p>` : ""}
+      ${err === "bad_code" ? `<p class="err">That code didn't match — try the next one.</p>` : ""}
+      ${err === "locked" ? `<p class="err">Too many wrong passwords — this account is paused for a while. Try again later.</p>` : ""}
       ${err === "no_session" ? `<p class="err">No live session with that code (or it isn't yours).</p>` : ""}
       <button class="rbtn accent" id="goBtn" style="margin-top:0.8rem">Connect</button>
     </div>`;
@@ -1014,20 +1020,25 @@ function renderGate(err) {
     sessionStorage.setItem("eyesup_remote_code", code);
     if ($("userIn")) {
       try {
+        const user = $("userIn").value, pw = $("pwIn").value;
         const res = await fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: $("userIn").value, password: $("pwIn").value }),
+          body: JSON.stringify({ username: user, password: pw, code: $("codeIn2")?.value.trim() || undefined }),
         });
         const data = await res.json();
         if (res.ok) {
           localStorage.setItem("eyesup_token", data.token);
           localStorage.setItem("eyesup_teacher_name", data.name || data.username);
+          EUAuth.refresh();
+          if (data.mustChange) toast("Your password was temporary — change it under My account on the computer dashboard");
         } else if (data.error === "storage_off") {
-          sessionStorage.setItem("eyesup_remote_pw", $("pwIn").value);
+          sessionStorage.setItem("eyesup_remote_pw", pw);
         } else {
-          renderGate("auth_required");
+          renderGate(["totp_required", "bad_code", "locked"].includes(data.error) ? data.error : "auth_required");
           $("codeIn").value = code;
+          if ($("userIn")) { $("userIn").value = user; $("pwIn").value = pw; }
+          ($("codeIn2") || $("userIn"))?.focus();
           return;
         }
       } catch { /* try the resume anyway */ }
