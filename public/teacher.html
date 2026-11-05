@@ -392,6 +392,25 @@
     background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
     padding: 0.75rem 1rem; margin-bottom: 0; color: var(--ink-soft); font-size: 0.92rem;
   }
+  /* Fold: the Teach bar shrinks to one slim row (doors without captions, code, who's joined) for more room on a laptop. */
+  .teach-fold { position: absolute; right: 0.7rem; top: 0.5rem; z-index: 2; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--navy); font: inherit; font-size: 0.85rem; font-weight: 800; line-height: 1; cursor: pointer; box-shadow: 0 1px 2px rgba(14, 36, 69, 0.08); }
+  .teach-fold:hover { background: var(--navy); color: #fff; }
+  .teach-top.small { grid-template-columns: 1fr; padding: 0.4rem 1.4rem 0.4rem; }
+  .teach-top.small .setup-card, .teach-top.small .teach-sub, .teach-top.small .join-label, .teach-top.small .join-label + .join-sep { display: none; }
+  .teach-top.small .teach-fold { top: 50%; transform: translateY(-50%); }
+  .teach-top.small .teach-main { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; padding-right: 2.4rem; }
+  .teach-top.small .teach-h1 { font-size: 1.05rem; }
+  .teach-top.small .action-row { gap: 0.4rem; }
+  .teach-top.small .action-row > .act-card, .teach-top.small .action-row .link-wrap { flex: 0 0 auto; }
+  .teach-top.small .act-card { min-width: 0; padding: 0.3rem 0.65rem; border-radius: 10px; gap: 0.4rem; }
+  .teach-top.small .act-text small { display: none; }
+  .teach-top.small .act-text b { font-size: 0.92rem; }
+  .teach-top.small .act-chev { width: 22px; height: 22px; font-size: 0.95rem; }
+  .teach-top.small .act-chev.act-ico { font-size: 0.85rem; }
+  .teach-top.small .join-row { margin-top: 0; padding: 0.2rem 0.6rem; gap: 0.5rem; }
+  .teach-top.small .join-row .code-chip { font-size: 0.95rem; padding: 0.22rem 0.6rem; }
+  .teach-top.small .join-row .pill { font-size: 0.88rem; padding: 0.22rem 0.6rem; }
+  .teach-top.small .join-row .btn { font-size: 0.8rem; padding: 0.28rem 0.7rem; }
   /* Live now stays in view under the Teach bar; a long list of responses scrolls inside it. */
   #livePanel { position: sticky; top: calc(var(--head-h, 104px) + var(--top-h, 0px)); z-index: 14; display: flex; flex-direction: column; max-height: calc(100vh - var(--head-h, 104px) - var(--top-h, 0px) - 0.75rem); min-height: 0; }
   #livePanel .panel-head { flex: none; }
@@ -905,6 +924,7 @@
   </header>
   <!-- Teach: hero, the three doors, the join row and the lesson setup card -->
   <section class="teach-top" id="classBar">
+    <button class="teach-fold" id="teachFold" title="Make the Teach bar smaller — more room for the lesson on a laptop">▴</button>
     <div class="teach-main">
       <h1 class="teach-h1">Ready to teach?</h1>
       <p class="teach-sub">Run an interactive lesson, share with your class, and collect responses in real time.</p>

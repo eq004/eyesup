@@ -2097,6 +2097,16 @@ const setHeadH = () => {
 setHeadH();
 window.addEventListener("resize", setHeadH);
 if (window.ResizeObserver) { const ro = new ResizeObserver(setHeadH); ro.observe(document.querySelector("header")); ro.observe($("classBar")); }
+// ▴ folds the Teach bar to one slim row (more room for the lesson on a laptop); remembered on this computer.
+const setTeachSmall = (small) => {
+  $("classBar").classList.toggle("small", small);
+  $("teachFold").textContent = small ? "▾" : "▴";
+  $("teachFold").title = small ? "Show the full Teach bar" : "Make the Teach bar smaller — more room for the lesson on a laptop";
+  try { localStorage.setItem("eyesup_teachbar", small ? "small" : "full"); } catch { /* private window */ }
+  setHeadH();
+};
+$("teachFold").onclick = () => setTeachSmall(!$("classBar").classList.contains("small"));
+try { if (localStorage.getItem("eyesup_teachbar") === "small") setTeachSmall(true); } catch { /* fine */ }
 document.addEventListener("click", (e) => { document.querySelectorAll("details.lesson-settings").forEach((d) => { if (d.open && !d.contains(e.target)) d.open = false; }); });
 
 /* ---------------- saved lesson plans: server calls ---------------- */
