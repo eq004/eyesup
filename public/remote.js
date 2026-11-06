@@ -17,6 +17,10 @@ let userSummaryWanted = false;
 /* ---------------- mode config (mirrors the dashboard) ---------------- */
 
 const MODES = {
+  tool_timer:    { icon: "⏱", name: "Timer" },
+  tool_pick:     { icon: "🎲", name: "Random student" },
+  tool_groups:   { icon: "👥", name: "Random groups" },
+  tool_dice:     { icon: "🎲", name: "Question dice" },
   slide:         { icon: "📽", name: "Slide" },
   deck:          { icon: "🎞", name: "Live slides" },
   multi_choice:  { icon: "🅰️", name: "Multi Choice", opts: { min: 2, max: 5, labels: "Option" }, hasCorrect: true },

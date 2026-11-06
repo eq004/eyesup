@@ -421,6 +421,14 @@
   .teach-top.small .join-row .code-chip { font-size: 0.95rem; padding: 0.22rem 0.6rem; }
   .teach-top.small .join-row .pill { font-size: 0.9rem; padding: 0.22rem 0.6rem; }
   .teach-top.small .join-row .btn { font-size: 0.9rem; padding: 0.28rem 0.7rem; }
+  /* Room-tool plan steps: their tiles belong in the plan picker; on the spot the tools have their own section below the grid. */
+  #launchBody .mode-cat[data-cat="🧰 Room tools"], #launchBody .mode-tile[data-cat="🧰 Room tools"] { display: none !important; }
+  .tool-setup { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.4rem; }
+  .tool-setup label { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 0.95rem; }
+  .tool-setup select, .tool-setup input[type="number"], .tool-setup input[type="text"] { font: inherit; font-size: 0.95rem; padding: 0.45rem 0.6rem; border: 1px solid #c7d4e8; border-radius: 10px; background: #fff; min-height: 44px; }
+  .tool-setup input[type="number"] { width: 84px; }
+  .tool-setup .dice-row input { flex: 1; }
+  .tool-setup-note { margin: 0.2rem 0 0; font-size: 0.9rem; color: var(--ink-soft); }
   /* Live now stays in view under the Teach bar; a long list of responses scrolls inside it. */
   #livePanel { position: sticky; top: calc(var(--head-h, 104px) + var(--top-h, 0px)); z-index: 14; display: flex; flex-direction: column; max-height: calc(100vh - var(--head-h, 104px) - var(--top-h, 0px) - 0.75rem); min-height: 0; }
   #livePanel .panel-head { flex: none; }

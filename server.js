@@ -1117,7 +1117,9 @@ const STEP_MODES = new Set([
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
   "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "trace", "annotate", "image_drop",
   "image_caption", "image_long", "slide", "deck",
+  "tool_timer", "tool_pick", "tool_groups", "tool_dice", // room tools as lesson steps
 ]);
+const TOOL_MODES = new Set(["tool_timer", "tool_pick", "tool_groups", "tool_dice"]);
 
 // Live slides: the teacher's own deck, played by Google's / Microsoft's / Canva's player on the board.
 // Only these players are allowed on the classroom screen. Returns {provider, url} or null.
@@ -1178,6 +1180,16 @@ function sanitizeStep(it) {
     const n = (v) => (Number.isInteger(v) && v > 0 ? v : null);
     if (!n(it.img) || !n(it.deck)) return null;
     return { mode: "slide", img: it.img, deck: it.deck, page: n(it.page) || 1, pages: n(it.pages) || 1, prompt: String(it.prompt || "").slice(0, 120) };
+  }
+  if (TOOL_MODES.has(it.mode)) {
+    // A room tool planned as a step: it runs exactly as it would on the spot when ▶ reaches it.
+    const n = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : undefined);
+    const out = { mode: it.mode, prompt: "", afterSlide: n(it.afterSlide, 1, 999) };
+    if (it.mode === "tool_timer") { out.toolSeconds = n(it.toolSeconds, 5, 3600) || 60; out.toolBig = it.toolBig === true || undefined; }
+    if (it.mode === "tool_groups") { out.groupN = n(it.groupN, 1, 40) || 4; out.groupBy = it.groupBy === "count" ? "count" : "size"; }
+    if (it.mode === "tool_dice" && Array.isArray(it.faces) && it.faces.some((f) => String(f || "").trim()))
+      out.faces = Array.from({ length: 6 }, (_, i) => String(it.faces[i] ?? "").trim().slice(0, 200));
+    return out;
   }
   return {
     mode: String(it.mode),
@@ -3113,6 +3125,7 @@ async function handle(ws, msg) {
         safeSend(ws, { type: "error", error: "bad_link" });
         return;
       }
+      if (TOOL_MODES.has(msg.mode)) { const st = sanitizeStep(msg); if (st) runTool(session, st); break; }
       startInteraction(session, msg);
       break;
     }
@@ -3373,8 +3386,7 @@ async function handle(ws, msg) {
     }
     /* ---- room tools ---- */
     case "timer_start": {
-      const s = Math.min(3600, Math.max(5, Math.round(msg.seconds || 60)));
-      session.timer = { seconds: s, endsAt: Date.now() + s * 1000, paused: false, remaining: null, big: msg.big === true };
+      toolTimer(session, msg.seconds, msg.big === true);
       break;
     }
     case "timer_big": {
@@ -3405,33 +3417,11 @@ async function handle(ws, msg) {
       break;
     }
     case "pick_student": {
-      // Random selection with no repeats until everyone has had a turn.
-      const candidates = [...session.students.values()].filter((s) => s.name !== "👁 Preview");
-      if (!candidates.length) break;
-      let pool = candidates.filter((s) => !session.picked.has(s.id));
-      if (!pool.length) {
-        session.picked.clear(); // everyone's been picked — start a fresh round
-        pool = candidates;
-      }
-      const chosen = pool[Math.floor(Math.random() * pool.length)];
-      session.picked.add(chosen.id);
-      session.focus = { type: "spotlight", name: chosen.name };
+      toolPick(session);
       break;
     }
     case "make_groups": {
-      const names = [...session.students.values()]
-        .filter((s) => s.name !== "👁 Preview")
-        .map((s) => s.name);
-      if (names.length < 2) break;
-      for (let i = names.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [names[i], names[j]] = [names[j], names[i]];
-      }
-      const n = Math.max(1, Math.min(names.length, Math.round(msg.n || 2)));
-      const groupCount = msg.by === "count" ? Math.min(n, names.length) : Math.ceil(names.length / n);
-      const groups = Array.from({ length: groupCount }, () => []);
-      names.forEach((name, i) => groups[i % groupCount].push(name)); // round-robin keeps sizes even
-      session.focus = { type: "groups", groups };
+      toolGroups(session, msg.n, msg.by);
       break;
     }
     case "clear_focus": {
@@ -3439,15 +3429,11 @@ async function handle(ws, msg) {
       break;
     }
     case "dice_set": {
-      // Six faces, one question each (blank faces just show their number).
-      const faces = Array.isArray(msg.faces) ? msg.faces : [];
-      session.dice.faces = Array.from({ length: 6 }, (_, i) => String(faces[i] ?? "").trim().slice(0, 200));
+      toolDiceSet(session, msg.faces);
       break;
     }
     case "dice_roll": {
-      session.dice.result = 1 + Math.floor(Math.random() * 6);
-      session.dice.rollId += 1;
-      session.focus = { type: "dice" }; // the roll takes the big screen
+      toolDiceRoll(session);
       break;
     }
     case "toggle_join": {
@@ -3537,8 +3523,60 @@ async function handle(ws, msg) {
   broadcast(session);
 }
 
-// A lesson step: a slide goes up on the board, anything else is launched as an activity.
+/* ---- room tools: the same four actions whether pressed on the spot or reached as a plan step ---- */
+function toolTimer(session, seconds, big) {
+  const s = Math.min(3600, Math.max(5, Math.round(seconds || 60)));
+  session.timer = { seconds: s, endsAt: Date.now() + s * 1000, paused: false, remaining: null, big: big === true };
+}
+function toolPick(session) {
+  // Random selection with no repeats until everyone has had a turn.
+  const candidates = [...session.students.values()].filter((s) => s.name !== "👁 Preview");
+  if (!candidates.length) return;
+  let pool = candidates.filter((s) => !session.picked.has(s.id));
+  if (!pool.length) {
+    session.picked.clear(); // everyone's been picked — start a fresh round
+    pool = candidates;
+  }
+  const chosen = pool[Math.floor(Math.random() * pool.length)];
+  session.picked.add(chosen.id);
+  session.focus = { type: "spotlight", name: chosen.name };
+}
+function toolGroups(session, nWanted, by) {
+  const names = [...session.students.values()]
+    .filter((s) => s.name !== "👁 Preview")
+    .map((s) => s.name);
+  if (names.length < 2) return;
+  for (let i = names.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [names[i], names[j]] = [names[j], names[i]];
+  }
+  const n = Math.max(1, Math.min(names.length, Math.round(nWanted || 2)));
+  const groupCount = by === "count" ? Math.min(n, names.length) : Math.ceil(names.length / n);
+  const groups = Array.from({ length: groupCount }, () => []);
+  names.forEach((name, i) => groups[i % groupCount].push(name)); // round-robin keeps sizes even
+  session.focus = { type: "groups", groups };
+}
+function toolDiceSet(session, facesIn) {
+  // Six faces, one question each (blank faces just show their number).
+  const faces = Array.isArray(facesIn) ? facesIn : [];
+  session.dice.faces = Array.from({ length: 6 }, (_, i) => String(faces[i] ?? "").trim().slice(0, 200));
+}
+function toolDiceRoll(session) {
+  session.dice.result = 1 + Math.floor(Math.random() * 6);
+  session.dice.rollId += 1;
+  session.focus = { type: "dice" }; // the roll takes the big screen
+}
+// A planned tool step. Like on the spot, it sits over whatever is up (a live question stays live underneath).
+function runTool(session, step) {
+  if (step.mode === "tool_timer") toolTimer(session, step.toolSeconds, !!step.toolBig);
+  else if (step.mode === "tool_pick") toolPick(session);
+  else if (step.mode === "tool_groups") toolGroups(session, step.groupN, step.groupBy);
+  else if (step.mode === "tool_dice") { if (step.faces) toolDiceSet(session, step.faces); toolDiceRoll(session); }
+}
+
+// A lesson step: a slide goes up on the board, a room tool runs, anything else is launched as an activity.
 function runStep(session, step) {
+  if (TOOL_MODES.has(step.mode)) return runTool(session, step);
   if (step.mode === "deck") {
     if (session.interaction) {
       session.interaction.open = false;

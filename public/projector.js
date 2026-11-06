@@ -13,6 +13,7 @@ let retryTimer = null;
 const DL_IMAGE_MODES = new Set(["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
 
 const MODE_TAGS = {
+  tool_timer: "Timer", tool_pick: "Random student", tool_groups: "Random groups", tool_dice: "Question dice",
   word_cloud: "Word Cloud", short_answer: "Short Answer", poll: "Poll", tick_boxes: "Tick the Boxes",
   agree_disagree: "Agree / Disagree", confidence: "Confidence Check",
   ranking: "Ranking", predict: "Make a Prediction", this_or_that: "This or That",

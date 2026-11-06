@@ -105,6 +105,13 @@ const MODES = {
                    ph: "e.g. “Photograph your experiment and explain what happened”" },
 };
 
+const TOOL_STEP_LABEL = "🧰 Room tools";
+Object.assign(MODES, {
+  tool_timer:  { icon: "⏱", name: "Timer", hint: "A countdown on the classroom screen — 30 seconds to 15 minutes", opts: null, toolUI: "timer" },
+  tool_pick:   { icon: "🎲", name: "Random student", hint: "Picks someone at random — no repeats until everyone has had a turn", opts: null, toolUI: "pick" },
+  tool_groups: { icon: "👥", name: "Random groups", hint: "Splits whoever has joined into groups on the classroom screen", opts: null, toolUI: "groups" },
+  tool_dice:   { icon: "🎲", name: "Question dice", hint: "Rolls the dice — it lands on one of your six questions", opts: null, toolUI: "dice" },
+});
 const CATEGORIES = [
   { label: "⚡ Fast votes", modes: ["multi_choice", "picture_choice", "poll", "tick_boxes", "picture_vote", "agree_disagree", "true_false", "this_or_that", "confidence", "smiley", "scale", "example_nonexample"] },
   { label: "☁️ Words & ideas", modes: ["word_cloud", "one_word", "mindmap", "post_its", "phonics", "phonics_cloze"] },
@@ -114,6 +121,8 @@ const CATEGORIES = [
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
   { label: "🎨 Draw & images", modes: ["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long"] },
   { label: "🎵 Music", modes: ["compose_beginner", "compose", "compose_advanced"] },
+  // Plan steps for the room tools; on the spot the tools have their own section under the grid, so these tiles show only in the plan picker.
+  { label: TOOL_STEP_LABEL, modes: ["tool_timer", "tool_pick", "tool_groups", "tool_dice"] },
 ];
 
 const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_ticket", "muddiest_point", "retrieval_sprint", "spot_mistake", "teach_back", "give_example", "make_connection", "finish_sentence", "quick_challenge", "picture_prompt", "long_response"]);
@@ -330,6 +339,7 @@ function buildModeGrid() {
     h.className = `mode-cat ${foldOn(`cat:${key}`) ? "folded" : ""}`;
     h.title = foldOn(`cat:${key}`) ? "Show these activities" : "Fold these activities away";
     h.innerHTML = `<span class="cat-chev">▸</span><span class="cat-name">${label}</span><span class="cat-count">${count} ${count === 1 ? "activity" : "activities"}</span>`;
+    h.dataset.cat = key;
     h.onclick = () => { setFold(`cat:${key}`, !foldOn(`cat:${key}`)); buildModeGrid(); };
     grid.appendChild(h);
   };
@@ -348,6 +358,7 @@ function buildModeGrid() {
       send({ type: "set_favs", favs: next });
     };
     b.hidden = foldOn(`cat:${cat}`);
+    b.dataset.cat = cat;
     grid.appendChild(b);
   };
   if (favs.length) {
@@ -504,6 +515,25 @@ function openComposer(key, keepImage) {
   const opts = $("composerOpts");
   opts.innerHTML = "";
   composerOptImgs = [];
+  prompt.hidden = !!m.toolUI; // a room tool has no question to type
+  if (m.toolUI) {
+    const wrap = document.createElement("div");
+    wrap.className = "tool-setup";
+    if (m.toolUI === "timer") {
+      wrap.innerHTML = `<label>How long? <select id="toolSeconds">${[30, 60, 90, 120, 180, 300, 600, 900].map((s) => `<option value="${s}"${s === 60 ? " selected" : ""}>${s < 60 ? `${s} seconds` : `${s / 60} minute${s === 60 ? "" : "s"}`}</option>`).join("")}</select></label>
+        <label class="timer-big-opt"><input type="checkbox" id="toolBig" /> ⛶ Fill the classroom screen with the countdown</label>
+        <p class="tool-setup-note">Starts the moment ▶ reaches this step. A question that is already up stays up; the timer sits in the corner.</p>`;
+    } else if (m.toolUI === "pick") {
+      wrap.innerHTML = `<p class="tool-setup-note">When ▶ reaches this step, one student is picked at random and their name fills the classroom screen. Nobody is picked twice until everyone has had a turn.</p>`;
+    } else if (m.toolUI === "groups") {
+      wrap.innerHTML = `<label><select id="toolGroupBy"><option value="size">groups of</option><option value="count">split into</option></select> <input type="number" id="toolGroupN" min="1" max="40" value="4" /></label>
+        <p class="tool-setup-note">Made from whoever has joined when ▶ reaches this step, and shown on the classroom screen.</p>`;
+    } else if (m.toolUI === "dice") {
+      wrap.innerHTML = [1, 2, 3, 4, 5, 6].map((i) => `<label class="dice-row"><span class="dice-lbl">Face ${i}</span><input type="text" class="tool-dice-in" data-face="${i - 1}" maxlength="200" placeholder="Question when it lands on ${i}" /></label>`).join("") +
+        `<p class="tool-setup-note">Leave the faces blank to roll with the questions already typed under 🧰 Room tools.</p>`;
+    }
+    opts.appendChild(wrap);
+  }
   if (m.picDrop) buildPicDrop(opts);
   if (m.opts && !m.picDrop) {
     for (let i = 0; i < m.opts.max; i++) {
@@ -694,6 +724,13 @@ function closeComposer() {
 
 function readComposer() {
   const m = MODES[composerModeKey];
+  if (m.toolUI) {
+    const out = { mode: composerModeKey, prompt: "" };
+    if (m.toolUI === "timer") { out.toolSeconds = parseInt($("toolSeconds").value, 10) || 60; out.toolBig = $("toolBig").checked || undefined; }
+    if (m.toolUI === "groups") { out.groupN = Math.min(40, Math.max(1, parseInt($("toolGroupN").value, 10) || 4)); out.groupBy = $("toolGroupBy").value === "count" ? "count" : "size"; }
+    if (m.toolUI === "dice") { const faces = [...$("composerOpts").querySelectorAll(".tool-dice-in")].map((i) => i.value.trim().slice(0, 200)); if (faces.some(Boolean)) out.faces = faces; }
+    return out;
+  }
   const prompt = $("composerPrompt").value.trim();
   if (m.needPrompt && !prompt) {
     toast("This mode needs the text typed — students read it on their screen");
@@ -982,6 +1019,18 @@ function renderLive() {
     return;
   }
 
+  if (!itx && (state.focus || state.timer)) {
+    const f = state.focus, d = state.dice;
+    const line = f?.type === "spotlight" ? `🎲 All eyes on <b>${esc(f.name)}</b>`
+      : f?.type === "groups" ? `👥 ${f.groups.length} groups are on the classroom screen`
+      : f?.type === "dice" ? `🎲 The dice landed on <b>${d?.result || "?"}</b>${d?.faces?.[(d.result || 0) - 1] ? ` — ${esc(d.faces[d.result - 1])}` : ""}`
+      : `⏱ Timer running on the classroom screen`;
+    area.innerHTML = `<div class="live-empty"><p class="big">${line}</p>
+      <p>${f ? "It stays on the classroom screen until you clear it or launch something." : "Pause or clear it under 🧰 Room tools."}</p>
+      ${f ? `<button class="btn" data-act="clear_focus" style="margin-top:0.6rem">✕ Clear the classroom screen</button>` : ""}</div>`;
+    area.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => send({ type: b.dataset.act })));
+    return;
+  }
   if (!itx) {
     const msg =
       state.phase === "eyesup"
@@ -2333,6 +2382,10 @@ async function openEditor(id, isNew) {
 
 function stepDetail(st) {
   const bits = [];
+  if (st.mode === "tool_timer") return `⏱ ${st.toolSeconds < 60 ? `${st.toolSeconds} seconds` : `${st.toolSeconds / 60} min`}${st.toolBig ? " · fills the classroom screen" : ""}`;
+  if (st.mode === "tool_groups") return st.groupBy === "count" ? `👥 split into ${st.groupN} groups` : `👥 groups of ${st.groupN}`;
+  if (st.mode === "tool_dice") return st.faces ? `🎲 ${st.faces.filter(Boolean).length} of 6 faces have a question` : "🎲 rolls with the faces typed under Room tools";
+  if (st.mode === "tool_pick") return "🎲 one student, no repeats until everyone has had a turn";
   if (st.mode === "deck") return `<span>${{ google: "Google Slides", microsoft: "PowerPoint Online", canva: "Canva" }[st.provider] || "Slides"} · plays with animations · picks up where you left off</span>`;
   if (st.mode === "slide") return `<img class="slide-thumb" src="/api/slide/${st.img}?${authQuery()}" alt="slide ${st.page}" loading="lazy" /> <span>Slide ${st.page} of ${st.pages}</span>`;
   if (st.image) bits.push(`<img src="${st.image}" alt="" />`);
@@ -2366,7 +2419,7 @@ function renderEditor(flashIndex) {
           <span class="step-num">${i + 1}</span>
           <div class="step-body">
             <div class="step-type">${stepTag(st)}</div>
-            <div class="step-q ${st.prompt || st.mode === "slide" || st.mode === "deck" ? "" : "aloud"}">${st.prompt ? esc(st.prompt) : st.mode === "slide" || st.mode === "deck" ? "" : "You'll ask this one aloud"}</div>
+            <div class="step-q ${st.prompt || st.mode === "slide" || st.mode === "deck" || MODES[st.mode]?.toolUI ? "" : "aloud"}">${st.prompt ? esc(st.prompt) : st.mode === "slide" || st.mode === "deck" || MODES[st.mode]?.toolUI ? "" : "You'll ask this one aloud"}</div>
             ${stepDetail(st) ? `<div class="step-extra">${stepDetail(st)}</div>` : ""}
             ${st.mode !== "slide" && st.mode !== "deck" && steps.slice(0, i).some((p) => p.mode === "deck")
               ? `<label class="step-after" title="Which slide of your live deck comes before this question — shown on the classroom screen's corner button so you know when to press it">🎞 Ask after slide <input type="number" min="1" max="999" inputmode="numeric" placeholder="№" data-after="${i}" value="${st.afterSlide || ""}" /></label>`
@@ -2757,6 +2810,14 @@ function editStep(i) {
 function fillComposer(st) {
   const m = MODES[composerModeKey];
   $("composerPrompt").value = st.prompt || "";
+  if (m.toolUI) {
+    if ($("toolSeconds") && st.toolSeconds) { const sel = $("toolSeconds"); if (![...sel.options].some((o) => +o.value === st.toolSeconds)) sel.add(new Option(`${st.toolSeconds} seconds`, st.toolSeconds)); sel.value = String(st.toolSeconds); }
+    if ($("toolBig")) $("toolBig").checked = !!st.toolBig;
+    if ($("toolGroupN") && st.groupN) $("toolGroupN").value = st.groupN;
+    if ($("toolGroupBy") && st.groupBy) $("toolGroupBy").value = st.groupBy;
+    if (st.faces) $("composerOpts").querySelectorAll(".tool-dice-in").forEach((inp) => { inp.value = st.faces[+inp.dataset.face] || ""; });
+    return;
+  }
   if (m.opts && st.options) {
     const boxes = [...$("composerOpts").querySelectorAll("input[data-opt]")];
     st.options.forEach((o, i) => { if (boxes[i]) boxes[i].value = o; });
@@ -2883,7 +2944,7 @@ function renderLessonStrip() {
       <div class="ls-next-info">
         <div class="ls-kicker">${label}</div>
         <div class="ls-next-type">${stepTag(nextSt)}${nextSt.afterSlide ? ` · 🎞 after slide ${nextSt.afterSlide}` : ""}</div>
-        <div class="ls-next-q ${nextSt.prompt ? "" : "aloud"}">${nextSt.prompt ? esc(nextSt.prompt) : "Ask this one aloud"}</div>
+        <div class="ls-next-q ${nextSt.prompt || MODES[nextSt.mode]?.toolUI ? "" : "aloud"}">${nextSt.prompt ? esc(nextSt.prompt) : MODES[nextSt.mode]?.toolUI ? stepDetail(nextSt) : "Ask this one aloud"}</div>
       </div>
       <button class="btn primary big" data-strip="next">${idx < 0 ? "▶ Start the lesson" : nextSt.mode === "slide" ? `▶ Show slide ${nextSt.page}` : nextSt.mode === "deck" ? "▶ Show live slides" : `▶ Launch step ${upcoming + 1}`}</button>
       ${nav}`;
