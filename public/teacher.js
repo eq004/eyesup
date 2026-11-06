@@ -324,12 +324,12 @@ function buildModeGrid() {
   const grid = $("modeGrid");
   const favs = (state?.favs || []).filter((f) => MODES[f]);
   grid.innerHTML = "";
-  const catHead = (key, label) => {
+  const catHead = (key, label, count) => {
     const h = document.createElement("button");
     h.type = "button";
     h.className = `mode-cat ${foldOn(`cat:${key}`) ? "folded" : ""}`;
     h.title = foldOn(`cat:${key}`) ? "Show these activities" : "Fold these activities away";
-    h.innerHTML = `<span class="cat-chev">▸</span>${label}`;
+    h.innerHTML = `<span class="cat-chev">▸</span><span class="cat-name">${label}</span><span class="cat-count">${count} ${count === 1 ? "activity" : "activities"}</span>`;
     h.onclick = () => { setFold(`cat:${key}`, !foldOn(`cat:${key}`)); buildModeGrid(); };
     grid.appendChild(h);
   };
@@ -351,19 +351,21 @@ function buildModeGrid() {
     grid.appendChild(b);
   };
   if (favs.length) {
-    catHead("favs", "⭐ Favourites");
+    catHead("favs", "⭐ Favourites", favs.length);
     favs.forEach((k) => addTile(k, "favs"));
   }
   for (const cat of CATEGORIES) {
-    catHead(cat.label, cat.label);
+    catHead(cat.label, cat.label, cat.modes.length);
     cat.modes.forEach((k) => addTile(k, cat.label));
   }
 }
 
 /* Folds and pins: which areas a teacher has folded away or let scroll, remembered on this computer. */
 const folds = (() => { try { return JSON.parse(localStorage.getItem("eyesup_folds") || "{}") || {}; } catch { return {}; } })();
-const foldOn = (key) => !!folds[key];
-const setFold = (key, on) => { if (on) folds[key] = true; else delete folds[key]; try { localStorage.setItem("eyesup_folds", JSON.stringify(folds)); } catch { /* private window */ } };
+// Activity categories and Room tools start folded; ⭐ Favourites, Live now and the lesson strip start open.
+const foldDefault = (key) => (key.startsWith("cat:") && key !== "cat:favs") || key === "tools";
+const foldOn = (key) => (key in folds ? !!folds[key] : foldDefault(key));
+const setFold = (key, on) => { folds[key] = !!on; try { localStorage.setItem("eyesup_folds", JSON.stringify(folds)); } catch { /* private window */ } };
 
 let composerImage = null;
 

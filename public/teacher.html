@@ -494,21 +494,26 @@
   .mode-tile .icon { font-size: 1.35rem; }
   .mode-tile .name { font-weight: 800; font-size: 0.92rem; line-height: 1.2; }
   .mode-tile .hint { font-size: 0.74rem; color: var(--muted); line-height: 1.3; }
+  /* Category headings are accordions: a soft bar with the name, how many activities, and a chevron.
+     Click to open or fold; remembered on this computer. Everything starts folded except ⭐ Favourites. */
   .mode-cat {
     grid-column: 1 / -1;
-    font-size: 0.72rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-    color: var(--muted);
-    margin-top: 0.35rem;
+    display: flex; align-items: center; gap: 0.7rem; width: 100%;
+    margin: 0.35rem 0 0; padding: 0.6rem 0.9rem;
+    border: 1px solid var(--line); border-radius: 14px;
+    background: linear-gradient(180deg, #f6f8fc, #eef2f8);
+    font-family: var(--font-display); font-size: 1.12rem; font-weight: 800; letter-spacing: -0.01em;
+    color: var(--navy); text-align: left; cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
   }
   .mode-cat:first-child { margin-top: 0; }
-  /* Category headers are accordions: click to fold that group of tiles away; remembered on this computer. */
-  button.mode-cat { display: flex; align-items: center; gap: 0.45rem; width: 100%; padding: 0.15rem 0; border: 0; background: none; text-align: left; cursor: pointer; font-family: inherit; }
-  button.mode-cat:hover { color: var(--navy); }
-  .cat-chev { display: inline-block; width: 0.9em; font-size: 0.95rem; line-height: 1; transition: transform 0.15s ease; transform: rotate(90deg); }
-  .mode-cat.folded .cat-chev { transform: none; }
+  button.mode-cat { font-family: var(--font-display); }
+  .mode-cat:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .mode-cat.folded { background: var(--surface); }
+  .cat-chev { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border-radius: 50%; background: var(--navy); color: #fff; font-size: 0.9rem; line-height: 1; transition: transform 0.15s ease; transform: rotate(90deg); }
+  .mode-cat.folded .cat-chev { transform: none; background: #c9d5e6; color: var(--navy); }
+  .cat-name { flex: 1; }
+  .cat-count { font-family: var(--font-body, inherit); font-size: 0.78rem; font-weight: 700; color: var(--muted); letter-spacing: 0; }
   .pair-row { display: flex; align-items: center; gap: 0.45rem; }
   .pair-row input { flex: 1; margin-top: 0 !important; }
   .pair-eq { color: var(--accent-ink); font-weight: 800; }
