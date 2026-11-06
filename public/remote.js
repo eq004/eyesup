@@ -415,7 +415,7 @@ function renderLiveResponses(itx) {
   if (["sketch", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode) && itx.responses.length) {
     const pics = itx.responses.flatMap((r) => (r.payload.images && r.payload.images.length ? r.payload.images : [r.payload.image])
       .map((src, k) => ({ src, id: k ? `${r.studentId}|${k}` : r.studentId })));
-    out += `<h3 class="sec">Tap ${itx.mode === "sketch" || itx.mode === "trace" || itx.mode === "annotate" ? "a drawing" : "an image"} → big on the projector</h3>
+    out += `<h3 class="sec">Tap ${itx.mode === "sketch" || itx.mode === "trace" || itx.mode === "annotate" ? "a drawing" : "an image"} → big on the classroom screen</h3>
       <div class="thumb-grid">${pics
         .map((p) => `<img class="thumb ${itx.spotlightId === p.id ? "spot" : ""}" data-spot="${p.id}" src="${p.src}" alt="student image" />`)
         .join("")}</div>
@@ -818,7 +818,7 @@ function renderTools() {
       <input class="rin" id="timerCustom" type="number" min="5" max="3600" placeholder="seconds" style="margin:0;flex:1" />
       <button class="rbtn" id="timerGo" style="flex:0 0 30%">Go</button></div>
       <label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;font-size:0.9rem;color:var(--rdim);font-weight:700">
-        <input type="checkbox" id="timerBigPref" style="width:20px;height:20px" ${remoteTimerBig() ? "checked" : ""} /> ⛶ Start full screen on the projector</label>` : ""}
+        <input type="checkbox" id="timerBigPref" style="width:20px;height:20px" ${remoteTimerBig() ? "checked" : ""} /> ⛶ Fill the classroom screen when it starts</label>` : ""}
 
     <h3 class="sec">🎲 Random student</h3>
     <button class="rbtn" data-act="pick_student">Pick someone</button>
@@ -892,7 +892,7 @@ function renderMore() {
 
     <h3 class="sec">Sharing</h3>
     <button class="rbtn" id="copyJoin">🔗 Copy student join link</button>
-    <a class="rbtn" style="text-decoration:none" href="/projector?code=${esc(state.code)}" target="_blank" rel="noopener">📽 Open projector view</a>
+    <a class="rbtn" style="text-decoration:none" href="/projector?code=${esc(state.code)}" target="_blank" rel="noopener">📽 Open the classroom screen</a>
 
     ${state.storage ? `<h3 class="sec">Archive</h3>
       <a class="rbtn" style="text-decoration:none" href="/data" target="_blank" rel="noopener">📈 Data dashboard</a>

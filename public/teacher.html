@@ -159,7 +159,7 @@
   .act-primary { min-width: 250px; border-color: transparent; color: #fff; background: linear-gradient(120deg, #123a8a 0%, #1270b8 55%, #15a3c7 100%); }
   .act-primary .act-text small { color: rgba(255, 255, 255, 0.85); }
   .act-primary .act-chev { background: #fff; color: #123a8a; }
-  /* Four doors share the row: Projector · Teacher remote · Student link · Student QR */
+  /* Four doors share the row: Classroom screen · Teacher remote · Student link · Student QR */
   .action-row > .act-card, .action-row .link-wrap { flex: 1 1 170px; min-width: 0; }
   .action-row .link-wrap { display: flex; }
   .action-row .link-wrap .act-card { flex: 1 1 auto; min-width: 0; }
@@ -952,7 +952,7 @@
       <h1 class="teach-h1">Ready to teach?</h1>
       <p class="teach-sub">Run an interactive lesson, share with your class, and collect responses in real time.</p>
       <div class="action-row">
-        <a class="act-card act-primary" id="openProjector" target="_blank" rel="noopener" href="/projector" title="Open the classroom screen in a new window"><span class="act-text"><b>Projector</b><small>Launch your lesson on your communal screen</small></span><span class="act-chev">›</span></a>
+        <a class="act-card act-primary" id="openProjector" target="_blank" rel="noopener" href="/projector" title="Open the classroom screen in a new window"><span class="act-text"><b>Classroom screen</b><small>Launch your lesson on your communal screen</small></span><span class="act-chev">›</span></a>
         <button class="act-card" id="remoteBtn" title="Control the class from your phone"><span class="act-text"><b>Teacher remote</b><small>Control this lesson from your phone.</small></span><span class="act-chev">›</span></button>
         <span class="link-wrap">
         <button class="act-card" id="copyLink" title="Show and copy the student join link — paste it into Google Classroom, Teams, email…"><span class="act-text"><b>Student link</b><small>best for students accessing with laptops</small></span><span class="act-chev act-ico">🔗</span></button>
@@ -962,7 +962,7 @@
           <div class="link-pop-foot">Or they go to <b id="linkPopHost"></b> and type the code <b id="linkPopCode"></b></div>
         </div>
         </span>
-        <button class="act-card" id="qrToggle" title="Put the big student QR / join screen on the projector"><span class="act-text"><b>Student QR</b><small>best for students accessing with iPads</small></span><span class="act-chev act-ico">🔳</span></button>
+        <button class="act-card" id="qrToggle" title="Put the big student QR / join screen on the classroom screen"><span class="act-text"><b>Student QR</b><small>best for students accessing with iPads</small></span><span class="act-chev act-ico">🔳</span></button>
       </div>
       <div class="join-row">
         <span class="join-label">Class join</span>
@@ -981,9 +981,9 @@
       <details class="lesson-settings" id="lessonSettings">
         <summary class="setup-row" title="Names, held answers, changing answers, student view, next class, finish"><span class="setup-ico">⚙️</span><span class="setup-name">Lesson settings</span><span class="setup-chev">›</span></summary>
         <div class="settings-panel">
-          <div class="settings-group"><span class="settings-label">On the projector</span>
-            <button class="btn" id="namesBtn" title="Show student names on the projector, for every activity (anonymous ones excepted)">🏷 Names: off</button>
-            <button class="btn" id="holdBtn" title="Keep every activity's answers off the projector until you press Reveal">🙈 Hold answers: off</button></div>
+          <div class="settings-group"><span class="settings-label">On the classroom screen</span>
+            <button class="btn" id="namesBtn" title="Show student names on the classroom screen, for every activity (anonymous ones excepted)">🏷 Names: off</button>
+            <button class="btn" id="holdBtn" title="Keep every activity's answers off the classroom screen until you press Reveal">🙈 Hold answers: off</button></div>
           <div class="settings-group"><span class="settings-label">Students</span>
             <button class="btn" id="chgBtn" title="Off: one answer each, a sent answer is final. On: students see 'Change my answer' after sending.">🔁 Change answers: off</button>
             <label class="limit-wrap" title="How many answers each student may send in Word Cloud, Mind Map, Post-its, Venn and Plus &amp; Minus">✋ Answers each
@@ -1066,7 +1066,7 @@
                       <input type="number" id="timerCustom" min="5" max="3600" placeholder="secs" />
                       <button class="btn mini" id="timerGo">Go</button>
                     </div>
-                    <label class="timer-big-opt"><input type="checkbox" id="timerBigPref" /> ⛶ Start full screen on the projector</label>
+                    <label class="timer-big-opt"><input type="checkbox" id="timerBigPref" /> ⛶ Fill the classroom screen when it starts</label>
                     <div class="tool-row" id="timerControls"></div>
                   </div>
                   <div class="tool-block">
@@ -1103,7 +1103,7 @@
                       <button class="btn mini primary-mini" id="diceRoll">🎲 Roll the dice</button>
                       <span class="picked-name" id="diceResult"></span>
                     </div>
-                    <p class="tool-hint">One question per face. Tip: paste six lines into Face 1 and they fill all six. The dice rolls on the projector and reveals the question it lands on; questions are remembered for next lesson.</p>
+                    <p class="tool-hint">One question per face. Tip: paste six lines into Face 1 and they fill all six. The dice rolls on the classroom screen and reveals the question it lands on; questions are remembered for next lesson.</p>
                   </div>
                   <div class="tool-row" id="focusClearRow"></div>
           </div>
@@ -1202,7 +1202,7 @@
       <h2 style="font-family:var(--font-display)">📱 Phone remote</h2>
       <p style="color:var(--ink-soft);margin-top:0.4rem;font-size:0.92rem">
         Scan with your phone — it signs in and joins this session automatically.
-        The projector keeps the class screen; you run the lesson from your pocket.
+        The classroom screen stays up for the class; you run the lesson from your pocket.
       </p>
       <p style="color:var(--muted);font-size:0.78rem;margin-top:0.4rem">The QR carries a one-time key that expires in 10 minutes — scan a fresh one each lesson.</p>
       <div id="remoteQr" style="display:flex;justify-content:center;margin:1.1rem 0"></div>

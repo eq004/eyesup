@@ -120,7 +120,7 @@ const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_tic
 const WORD_MODES = new Set(["word_cloud", "one_word", "mindmap"]);
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
-// Modes where the teacher gates responses onto the projector.
+// Modes where the teacher gates responses onto the classroom screen.
 const revealMode = (m) =>
   TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "question_set" || m === "sketch" || m === "trace" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
   m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" ||
@@ -879,7 +879,7 @@ function renderTools() {
       ${t.paused
         ? `<button class="btn mini" data-tact="timer_resume">▶ Resume</button>`
         : `<button class="btn mini" data-tact="timer_pause">⏸ Pause</button>`}
-      <button class="btn mini ${t.big ? "primary-mini" : ""}" data-tact="timer_big" title="Show the countdown full screen on the projector, or shrink it back">${t.big ? "⤡ Make small" : "⛶ Full screen"}</button>
+      <button class="btn mini ${t.big ? "primary-mini" : ""}" data-tact="timer_big" title="Show the countdown full screen on the classroom screen, or shrink it back">${t.big ? "⤡ Make small" : "⛶ Full screen"}</button>
       <button class="btn mini" data-tact="timer_clear">✕ Clear</button>`;
   } else {
     controls.innerHTML = "";
@@ -1007,7 +1007,7 @@ function renderLive() {
       : `<button class="btn" data-act="show_results">📊 Show results</button>`}
     ${canReveal ? `<button class="btn" data-act="reveal_all">✨ Reveal all</button>` : ""}
     ${canReveal && !ANON_MODES.has(itx.mode)
-      ? `<button class="btn ${state.showNames ? "primary" : ""}" data-act="toggle_names" title="Show student names next to responses on the projector — applies to the whole lesson">🏷 Names on screen: ${state.showNames ? "ON" : "off"}</button>`
+      ? `<button class="btn ${state.showNames ? "primary" : ""}" data-act="toggle_names" title="Show student names next to responses on the classroom screen — applies to the whole lesson">🏷 Names on screen: ${state.showNames ? "ON" : "off"}</button>`
       : ""}
     ${itx.mode === "multi_choice" && itx.correct != null
       ? itx.answerRevealed
@@ -1151,7 +1151,7 @@ function renderLive() {
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.78rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
     const hint = itx.responses.length
-      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the projector; click again to shrink it back.
+      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the classroom screen; click again to shrink it back.
          <a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a></p>`
       : "";
     body = source + hint + revealCards((r) => {
@@ -1160,7 +1160,7 @@ function renderLive() {
       return `<span style="display:inline-flex;gap:0.35rem;flex-wrap:wrap;vertical-align:top">${pics
         .map((src, k) => {
           const id = k ? `${r.studentId}|${k}` : r.studentId;
-          return `<img src="${src}" alt="student image ${k + 1}" data-spot="${id}" title="${pics.length > 1 ? `Image ${k + 1} of ${pics.length} — ` : ""}click to put it big on the projector"
+          return `<img src="${src}" alt="student image ${k + 1}" data-spot="${id}" title="${pics.length > 1 ? `Image ${k + 1} of ${pics.length} — ` : ""}click to put it big on the classroom screen"
             style="height:${pics.length > 1 ? 70 : 90}px;border-radius:8px;background:#fff;cursor:zoom-in;border:3px solid ${itx.spotlightId === id ? "var(--amber)" : "var(--line)"}" />`;
         })
         .join("")}</span>
@@ -1212,7 +1212,7 @@ function renderLive() {
       <p style="margin-top:0.6rem;font-weight:800">${itx.responses.length} of ${state.students.length} have opened it</p>
       ${waiting.length ? `<p style="margin-top:0.3rem;font-size:0.85rem;color:var(--muted)">Not yet: ${waiting.map((s) => esc(s.name)).join(", ")}</p>` : state.students.length ? `<p style="margin-top:0.3rem;font-size:0.85rem;color:var(--green);font-weight:700">Everyone has it open ✓</p>` : ""}`;
   } else if (itx.mode === "compose") {
-    body = (itx.responses.length ? `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem;align-items:center"><button class="btn" data-tune-all="1">▶ Play them all here</button><span style="font-size:0.8rem;color:var(--muted)">“On board” plays through the projector's speakers and puts that tune up big.</span></div>` : "") +
+    body = (itx.responses.length ? `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem;align-items:center"><button class="btn" data-tune-all="1">▶ Play them all here</button><span style="font-size:0.8rem;color:var(--muted)">“On board” plays through the classroom screen's speakers and puts that tune up big.</span></div>` : "") +
       revealCards((r) => `<div class="tune-mini" style="color:#1f2a3c">${TUNE.scoreSvg(r.payload, { compact: true })}</div>
         <div style="display:flex;gap:0.4rem;margin-top:0.3rem"><button class="btn" data-tune-play="${r.studentId}">▶ Play here</button><button class="btn" data-tune-board="${r.studentId}">📽 On board</button></div>`);
   } else if (itx.mode === "dot_points") {
@@ -2664,7 +2664,7 @@ function loadPdfJs() {
   });
   return pdfjsReady;
 }
-const SLIDE_PX = 1600; // long edge — crisp on a projector, small enough to load instantly
+const SLIDE_PX = 1600; // long edge — crisp on a classroom screen, small enough to load instantly
 function canvasFor(w, h) {
   const k = Math.min(1, SLIDE_PX / Math.max(w, h));
   const c = document.createElement("canvas");

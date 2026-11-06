@@ -993,7 +993,7 @@ function renderBuilds(agg) {
 }
 
 // Small name badge, shown only when the teacher flips names on.
-/* Make a Tune — sound comes out of whatever the projector computer is plugged into. */
+/* Make a Tune — sound comes out of whatever the classroom screen computer is plugged into. */
 function wireTuneButtons(itx) {
   const big = $("tunePlayBig");
   if (big) big.onclick = (e) => {
