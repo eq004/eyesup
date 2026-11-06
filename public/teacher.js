@@ -203,7 +203,7 @@ function wakeNote(show) {
   if (el) return;
   el = document.createElement("div");
   el.id = "wakeNote";
-  el.style.cssText = "position:fixed;left:50%;top:0.8rem;transform:translateX(-50%);z-index:9999;background:#0f1c30;color:#fff;padding:0.6rem 1rem;border-radius:12px;font-size:0.85rem;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,0.25)";
+  el.style.cssText = "position:fixed;left:50%;top:0.8rem;transform:translateX(-50%);z-index:9999;background:#0f1c30;color:#fff;padding:0.6rem 1rem;border-radius:12px;font-size:0.9rem;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,0.25)";
   el.textContent = "⏳ Waking the server up… first visit of the day can take up to a minute. Hang tight.";
   document.body.appendChild(el);
 }
@@ -441,7 +441,7 @@ function buildPicDrop(opts) {
       <input type="file" id="picFiles" accept="image/*" multiple hidden />
     </div>
     <div class="pic-grid" id="picGrid"></div>
-    <p style="margin:0.4rem 0 0;font-size:0.78rem;color:var(--muted)">Students tap one picture. Tap ✓ on a picture to mark it as the right answer (optional). A short caption under each keeps the results readable.</p>`;
+    <p style="margin:0.4rem 0 0;font-size:0.9rem;color:var(--muted)">Students tap one picture. Tap ✓ on a picture to mark it as the right answer (optional). A short caption under each keeps the results readable.</p>`;
   opts.appendChild(wrap);
   $("picDrop").onclick = () => $("picFiles").click();
   $("picFiles").onchange = (e) => { addPicChoiceFiles(e.target.files); e.target.value = ""; };
@@ -517,7 +517,7 @@ function openComposer(key, keepImage) {
     }
     if (m.picOpts) {
       const note = document.createElement("p");
-      note.style.cssText = "margin:0.4rem 0 0;font-size:0.78rem;color:var(--muted)";
+      note.style.cssText = "margin:0.4rem 0 0;font-size:0.9rem;color:var(--muted)";
       note.textContent = "🖼 adds a picture to an option — students tap the picture. A short word beside it keeps the results readable.";
       opts.appendChild(note);
     }
@@ -600,7 +600,7 @@ function openComposer(key, keepImage) {
     if (m.forceLevel === "advanced") mk("chordsSel", `<option value="1" selected>Chords: allowed (up to 4 notes together)</option><option value="0">Chords: off (one note at a time)</option>`);
     if (m.forceLevel === "advanced") mk("keySel", [["0","C major / A minor (no sharps or flats)"],["1","G major / E minor (1 sharp)"],["2","D major / B minor (2 sharps)"],["3","A major / F♯ minor (3 sharps)"],["-1","F major / D minor (1 flat)"],["-2","B♭ major / G minor (2 flats)"],["-3","E♭ major / C minor (3 flats)"]].map(([v, l]) => `<option value="${v}">Key: ${l}</option>`).join(""));
     const note = document.createElement("p");
-    note.style.cssText = "margin:0.5rem 0 0;font-size:0.8rem;color:var(--muted)";
+    note.style.cssText = "margin:0.5rem 0 0;font-size:0.9rem;color:var(--muted)";
     note.textContent = { beginner: "Students get crotchets, minims and a crotchet rest, C to C, with letter names inside the notes.", standard: "Students get semibreve to quaver, rests, sharps and flats, middle C to A above the stave.", advanced: "Students also get semiquavers, dotted notes, beaming, 6/8 and the range A below the stave to high C." }[m.forceLevel] || "";
     opts.appendChild(note);
   }
@@ -629,7 +629,7 @@ function openComposer(key, keepImage) {
           <button type="button" data-v="dots">Dots only</button>
         </div>
       </div>
-      <p style="margin:0.45rem 0 0;font-size:0.8rem;color:var(--muted)">NSW Foundation letters, one big card per letter on every student's pad. "Both" shows each letter as a capital and a small letter, so up to 4 letters; otherwise up to 8. Numbers are shown dotted on writing lines.</p>`;
+      <p style="margin:0.45rem 0 0;font-size:0.9rem;color:var(--muted)">NSW Foundation letters, one big card per letter on every student's pad. "Both" shows each letter as a capital and a small letter, so up to 4 letters; otherwise up to 8. Numbers are shown dotted on writing lines.</p>`;
     opts.appendChild(wrap);
     wrap.querySelectorAll(".seg").forEach((seg) => seg.querySelectorAll("button").forEach((b) => (b.onclick = () => { seg.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); })));
   }
@@ -956,7 +956,7 @@ function renderLive() {
         <button class="btn" data-act="step_prev">◀ Previous step</button>
         <button class="btn primary" data-act="next" ${nextSt ? "" : "disabled"}>${nextSt ? `Next: ${esc(stepTag(nextSt))} ▶` : "End of lesson"}</button>
       </div>
-      <p style="color:var(--muted);font-size:0.8rem;margin-top:0.7rem">Launch any activity whenever you like — when you come back, the slides are exactly where you left them.</p>
+      <p style="color:var(--muted);font-size:0.9rem;margin-top:0.7rem">Launch any activity whenever you like — when you come back, the slides are exactly where you left them.</p>
     </div>`;
     area.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => send({ type: b.dataset.act })));
     return;
@@ -975,7 +975,7 @@ function renderLive() {
           <button class="btn" data-act="step_prev">◀ Previous</button>
           <button class="btn primary" data-act="next" ${nextSt ? "" : "disabled"}>${nextSt ? (nextSt.mode === "slide" ? "Next slide ▶" : `Next: ${esc(stepTag(nextSt))} ▶`) : "End of lesson"}</button>
         </div>
-        <p style="color:var(--muted);font-size:0.8rem;margin-top:0.7rem">Tip: your presenter clicker, or the arrow keys on the classroom-screen computer, move through the lesson too.</p>
+        <p style="color:var(--muted);font-size:0.9rem;margin-top:0.7rem">Tip: your presenter clicker, or the arrow keys on the classroom-screen computer, move through the lesson too.</p>
       </div>
     </div>`;
     area.querySelectorAll("[data-act]").forEach((b) => (b.onclick = () => send({ type: b.dataset.act })));
@@ -1077,7 +1077,7 @@ function renderLive() {
     const boardCount = itx.aggregate?.stickies?.length ?? 0;
     const noteCount = itx.aggregate?.totalNotes ?? 0;
     body = `
-      <p style="margin-top:1rem;font-size:0.85rem;color:var(--ink-soft)">
+      <p style="margin-top:1rem;font-size:0.9rem;color:var(--ink-soft)">
         ${itx.moderated ? `🛡 Screening on — <b>${boardCount}</b> of <b>${noteCount}</b> notes on the board. Click a note to approve it.` : `⚡ Straight to the board — ${noteCount} notes up.`}
       </p>
       <div class="responses">${rows}</div>`;
@@ -1090,7 +1090,7 @@ function renderLive() {
         <div class="venn-head">${esc(heads[i])}</div>
         <div class="word-chips" style="margin-top:0.4rem">${r
           .map((w) => `<span class="word-chip">${esc(w.word)}${w.count > 1 ? `<small>×${w.count}</small>` : ""}</span>`)
-          .join("") || "<span style='color:var(--muted);font-size:0.8rem'>—</span>"}</div>
+          .join("") || "<span style='color:var(--muted);font-size:0.9rem'>—</span>"}</div>
       </div>`
       )
       .join("")}</div>`;
@@ -1148,10 +1148,10 @@ function renderLive() {
     const picsOf = (r) => (r.payload.images && r.payload.images.length ? r.payload.images : [r.payload.image]);
     const totalPics = itx.responses.reduce((n, r) => n + picsOf(r).length, 0);
     const source = itx.imageUrl
-      ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.78rem;color:var(--muted)">← what they're drawing on</span></div>`
+      ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.9rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
     const hint = itx.responses.length
-      ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the classroom screen; click again to shrink it back.
+      ? `<p style="margin-top:0.8rem;font-size:0.9rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the classroom screen; click again to shrink it back.
          <a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a></p>`
       : "";
     body = source + hint + revealCards((r) => {
@@ -1164,9 +1164,9 @@ function renderLive() {
             style="height:${pics.length > 1 ? 70 : 90}px;border-radius:8px;background:#fff;cursor:zoom-in;border:3px solid ${itx.spotlightId === id ? "var(--amber)" : "var(--line)"}" />`;
         })
         .join("")}</span>
-       ${pics.length > 1 ? `<span style="font-size:0.72rem;font-weight:800;color:var(--muted)">${pics.length} images</span>` : ""}
-       ${onScreen ? `<span style="font-size:0.72rem;font-weight:800;color:var(--amber)">◉ BIG ON SCREEN</span>` : ""}
-       ${r.payload.text ? `<div style="font-size:0.82rem;margin-top:0.3rem;max-width:420px;max-height:9em;overflow:auto;white-space:pre-wrap">${esc(r.payload.text)}</div>` : ""}`;
+       ${pics.length > 1 ? `<span style="font-size:0.9rem;font-weight:800;color:var(--muted)">${pics.length} images</span>` : ""}
+       ${onScreen ? `<span style="font-size:0.9rem;font-weight:800;color:var(--amber)">◉ BIG ON SCREEN</span>` : ""}
+       ${r.payload.text ? `<div style="font-size:0.9rem;margin-top:0.3rem;max-width:420px;max-height:9em;overflow:auto;white-space:pre-wrap">${esc(r.payload.text)}</div>` : ""}`;
     });
   } else if (itx.mode === "phonics") {
     body = revealCards((r) => phonChips(r.payload.parts));
@@ -1200,8 +1200,8 @@ function renderLive() {
       <div class="venn-col">
         <div class="venn-head" style="color:${color}">${title}</div>
         <div style="margin-top:0.4rem;display:flex;flex-direction:column;gap:0.3rem">${list
-          .map((it) => `<div style="font-size:0.85rem"><b style="color:var(--muted);font-size:0.75rem">${esc(it.name || "")}</b> ${esc(it.text)}</div>`)
-          .join("") || "<span style='color:var(--muted);font-size:0.8rem'>—</span>"}</div>
+          .map((it) => `<div style="font-size:0.9rem"><b style="color:var(--muted);font-size:0.9rem">${esc(it.name || "")}</b> ${esc(it.text)}</div>`)
+          .join("") || "<span style='color:var(--muted);font-size:0.9rem'>—</span>"}</div>
       </div>`;
     body = `<div class="venn-cols" style="grid-template-columns:1fr 1fr">${col("＋ Positives", agg.plus, "var(--green)")}${col("− Negatives", agg.minus, "var(--red)")}</div>`;
   } else if (itx.mode === "link") {
@@ -1210,9 +1210,9 @@ function renderLive() {
     body = `
       <p style="margin-top:0.8rem"><a href="${esc(itx.link?.url || "#")}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-weight:800;overflow-wrap:anywhere">🔗 ${esc(itx.link?.url || "")}</a></p>
       <p style="margin-top:0.6rem;font-weight:800">${itx.responses.length} of ${state.students.length} have opened it</p>
-      ${waiting.length ? `<p style="margin-top:0.3rem;font-size:0.85rem;color:var(--muted)">Not yet: ${waiting.map((s) => esc(s.name)).join(", ")}</p>` : state.students.length ? `<p style="margin-top:0.3rem;font-size:0.85rem;color:var(--green);font-weight:700">Everyone has it open ✓</p>` : ""}`;
+      ${waiting.length ? `<p style="margin-top:0.3rem;font-size:0.9rem;color:var(--muted)">Not yet: ${waiting.map((s) => esc(s.name)).join(", ")}</p>` : state.students.length ? `<p style="margin-top:0.3rem;font-size:0.9rem;color:var(--green);font-weight:700">Everyone has it open ✓</p>` : ""}`;
   } else if (itx.mode === "compose") {
-    body = (itx.responses.length ? `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem;align-items:center"><button class="btn" data-tune-all="1">▶ Play them all here</button><span style="font-size:0.8rem;color:var(--muted)">“On board” plays through the classroom screen's speakers and puts that tune up big.</span></div>` : "") +
+    body = (itx.responses.length ? `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem;align-items:center"><button class="btn" data-tune-all="1">▶ Play them all here</button><span style="font-size:0.9rem;color:var(--muted)">“On board” plays through the classroom screen's speakers and puts that tune up big.</span></div>` : "") +
       revealCards((r) => `<div class="tune-mini" style="color:#1f2a3c">${TUNE.scoreSvg(r.payload, { compact: true })}</div>
         <div style="display:flex;gap:0.4rem;margin-top:0.3rem"><button class="btn" data-tune-play="${r.studentId}">▶ Play here</button><button class="btn" data-tune-board="${r.studentId}">📽 On board</button></div>`);
   } else if (itx.mode === "dot_points") {
@@ -1222,7 +1222,7 @@ function renderLive() {
   } else if (itx.mode === "counters") {
     const dist = agg?.answerDist || [];
     body =
-      (itx.expected ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Auto-checking against <b>${esc(itx.expected)}</b></p>` : "") +
+      (itx.expected ? `<p style="margin-top:0.8rem;font-size:0.9rem;color:var(--muted)">Auto-checking against <b>${esc(itx.expected)}</b></p>` : "") +
       (dist.length ? bars(dist.map((d) => `${d.answer}${d.ok === true ? " ✓" : d.ok === false ? " ✗" : ""}`), dist.map((d) => d.count)) : "") +
       revealCards((r) => {
         const ok = itx.expected ? markMatch(r.payload.answer, itx.expected) : null;
@@ -1235,11 +1235,11 @@ function renderLive() {
       ? bars(dist.map((d) => `${d.answer}${d.ok === true ? " ✓" : d.ok === false ? " ✗" : ""}`), dist.map((d) => d.count))
       : "";
     body =
-      (itx.expected ? `<p style="margin-top:0.8rem;font-size:0.8rem;color:var(--muted)">Auto-checking against <b>${esc(itx.expected)}</b></p>` : "") +
+      (itx.expected ? `<p style="margin-top:0.8rem;font-size:0.9rem;color:var(--muted)">Auto-checking against <b>${esc(itx.expected)}</b></p>` : "") +
       distHtml +
       revealCards((r) => {
         const ok = itx.expected ? markMatch(r.payload.answer, itx.expected) : null;
-        return `${(r.payload.lines || []).map((l) => `<span style="font-family:ui-monospace,monospace;font-size:0.82rem;color:var(--ink-soft);display:block">${esc(l)}</span>`).join("")}
+        return `${(r.payload.lines || []).map((l) => `<span style="font-family:ui-monospace,monospace;font-size:0.9rem;color:var(--ink-soft);display:block">${esc(l)}</span>`).join("")}
           <b style="color:${ok === false ? "var(--red)" : ok ? "var(--green)" : "var(--ink)"}">= ${esc(r.payload.answer || "—")}${ok === true ? " ✓" : ok === false ? " ✗" : ""}</b>`;
       });
   } else if (TEXT_MODES.has(itx.mode)) {
@@ -1434,8 +1434,8 @@ async function loadLessonsList(attempt) {
             const pics = Number(l.pictures) || 0;
             return `<div style="display:flex;align-items:center;gap:0.6rem;border:1px solid var(--line);border-radius:10px;padding:0.65rem 0.9rem;margin-bottom:0.5rem;background:var(--paper)">
               <a href="${href}" target="_blank" rel="noopener" style="flex:1;min-width:0;text-decoration:none;color:inherit">
-                <b>${esc(name)}</b> <span style="color:var(--muted);font-size:0.8rem">· ${esc(l.code)}</span><br/>
-                <span style="color:var(--ink-soft);font-size:0.82rem">${esc(when)} — ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions${pics ? ` · ${pics} picture${pics === 1 ? "" : "s"}` : ""}</span>
+                <b>${esc(name)}</b> <span style="color:var(--muted);font-size:0.9rem">· ${esc(l.code)}</span><br/>
+                <span style="color:var(--ink-soft);font-size:0.9rem">${esc(when)} — ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions${pics ? ` · ${pics} picture${pics === 1 ? "" : "s"}` : ""}</span>
               </a>
               ${pics ? `<a class="btn" href="/api/lessons/${l.id}/images?${authQuery()}" style="text-decoration:none;white-space:nowrap" title="Every picture from this lesson as one ZIP — a folder per activity, a file per student">🖼 ZIP</a>` : ""}
             </div>`;
@@ -1715,20 +1715,20 @@ function renderQuizPreview() {
   const box = $("quizPreview");
   if (!parsedQuiz.length) {
     box.innerHTML = $("quizPaste").value.trim()
-      ? `<p style="color:var(--red);font-size:0.85rem">Couldn't find complete questions yet — each needs a question line plus at least two A) B) options.</p>`
+      ? `<p style="color:var(--red);font-size:0.9rem">Couldn't find complete questions yet — each needs a question line plus at least two A) B) options.</p>`
       : "";
   } else {
     box.innerHTML =
-      `<p style="font-weight:800;font-size:0.85rem;margin-bottom:0.4rem">Found ${parsedQuiz.length} question${parsedQuiz.length === 1 ? "" : "s"}:</p>` +
+      `<p style="font-weight:800;font-size:0.9rem;margin-bottom:0.4rem">Found ${parsedQuiz.length} question${parsedQuiz.length === 1 ? "" : "s"}:</p>` +
       parsedQuiz
         .map(
           (q, qi) => `
-        <div style="border:1px solid var(--line);border-radius:10px;padding:0.55rem 0.8rem;margin-bottom:0.45rem;font-size:0.85rem;background:var(--paper)">
+        <div style="border:1px solid var(--line);border-radius:10px;padding:0.55rem 0.8rem;margin-bottom:0.45rem;font-size:0.9rem;background:var(--paper)">
           <b>${qi + 1}. ${esc(q.prompt)}</b><br/>
           ${q.options
             .map((o, i) => `<span style="${i === q.correct ? "color:var(--green);font-weight:700" : "color:var(--ink-soft)"}">${String.fromCharCode(65 + i)}) ${esc(o)}${i === q.correct ? " ✓" : ""}</span>`)
             .join(" &nbsp; ")}
-          ${q.correct == null ? `<br/><span style="color:var(--amber);font-size:0.78rem">⚠ No answer line found — you can still run it, just without a reveal.</span>` : ""}
+          ${q.correct == null ? `<br/><span style="color:var(--amber);font-size:0.9rem">⚠ No answer line found — you can still run it, just without a reveal.</span>` : ""}
         </div>`
         )
         .join("");
@@ -1842,9 +1842,9 @@ function showAuthOverlay(mode) {
          <input id="aPass" type="password" placeholder="Choose a password (6+ characters)" autocomplete="new-password" />
          <input id="aEmail" type="email" placeholder="Email (optional)" title="Optional — it helps if you ever forget your password" maxlength="120" autocomplete="email" />
          ${siteConfig.openSignup
-           ? siteConfig.billing ? `<p style="color:var(--muted);font-size:0.78rem;margin:0.2rem 0 0">✓ ${siteConfig.trialDays}-day free trial — no card needed to start.</p>` : ""
+           ? siteConfig.billing ? `<p style="color:var(--muted);font-size:0.9rem;margin:0.2rem 0 0">✓ ${siteConfig.trialDays}-day free trial — no card needed to start.</p>` : ""
            : inviteCode()
-             ? `<p style="color:var(--muted);font-size:0.78rem;margin:0.2rem 0 0">✓ Invite code applied — that's all you need.</p>`
+             ? `<p style="color:var(--muted);font-size:0.9rem;margin:0.2rem 0 0">✓ Invite code applied — that's all you need.</p>`
              : `<input id="aInvite" placeholder="Invite code (ask a colleague who uses Eyes Up)" />`}`;
   fields.querySelectorAll("input").forEach((i) => {
     i.style.cssText = "border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font-size:0.95rem";
@@ -1976,7 +1976,7 @@ async function showSubscribe(reason) {
     <h2 style="font-family:var(--font-display);margin-top:0.3rem">${head[0]}</h2>
     <p style="color:var(--ink-soft);margin-top:0.4rem">${head[1]}</p>
     <div class="price-row" id="priceRow"><p style="color:var(--muted)">Loading prices…</p></div>
-    <p style="color:var(--muted);font-size:0.8rem;margin-top:0.9rem">Paid securely through Stripe. Cancel any time.${locked ? "<br/>Your lesson plans and past lessons are safe — you can still open and export your data." : ""}</p>
+    <p style="color:var(--muted);font-size:0.9rem;margin-top:0.9rem">Paid securely through Stripe. Cancel any time.${locked ? "<br/>Your lesson plans and past lessons are safe — you can still open and export your data." : ""}</p>
     <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:1rem;flex-wrap:wrap">
       ${locked ? `<a class="btn" href="/data" style="text-decoration:none;color:var(--ink)">📈 Open my data</a><button class="btn" id="subSignOut">↪ Sign out</button>` : `<button class="btn" id="subLater">Not now</button>`}
     </div>`;
@@ -2389,10 +2389,10 @@ function renderEditor(flashIndex) {
       <button class="btn" id="addDeckBtn" title="Play your real Google Slides, PowerPoint Online or Canva deck — animations and videos included">🎞 Add live slides (link)</button>
       <input type="file" id="slidesFile" accept="application/pdf,image/png,image/jpeg" multiple hidden />
     </div>
-    <p class="editor-help" style="margin-top:0.4rem;font-size:0.8rem">📽 <b>Using PowerPoint or Google Slides?</b> Save your slides as a PDF (PowerPoint: File → Save As → PDF · Google Slides: File → Download → PDF) and add it here. Each slide becomes a step — drag activities in between them.</p>
+    <p class="editor-help" style="margin-top:0.4rem;font-size:0.9rem">📽 <b>Using PowerPoint or Google Slides?</b> Save your slides as a PDF (PowerPoint: File → Save As → PDF · Google Slides: File → Download → PDF) and add it here. Each slide becomes a step — drag activities in between them.</p>
     <div class="editor-foot">
       <button class="btn dark big" id="teachThisBtn" ${steps.length ? "" : "disabled"}>▶ Teach this lesson</button>
-      <span style="color:var(--muted);font-size:0.85rem">${steps.length} activit${steps.length === 1 ? "y" : "ies"} · saves automatically</span>
+      <span style="color:var(--muted);font-size:0.9rem">${steps.length} activit${steps.length === 1 ? "y" : "ies"} · saves automatically</span>
       <span class="spacer"></span>
       <button class="btn danger-ghost" id="deletePlanBtn">🗑 Delete plan</button>
     </div>`;
@@ -2616,7 +2616,7 @@ function openDeckSheet() {
     <details class="deck-how"><summary><b>Canva</b></summary><p>Share → <b>Embed</b> → copy the smart embed link. Paste it below.</p></details>
     <textarea id="deckLink" rows="3" placeholder="Paste the link or embed code here" style="width:100%;margin-top:0.8rem;border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font:inherit;font-size:0.9rem"></textarea>
     <input id="deckName" maxlength="80" placeholder="Name (optional), e.g. Fractions slides" style="width:100%;margin-top:0.5rem;border:1.5px solid var(--line);border-radius:10px;padding:0.6rem 0.9rem;font:inherit" />
-    <p id="deckErr" style="color:var(--red);font-size:0.85rem;margin-top:0.5rem;display:none"></p>
+    <p id="deckErr" style="color:var(--red);font-size:0.9rem;margin-top:0.5rem;display:none"></p>
     <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.9rem">
       <button class="btn" id="deckCancel">Cancel</button>
       <button class="btn primary" id="deckAdd">Add to lesson</button>
