@@ -324,7 +324,16 @@ function buildModeGrid() {
   const grid = $("modeGrid");
   const favs = (state?.favs || []).filter((f) => MODES[f]);
   grid.innerHTML = "";
-  const addTile = (key) => {
+  const catHead = (key, label) => {
+    const h = document.createElement("button");
+    h.type = "button";
+    h.className = `mode-cat ${foldOn(`cat:${key}`) ? "folded" : ""}`;
+    h.title = foldOn(`cat:${key}`) ? "Show these activities" : "Fold these activities away";
+    h.innerHTML = `<span class="cat-chev">▸</span>${label}`;
+    h.onclick = () => { setFold(`cat:${key}`, !foldOn(`cat:${key}`)); buildModeGrid(); };
+    grid.appendChild(h);
+  };
+  const addTile = (key, cat) => {
     const m = MODES[key];
     const isFav = favs.includes(key);
     const b = document.createElement("button");
@@ -338,23 +347,23 @@ function buildModeGrid() {
       const next = isFav ? favs.filter((f) => f !== key) : [...favs, key];
       send({ type: "set_favs", favs: next });
     };
+    b.hidden = foldOn(`cat:${cat}`);
     grid.appendChild(b);
   };
   if (favs.length) {
-    const h = document.createElement("div");
-    h.className = "mode-cat";
-    h.textContent = "⭐ Favourites";
-    grid.appendChild(h);
-    favs.forEach(addTile);
+    catHead("favs", "⭐ Favourites");
+    favs.forEach((k) => addTile(k, "favs"));
   }
   for (const cat of CATEGORIES) {
-    const h = document.createElement("div");
-    h.className = "mode-cat";
-    h.textContent = cat.label;
-    grid.appendChild(h);
-    cat.modes.forEach(addTile);
+    catHead(cat.label, cat.label);
+    cat.modes.forEach((k) => addTile(k, cat.label));
   }
 }
+
+/* Folds and pins: which areas a teacher has folded away or let scroll, remembered on this computer. */
+const folds = (() => { try { return JSON.parse(localStorage.getItem("eyesup_folds") || "{}") || {}; } catch { return {}; } })();
+const foldOn = (key) => !!folds[key];
+const setFold = (key, on) => { if (on) folds[key] = true; else delete folds[key]; try { localStorage.setItem("eyesup_folds", JSON.stringify(folds)); } catch { /* private window */ } };
 
 let composerImage = null;
 
@@ -928,9 +937,11 @@ function modeTag(mode, counterKind) {
   return `${m.icon} ${m.name}`;
 }
 
+let lastLiveItx = null;
 function renderLive() {
   const area = $("liveArea");
   const itx = state.interaction;
+  if (itx && itx.id !== lastLiveItx) { lastLiveItx = itx.id; if (foldOn("live")) { setFold("live", false); applyFolds(); } }
   $("liveSub").textContent = "";
 
   if (!itx && state.phase === "deck" && state.deck) {
@@ -2092,7 +2103,7 @@ const setHeadH = () => {
   const root = document.documentElement.style;
   root.setProperty("--head-h", `${document.querySelector("header").offsetHeight}px`);
   const bar = $("classBar");
-  root.setProperty("--top-h", `${bar && !bar.hidden ? bar.offsetHeight : 0}px`);
+  root.setProperty("--top-h", `${bar && !bar.hidden && !bar.classList.contains("unpinned") ? bar.offsetHeight : 0}px`);
 };
 setHeadH();
 window.addEventListener("resize", setHeadH);
@@ -2107,6 +2118,28 @@ const setTeachSmall = (small) => {
 };
 $("teachFold").onclick = () => setTeachSmall(!$("classBar").classList.contains("small"));
 try { if (localStorage.getItem("eyesup_teachbar") === "small") setTeachSmall(true); } catch { /* fine */ }
+// 📌 pins: the Teach bar and Live now are docked unless the teacher lets them scroll.
+function applyFolds() {
+  const barPinned = !foldOn("unpin:bar"), livePinned = !foldOn("unpin:live");
+  $("classBar").classList.toggle("unpinned", !barPinned);
+  $("teachPin").classList.toggle("on", barPinned);
+  $("teachPin").title = barPinned ? "Docked: this bar stays at the top while the page scrolls. Click to let it scroll away." : "Not docked: this bar scrolls with the page. Click to keep it at the top.";
+  $("livePanel").classList.toggle("unpinned", !livePinned);
+  $("livePin").classList.toggle("on", livePinned);
+  $("livePin").textContent = livePinned ? "📌 docked" : "📌 scrolls";
+  $("livePin").title = livePinned ? "Docked: Live now stays in view while the page scrolls. Click to let it scroll away." : "Not docked: Live now scrolls with the page. Click to keep it in view.";
+  $("livePanel").classList.toggle("folded", foldOn("live"));
+  $("liveFold").textContent = foldOn("live") ? "▸" : "▾";
+  $("liveFold").title = foldOn("live") ? "Open Live now" : "Fold Live now away (it opens again when something launches)";
+  $("roomTools").classList.toggle("folded", foldOn("tools"));
+  $("roomToolsHead").title = foldOn("tools") ? "Show the room tools" : "Fold the room tools away";
+  setHeadH();
+}
+$("teachPin").onclick = () => { setFold("unpin:bar", !foldOn("unpin:bar")); applyFolds(); };
+$("livePin").onclick = () => { setFold("unpin:live", !foldOn("unpin:live")); applyFolds(); };
+$("liveFold").onclick = () => { setFold("live", !foldOn("live")); applyFolds(); };
+$("roomToolsHead").onclick = () => { setFold("tools", !foldOn("tools")); applyFolds(); };
+applyFolds();
 document.addEventListener("click", (e) => { document.querySelectorAll("details.lesson-settings").forEach((d) => { if (d.open && !d.contains(e.target)) d.open = false; }); });
 
 /* ---------------- saved lesson plans: server calls ---------------- */
@@ -2770,6 +2803,7 @@ function fillComposer(st) {
 let planSnapshot = null; // { id, json } — the saved copy, to spot unsaved changes
 let snapshotLoading = false;
 let launcherOpen = null; // null = decide automatically
+if (foldOn("launch")) launcherOpen = false; // the teacher hid the activities last time on this computer
 
 async function teachPlan(id) {
   let pl;
@@ -2800,6 +2834,7 @@ $("launchToggle").onclick = () => {
   const hasPlan = (state?.sequence || []).length > 0;
   const openNow = launcherOpen === null ? !hasPlan : launcherOpen;
   launcherOpen = !openNow;
+  setFold("launch", !launcherOpen);
   if (!launcherOpen) closeComposer();
   renderLauncher();
 };
@@ -2862,7 +2897,7 @@ function renderLessonStrip() {
   }
 
   el.innerHTML = `
-    <section class="panel lesson-strip">
+    <section class="panel lesson-strip ${foldOn("strip") ? "folded" : ""}">
       <div class="ls-head">
         <div>
           <div class="ls-kicker">${state.planId ? "Teaching from your lesson plan" : "Lesson (not saved as a plan)"}</div>
@@ -2876,6 +2911,7 @@ function renderLessonStrip() {
             ? `<button class="btn primary" data-strip="save">💾 Save changes to plan</button>`
             : `<button class="btn" data-strip="edit">✎ Edit plan</button>`
           : `<button class="btn primary" data-strip="save-as">💾 Save as a lesson plan</button>`}
+        <button class="btn" data-strip="fold" title="${foldOn("strip") ? "Show the steps" : "Fold the steps away"}">${foldOn("strip") ? "▸ Steps" : "▾ Steps"}</button>
         <button class="btn" data-strip="close" title="Close this lesson plan">✕ Close</button>
       </div>
       <div class="ls-steps">${seq
@@ -2900,6 +2936,7 @@ function renderLessonStrip() {
   el.querySelectorAll("[data-jump]").forEach((b) => (b.onclick = () => send({ type: "jump_to_step", index: +b.dataset.jump })));
   el.querySelectorAll("[data-point]").forEach((b) => (b.onclick = () => send({ type: "seq_point", index: +b.dataset.point })));
   const act = (name, fn) => { const b = el.querySelector(`[data-strip="${name}"]`); if (b) b.onclick = fn; };
+  act("fold", () => { setFold("strip", !foldOn("strip")); renderLessonStrip(); });
   act("next", () => send({ type: "next" }));
   act("skip", () => send({ type: "seq_skip" }));
   act("back", () => send({ type: "step_prev" }));

@@ -395,9 +395,13 @@
   /* Fold: the Teach bar shrinks to one slim row (doors without captions, code, who's joined) for more room on a laptop. */
   .teach-fold { position: absolute; right: 0.7rem; top: 0.5rem; z-index: 2; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--navy); font: inherit; font-size: 0.85rem; font-weight: 800; line-height: 1; cursor: pointer; box-shadow: 0 1px 2px rgba(14, 36, 69, 0.08); }
   .teach-fold:hover { background: var(--navy); color: #fff; }
+  .teach-pin { right: 2.9rem; font-size: 0.8rem; opacity: 0.55; }
+  .teach-pin.on { opacity: 1; border-color: var(--navy); }
+  .teach-top.unpinned { position: static; box-shadow: none; }
   .teach-top.small { grid-template-columns: 1fr; padding: 0.4rem 1.4rem 0.4rem; }
   .teach-top.small .setup-card, .teach-top.small .teach-sub, .teach-top.small .join-label, .teach-top.small .join-label + .join-sep { display: none; }
   .teach-top.small .teach-fold { top: 50%; transform: translateY(-50%); }
+  .teach-top.small .teach-main { padding-right: 4.6rem; }
   .teach-top.small .teach-main { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.7rem; padding-right: 2.4rem; }
   .teach-top.small .teach-h1 { font-size: 1.05rem; }
   .teach-top.small .action-row { gap: 0.4rem; }
@@ -414,6 +418,14 @@
   /* Live now stays in view under the Teach bar; a long list of responses scrolls inside it. */
   #livePanel { position: sticky; top: calc(var(--head-h, 104px) + var(--top-h, 0px)); z-index: 14; display: flex; flex-direction: column; max-height: calc(100vh - var(--head-h, 104px) - var(--top-h, 0px) - 0.75rem); min-height: 0; }
   #livePanel .panel-head { flex: none; }
+  #livePanel.unpinned { position: static; max-height: none; }
+  #livePanel.unpinned #liveArea { overflow: visible; }
+  #livePanel.folded #liveArea { display: none; }
+  .head-btn { font: inherit; font-size: 0.78rem; font-weight: 700; padding: 0.22rem 0.6rem; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-soft); cursor: pointer; line-height: 1.2; }
+  .head-btn:hover { border-color: var(--navy); color: var(--navy); }
+  .head-btn.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .lesson-strip.folded .ls-steps, .lesson-strip.folded .ls-help { display: none; }
+  #roomTools.folded .tools { display: none; }
   #liveArea { overflow: auto; min-height: 0; overscroll-behavior: contain; }
   @media (max-width: 1040px) { #livePanel { position: static; max-height: none; } #liveArea { overflow: visible; } }
   #launchPanel.collapsed #launchBody { display: none; }
@@ -492,6 +504,11 @@
     margin-top: 0.35rem;
   }
   .mode-cat:first-child { margin-top: 0; }
+  /* Category headers are accordions: click to fold that group of tiles away; remembered on this computer. */
+  button.mode-cat { display: flex; align-items: center; gap: 0.45rem; width: 100%; padding: 0.15rem 0; border: 0; background: none; text-align: left; cursor: pointer; font-family: inherit; }
+  button.mode-cat:hover { color: var(--navy); }
+  .cat-chev { display: inline-block; width: 0.9em; font-size: 0.95rem; line-height: 1; transition: transform 0.15s ease; transform: rotate(90deg); }
+  .mode-cat.folded .cat-chev { transform: none; }
   .pair-row { display: flex; align-items: center; gap: 0.45rem; }
   .pair-row input { flex: 1; margin-top: 0 !important; }
   .pair-eq { color: var(--accent-ink); font-weight: 800; }
@@ -925,6 +942,7 @@
   <!-- Teach: hero, the three doors, the join row and the lesson setup card -->
   <section class="teach-top" id="classBar">
     <button class="teach-fold" id="teachFold" title="Make the Teach bar smaller — more room for the lesson on a laptop">▴</button>
+    <button class="teach-fold teach-pin on" id="teachPin" title="Docked: this bar stays at the top while the page scrolls. Click to let it scroll away.">📌</button>
     <div class="teach-main">
       <h1 class="teach-h1">Ready to teach?</h1>
       <p class="teach-sub">Run an interactive lesson, share with your class, and collect responses in real time.</p>
@@ -993,7 +1011,11 @@
     <main>
       <!-- Live interaction: docked under the Teach bar, scrolls inside when long -->
       <section class="panel" id="livePanel">
-        <div class="panel-head">Live now <span class="sub" id="liveSub"></span></div>
+        <div class="panel-head">Live now <span class="sub" id="liveSub"></span>
+          <span class="spacer"></span>
+          <button class="head-btn on" id="livePin" title="Docked: Live now stays in view while the page scrolls. Click to let it scroll away.">📌 docked</button>
+          <button class="head-btn" id="liveFold" title="Fold Live now away (it opens again when something launches)">▾</button>
+        </div>
         <div id="liveArea">
           <div class="live-empty">
             <p class="big">Nothing live — the room is yours. 🎤</p>
@@ -1027,7 +1049,7 @@
           <div class="modes" id="modeGrid"></div>
           <!-- Room tools: the same kind of section as ⚡ Fast votes, ☁️ Words & ideas… -->
           <div class="tools-cat" id="roomTools">
-            <div class="mode-cat">🧰 Room tools</div>
+            <button type="button" class="mode-cat" id="roomToolsHead"><span class="cat-chev"></span>🧰 Room tools</button>
             <div class="tools">
                   <div class="tool-block">
                     <div class="tool-title">⏱ Timer <span class="timer-display" id="timerDisplay"></span></div>
