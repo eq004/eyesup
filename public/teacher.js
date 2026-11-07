@@ -1214,6 +1214,7 @@ function renderLive() {
         })
         .join("")}</span>
        ${pics.length > 1 ? `<span style="font-size:0.9rem;font-weight:800;color:var(--muted)">${pics.length} images</span>` : ""}
+       ${itx.mode === "trace" && r.payload.strokes?.length ? `<button type="button" class="reveal-btn" data-replay="${r.studentId}" title="Watch how this letter was formed, stroke by stroke" style="margin-left:0.4rem">▶ Replay · ${r.payload.strokes.filter((s) => s.tool !== "rubber").length} stroke${r.payload.strokes.filter((s) => s.tool !== "rubber").length === 1 ? "" : "s"}</button>` : ""}
        ${onScreen ? `<span style="font-size:0.9rem;font-weight:800;color:var(--amber)">◉ BIG ON SCREEN</span>` : ""}
        ${r.payload.text ? `<div style="font-size:0.9rem;margin-top:0.3rem;max-width:420px;max-height:9em;overflow:auto;white-space:pre-wrap">${esc(r.payload.text)}</div>` : ""}`;
     });
@@ -1333,12 +1334,120 @@ function renderLive() {
   area.querySelectorAll("[data-spot]").forEach((img) => {
     img.onclick = (e) => { e.stopPropagation(); send({ type: "spotlight_response", studentId: img.dataset.spot }); };
   });
+  area.querySelectorAll("[data-replay]").forEach((b) => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const r = itx.responses.find((x) => x.studentId === b.dataset.replay);
+      if (r?.payload?.strokes?.length) openStrokeReplay(r, itx);
+    };
+  });
   area.querySelectorAll("[data-note]").forEach((b) => {
     b.onclick = () => {
       const [sid, i] = b.dataset.note.split("|");
       send({ type: "reveal", studentId: sid, noteIndex: +i });
     };
   });
+}
+
+/* ---------------- Letter Formation replay ---------------- */
+
+// Plays back a child's tracing stroke by stroke, at the pace they wrote it: a
+// numbered dot marks where each stroke began, the ink grows in the order it was
+// laid down, and pauses between strokes are kept. Their finished drawing sits
+// faintly underneath so the teacher can see where each stroke is heading.
+function openStrokeReplay(r, itx) {
+  document.getElementById("strokeReplay")?.remove();
+  const strokes = r.payload.strokes;
+  const penStrokes = strokes.filter((s) => s.tool !== "rubber").length;
+  const lastT = Math.max(...strokes.map((s) => s.pts[s.pts.length - 1][2]));
+  const who = ANON_MODES.has(itx.mode) ? "" : esc(r.name || "");
+  const el = document.createElement("div");
+  el.id = "strokeReplay";
+  el.style.cssText = "position:fixed;inset:0;z-index:1000;background:rgba(15,28,48,0.82);display:flex;align-items:center;justify-content:center;padding:1rem";
+  el.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:1rem 1.1rem 1.1rem;max-width:min(92vw,900px);width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.35)">
+      <div style="display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap">
+        <b style="font-size:1.1rem">✍️ ${who ? who + " — " : ""}how the letter was formed</b>
+        <span id="srStatus" style="color:var(--muted);font-weight:700"></span>
+        <span style="flex:1"></span>
+        <label style="font-size:0.9rem;color:var(--muted)">Speed
+          <select id="srSpeed" style="margin-left:0.3rem;font-size:0.95rem"><option value="1">real time</option><option value="2" selected>2×</option><option value="4">4×</option></select>
+        </label>
+        <button type="button" class="btn" id="srAgain">▶ Play again</button>
+        <button type="button" class="btn dark" id="srClose">Close</button>
+      </div>
+      <div id="srWrap" style="position:relative;margin-top:0.8rem;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff">
+        <canvas id="srBg" style="display:block;width:100%"></canvas>
+        <canvas id="srInk" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+      </div>
+      <p style="margin:0.6rem 0 0;font-size:0.9rem;color:var(--muted)">${penStrokes} pen stroke${penStrokes === 1 ? "" : "s"} · ${(lastT / 1000).toFixed(1)}s from first touch to last · red dots show where each stroke started</p>
+    </div>`;
+  document.body.appendChild(el);
+  const bg = el.querySelector("#srBg"), ink = el.querySelector("#srInk"), status = el.querySelector("#srStatus");
+  const bgx = bg.getContext("2d"), ctx = ink.getContext("2d");
+  let raf = 0;
+  const stop = () => cancelAnimationFrame(raf);
+  const close = () => { stop(); el.remove(); };
+  el.querySelector("#srClose").onclick = close;
+  el.onclick = (e) => { if (e.target === el) close(); };
+  const esc_ = (e) => { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc_); } };
+  document.addEventListener("keydown", esc_);
+
+  const img = new Image();
+  const play = () => {
+    stop();
+    const W = bg.width, H = bg.height;
+    const speed = +el.querySelector("#srSpeed").value || 2;
+    ctx.clearRect(0, 0, W, H);
+    ctx.lineCap = ctx.lineJoin = "round";
+    const penW = Math.max(3, Math.round(W / 60)); // the same fat crayon the child used
+    const start = performance.now();
+    let si = 0, pi = 0, started = 0;
+    const frame = () => {
+      const now = (performance.now() - start) * speed;
+      let drewAny = false;
+      while (si < strokes.length) {
+        const s = strokes[si], pts = s.pts;
+        if (pts[pi][2] > now) break;
+        ctx.globalCompositeOperation = s.tool === "rubber" ? "destination-out" : "source-over";
+        ctx.strokeStyle = "#1d3f78";
+        ctx.lineWidth = s.tool === "rubber" ? penW * 4 : penW;
+        if (pi === 0) {
+          started++;
+          if (s.tool !== "rubber") {
+            status.textContent = `Stroke ${strokes.slice(0, si + 1).filter((x) => x.tool !== "rubber").length} of ${penStrokes}`;
+            ctx.save(); ctx.globalCompositeOperation = "source-over";
+            ctx.beginPath(); ctx.arc(pts[0][0] * W, pts[0][1] * H, penW * 1.1, 0, Math.PI * 2); ctx.fillStyle = "#e02d2d"; ctx.fill();
+            ctx.fillStyle = "#fff"; ctx.font = `800 ${penW * 1.3}px system-ui, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(String(strokes.slice(0, si + 1).filter((x) => x.tool !== "rubber").length), pts[0][0] * W, pts[0][1] * H + 0.5);
+            ctx.restore();
+          }
+          ctx.beginPath(); ctx.moveTo(pts[0][0] * W, pts[0][1] * H); ctx.lineTo(pts[0][0] * W + 0.1, pts[0][1] * H + 0.1); ctx.stroke();
+          pi = 1;
+        }
+        while (pi < pts.length && pts[pi][2] <= now) {
+          ctx.beginPath(); ctx.moveTo(pts[pi - 1][0] * W, pts[pi - 1][1] * H); ctx.lineTo(pts[pi][0] * W, pts[pi][1] * H); ctx.stroke();
+          pi++; drewAny = true;
+        }
+        if (pi < pts.length) break;
+        si++; pi = 0;
+      }
+      if (si < strokes.length) raf = requestAnimationFrame(frame);
+      else status.textContent = `Done — ${penStrokes} stroke${penStrokes === 1 ? "" : "s"}`;
+    };
+    raf = requestAnimationFrame(frame);
+  };
+  img.onload = () => {
+    // Size the stage to the drawing's shape, as wide as the dialog allows.
+    const w = Math.min(img.naturalWidth, 1400), h = Math.round(w * (img.naturalHeight / img.naturalWidth));
+    bg.width = ink.width = w; bg.height = ink.height = h;
+    bgx.fillStyle = "#fff"; bgx.fillRect(0, 0, w, h);
+    bgx.globalAlpha = 0.28; bgx.drawImage(img, 0, 0, w, h); bgx.globalAlpha = 1;
+    play();
+  };
+  img.src = r.payload.image;
+  el.querySelector("#srAgain").onclick = play;
+  el.querySelector("#srSpeed").onchange = play;
 }
 
 /* ---------------- summary ---------------- */

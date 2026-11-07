@@ -1839,22 +1839,47 @@ function renderInteraction(itx) {
         const r = canvas.getBoundingClientRect();
         return [((e.clientX - r.left) * canvas.width) / r.width, ((e.clientY - r.top) * canvas.height) / r.height];
       };
+      // Letter Formation also records HOW the letter was made — every stroke, in
+      // order, with timing — so the teacher can replay it and see where the child
+      // started, which way they went and where they lifted the pen. Points are
+      // stored as fractions of the pad (0–1) so the replay fits any screen.
+      const rec = tracing ? { strokes: [], cur: null, t0: 0 } : null;
+      const recPoint = (x, y) => {
+        if (!rec || !rec.cur) return;
+        const p = rec.cur.pts, last = p[p.length - 1];
+        const nx = +(x / canvas.width).toFixed(4), ny = +(y / canvas.height).toFixed(4);
+        // skip jitter: only keep a point that moved a little
+        if (last && Math.abs(last[0] - nx) < 0.002 && Math.abs(last[1] - ny) < 0.002) return;
+        if (p.length < 800) p.push([nx, ny, Math.round(performance.now() - rec.t0)]);
+      };
+      const recEnd = () => {
+        if (!rec || !rec.cur) return;
+        if (rec.strokes.length < 120) rec.strokes.push(rec.cur);
+        rec.cur = null;
+      };
       canvas.addEventListener("pointerdown", (e) => {
         drawing = true;
         if (tool === "pen") drew = true;
         try { canvas.setPointerCapture(e.pointerId); } catch { /* fine without capture */ }
         const [x, y] = pos(e);
         ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 0.1, y + 0.1); ctx.stroke();
+        if (rec) {
+          if (!rec.t0) rec.t0 = performance.now();
+          rec.cur = { tool, pts: [] };
+          recPoint(x, y);
+        }
         e.preventDefault();
       });
       canvas.addEventListener("pointermove", (e) => {
         if (!drawing) return;
         const [x, y] = pos(e);
         ctx.lineTo(x, y); ctx.stroke();
+        recPoint(x, y);
         e.preventDefault();
       });
-      canvas.addEventListener("pointerup", () => (drawing = false));
-      $("clearPad").onclick = () => { blank(); drew = false; };
+      canvas.addEventListener("pointerup", () => { drawing = false; recEnd(); });
+      canvas.addEventListener("pointercancel", () => { drawing = false; recEnd(); });
+      $("clearPad").onclick = () => { blank(); drew = false; if (rec) { rec.strokes = []; rec.cur = null; rec.t0 = 0; } };
       $("sendBtn").onclick = () => {
         if (!drew) return;
         // Flatten background + drawing into one picture to send.
@@ -1864,7 +1889,14 @@ function renderInteraction(itx) {
         o.drawImage(bgCanvas, 0, 0);
         o.drawImage(canvas, 0, 0);
         // annotations carry a photo background — jpeg keeps them small
-        submit({ image: anno ? out.toDataURL("image/jpeg", 0.8) : out.toDataURL("image/png") });
+        const payload = { image: anno ? out.toDataURL("image/jpeg", 0.8) : out.toDataURL("image/png") };
+        if (rec) {
+          recEnd();
+          // the stroke record rides along with the picture (a letter is a few KB); skip it if it somehow balloons
+          const strokes = rec.strokes.filter((s) => s.pts.length);
+          if (strokes.length && JSON.stringify(strokes).length < 200000) payload.strokes = strokes;
+        }
+        submit(payload);
       };
     });
     return;

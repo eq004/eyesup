@@ -3868,12 +3868,41 @@ function sanitizePayload(itx, payload) {
       const mark = answer && itx.expected ? (markMatch(answer, itx.expected) ? " ✓" : " ✗") : "";
       return { image, answer, text: answer ? `Answer: ${answer}${mark}` : undefined };
     }
+    if (itx.mode === "trace") {
+      // Letter Formation sends the stroke record too: how the letter was made, for the
+      // teacher's replay. Keep only well-formed strokes, within sane limits.
+      const strokes = sanitizeStrokes(payload.strokes);
+      return strokes ? { image, strokes } : { image };
+    }
     return { image };
   }
 
   const textCap = itx.mode === "long_response" ? 3000 : itx.mode === "retrieval_sprint" ? 1500 : 500;
   const text = String(payload.text || "").trim().slice(0, textCap);
   return text ? { text } : null;
+}
+
+// A Letter Formation stroke record: [{ tool: "pen"|"rubber", pts: [[x, y, tMs], …] }, …]
+// with x and y as fractions of the pad (0–1). Returns a cleaned copy, or null if unusable.
+function sanitizeStrokes(raw) {
+  if (!Array.isArray(raw) || !raw.length || raw.length > 120) return null;
+  const out = [];
+  let total = 0;
+  for (const s of raw) {
+    if (!s || !Array.isArray(s.pts) || !s.pts.length || s.pts.length > 800) return null;
+    const tool = s.tool === "rubber" ? "rubber" : "pen";
+    const pts = [];
+    for (const p of s.pts) {
+      if (!Array.isArray(p) || p.length !== 3) return null;
+      const [x, y, t] = p.map(Number);
+      if (![x, y, t].every(Number.isFinite) || x < -0.05 || x > 1.05 || y < -0.05 || y > 1.05 || t < 0 || t > 3600000) return null;
+      pts.push([+x.toFixed(4), +y.toFixed(4), Math.round(t)]);
+    }
+    total += pts.length;
+    if (total > 20000) return null;
+    out.push({ tool, pts });
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
