@@ -34,7 +34,7 @@ const MODES = {
   short_answer:  { icon: "✏️", name: "Short Answer",  hint: "Written replies, reveal in turn", opts: null },
   long_response: { icon: "📜", name: "Long Response", hint: "Extended writing — paragraphs, not phrases", opts: null,
                    ph: "The question that deserves a full answer" },
-  picture_prompt:{ icon: "🖼️", name: "Picture Prompt", hint: "Put an image up — students write about it", opts: null, imageUpload: true,
+  picture_prompt:{ icon: "🖼️", name: "Picture Prompt", hint: "Drop in a picture — it appears on every student's screen and they write about it", opts: null, imageUpload: true,
                    ph: "The question about the image — or ask it aloud" },
   retrieval_sprint:{ icon: "🧠", name: "Retrieval Sprint", hint: "1–3 timed minutes — write everything you recall", opts: null, sprintUI: true },
   link:          { icon: "🔗", name: "Website Link",  hint: "Send every student to a website with one tap", opts: null, linkUI: true,
