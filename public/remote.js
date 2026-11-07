@@ -391,6 +391,7 @@ function renderLive() {
     ${primary}
     ${backToSlides}
     <button class="rbtn ${itx ? "eyes-sm" : "eyes"}" data-act="eyes_up">👀 EYES UP${itx ? `<small>clears the board — all eyes on you</small>` : ""}</button>
+      ${itx ? `<button class="rbtn" data-act="close_question" title="Close this question — kept in the record; every screen back to normal">✕ Close question</button>` : ""}
     ${controls}
     ${itx && nextStep && primary !== nextBtn ? `<button class="rbtn" data-act="next">▶ Next: step ${nextI + 1} — ${esc(modeName(nextStep.mode, nextStep.counterKind))}${nextStep.prompt ? " · " + esc(cut(nextStep.prompt, 30)) : ""}</button>` : ""}
     ${planNav}

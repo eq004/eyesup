@@ -991,6 +991,7 @@ let lastLiveItx = null;
 function renderLive() {
   const area = $("liveArea");
   const itx = state.interaction;
+  $("liveClose").hidden = !itx; // ✕ Close question lives in the panel head, so it is there even when the answers scroll
   if (itx && itx.id !== lastLiveItx) { lastLiveItx = itx.id; if (foldOn("live")) { setFold("live", false); applyFolds(); } }
   $("liveSub").textContent = "";
 
@@ -2314,6 +2315,7 @@ function applyFolds() {
 $("teachPin").onclick = () => { setFold("unpin:bar", !foldOn("unpin:bar")); applyFolds(); };
 $("livePin").onclick = () => { setFold("unpin:live", !foldOn("unpin:live")); applyFolds(); };
 $("liveFold").onclick = () => { setFold("live", !foldOn("live")); applyFolds(); };
+$("liveClose").onclick = () => send({ type: "close_question" });
 $("roomToolsHead").onclick = () => { setFold("tools", !foldOn("tools")); applyFolds(); };
 applyFolds();
 document.addEventListener("click", (e) => { document.querySelectorAll("details.lesson-settings").forEach((d) => { if (d.open && !d.contains(e.target)) d.open = false; }); });

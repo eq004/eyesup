@@ -3275,6 +3275,19 @@ async function handle(ws, msg) {
       session.phase = "eyesup";
       break;
     }
+    case "close_question": {
+      // ✕ Close question: the question goes into the lesson record and every screen returns to its
+      // resting state (dashboard "Nothing live", classroom screen back to the room). Answers are kept.
+      if (session.interaction) {
+        session.interaction.open = false;
+        session.history.push(session.interaction);
+        session.interaction = null;
+      }
+      session.slide = null;
+      session.focus = null;
+      session.phase = "lobby";
+      break;
+    }
     case "set_sequence": {
       if (session.tier === "free" && (msg.items || []).length) return safeSend(ws, { type: "error", error: "locked_plans" });
       session.sequence = (msg.items || []).slice(0, MAX_STEPS).map(sanitizeStep).filter(Boolean);

@@ -439,6 +439,8 @@
   .head-btn { font: inherit; font-size: 0.9rem; font-weight: 700; padding: 0.22rem 0.6rem; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-soft); cursor: pointer; line-height: 1.2; }
   .head-btn:hover { border-color: var(--navy); color: var(--navy); }
   .head-btn.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .head-btn.close-q { border-color: var(--red); color: var(--red); background: var(--red-soft); font-weight: 800; }
+  .head-btn.close-q:hover { background: var(--red); color: #fff; }
   .lesson-strip.folded .ls-steps, .lesson-strip.folded .ls-help { display: none; }
   #roomTools.folded .tools { display: none; }
   #liveArea { overflow: auto; min-height: 0; overscroll-behavior: contain; }
@@ -1037,6 +1039,7 @@
       <section class="panel" id="livePanel">
         <div class="panel-head">Live now <span class="sub" id="liveSub"></span>
           <span class="spacer"></span>
+          <button class="head-btn close-q" id="liveClose" hidden title="Close this question — it is kept in the lesson record, and every screen goes back to normal">✕ Close question</button>
           <button class="head-btn on" id="livePin" title="Docked: Live now stays in view while the page scrolls. Click to let it scroll away.">📌 docked</button>
           <button class="head-btn" id="liveFold" title="Fold Live now away (it opens again when something launches)">▾</button>
         </div>
