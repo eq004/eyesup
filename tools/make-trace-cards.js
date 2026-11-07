@@ -15,17 +15,22 @@ const SLOPE_DEG = 6; // NSW Foundation Style: a slight forward slope
 // an arc from a0 to a1 travels in the direction of the sign of (a1 - a0): decreasing = anticlockwise on screen.
 const L = (x1, y1, x2, y2) => ({ k: "L", x1, y1, x2, y2 });
 const A = (cx, cy, rx, ry, a0, a1) => ({ k: "A", cx, cy, rx, ry, a0, a1 });
+// The shared bowl of a, d, g and q: oval 44 wide × 48 tall between the middle line and the baseline, open on the
+// right where the stem runs; the arc ends low on the right and a short run carries the pen to the stem's foot.
+const BOWL = [A(28, 76, 22, 24, 330, 30), L(47.05, 88, 50, 100)];
 const DOT = (x, y) => ({ k: "DOT", x, y });
 
 // Round lowercase letters share one bowl: centre (26,75), radius 24 — it touches the middle line and the baseline.
 const LOWER = {
-  a: [[A(26, 75, 24, 24, 330, 0), L(50, 75, 50, 51), L(50, 51, 50, 100)]],
+  // Bowl letters (a d g q): an oval bowl whose right side is the stem itself — start at about 1–2 o'clock,
+  // round anticlockwise to the bottom right, then up the stem and straight back down (no lens-shaped gap).
+  a: [[...BOWL, L(50, 100, 50, 51), L(50, 51, 50, 100)]],
   b: [[L(8, 2, 8, 100), L(8, 100, 8, 51), A(32, 75, 24, 24, 270, 540)]],
   c: [[A(26, 75, 24, 24, 330, 30)]],
-  d: [[A(26, 75, 24, 24, 330, 0), L(50, 75, 50, 2), L(50, 2, 50, 100)]],
+  d: [[...BOWL, L(50, 100, 50, 2), L(50, 2, 50, 100)]],
   e: [[L(3, 75, 49, 75), A(26, 75, 24, 24, 0, -330)]],
   f: [[A(28, 16, 14, 14, 350, 180), L(14, 16, 14, 100)], [L(2, 50, 30, 50)]],
-  g: [[A(26, 75, 24, 24, 330, 0), L(50, 75, 50, 51), L(50, 51, 50, 130), A(32, 130, 18, 18, 0, 150)]],
+  g: [[...BOWL, L(50, 100, 50, 51), L(50, 51, 50, 130), A(32, 130, 18, 18, 0, 150)]],
   h: [[L(8, 2, 8, 100), L(8, 100, 8, 62), A(32, 74, 24, 24, 180, 360), L(56, 74, 56, 100)]],
   i: [[L(26, 51, 26, 100)], [DOT(26, 30)]],
   j: [[L(30, 51, 30, 130), A(14, 130, 16, 16, 0, 150)], [DOT(30, 30)]],
@@ -35,7 +40,7 @@ const LOWER = {
   n: [[L(8, 51, 8, 100), L(8, 100, 8, 66), A(32, 74, 24, 24, 180, 360), L(56, 74, 56, 100)]],
   o: [[A(26, 75, 24, 24, 330, -30)]],
   p: [[L(8, 51, 8, 148), L(8, 148, 8, 51), A(32, 75, 24, 24, 180, 540)]],
-  q: [[A(26, 75, 24, 24, 330, 0), L(50, 75, 50, 51), L(50, 51, 50, 148), L(50, 148, 59, 141)]],
+  q: [[...BOWL, L(50, 100, 50, 51), L(50, 51, 50, 148), L(50, 148, 59, 141)]],
   r: [[L(8, 51, 8, 100), L(8, 100, 8, 64), A(28, 74, 20, 20, 180, 290)]],
   s: [[A(27, 61, 11, 11, 330, 135), L(19.2, 68.8, 33.5, 79.5), A(25, 88, 12, 12, 315, 510)]],
   t: [[L(24, 20, 24, 100)], [L(10, 50, 38, 50)]],

@@ -677,8 +677,12 @@ function renderInteraction(itx) {
     body = renderGenericSpotlight(agg.spotlight);
   }
 
+  // A Letter Formation movie that is still playing must not be torn down by an unrelated broadcast.
+  const playingMovie = document.getElementById("spotMovie");
+  if (playingMovie && playingMovie.dataset.playing === "1" && playingMovie.dataset.sid === agg?.spotlight?.sid && agg?.spotlight?.strokes) return;
   stage.innerHTML = promptBlock(itx) + body + progressLine(itx);
   wireTuneButtons(itx);
+  if (agg?.spotlight?.strokes?.length && document.getElementById("spotMovie")) startSpotMovie(agg.spotlight);
 
   // Interactive whiteboard: tap a response to spotlight it; while one is
   // up, tapping anywhere else takes the board back to normal.
@@ -1112,6 +1116,69 @@ function renderStructured(agg) {
     .join("")}</div>`;
 }
 
+/* Letter Formation movie: the spotlighted letter is drawn back stroke by stroke, at the pace the child
+   wrote it (2×), with a numbered red dot where each stroke began. A tap plays it again. */
+let movieRaf = 0;
+function startSpotMovie(spot) {
+  const box = document.getElementById("spotMovie"), img = document.getElementById("spotMovieImg");
+  const ink = document.getElementById("spotMovieInk"), hint = document.getElementById("spotMovieHint");
+  if (!box || !img || !ink) return;
+  const strokes = spot.strokes;
+  const penStrokes = strokes.filter((s) => s.tool !== "rubber").length;
+  const play = () => {
+    cancelAnimationFrame(movieRaf);
+    const W = ink.width, H = ink.height;
+    const ctx = ink.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+    ctx.lineCap = ctx.lineJoin = "round";
+    const penW = Math.max(3, Math.round(W / 60));
+    const start = performance.now();
+    const speed = 2;
+    let si = 0, pi = 0;
+    box.dataset.playing = "1";
+    hint.textContent = "✍️ watch how it was formed…";
+    const frame = () => {
+      const now = (performance.now() - start) * speed;
+      while (si < strokes.length) {
+        const s = strokes[si], pts = s.pts;
+        if (pts[pi][2] > now) break;
+        ctx.globalCompositeOperation = s.tool === "rubber" ? "destination-out" : "source-over";
+        ctx.strokeStyle = "#1d3f78";
+        ctx.lineWidth = s.tool === "rubber" ? penW * 4 : penW;
+        if (pi === 0) {
+          if (s.tool !== "rubber") {
+            const n = strokes.slice(0, si + 1).filter((x) => x.tool !== "rubber").length;
+            hint.textContent = `✍️ stroke ${n} of ${penStrokes}`;
+            ctx.save(); ctx.globalCompositeOperation = "source-over";
+            ctx.beginPath(); ctx.arc(pts[0][0] * W, pts[0][1] * H, penW * 1.1, 0, Math.PI * 2); ctx.fillStyle = "#e02d2d"; ctx.fill();
+            ctx.fillStyle = "#fff"; ctx.font = `800 ${penW * 1.3}px system-ui, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(String(n), pts[0][0] * W, pts[0][1] * H + 0.5);
+            ctx.restore();
+          }
+          ctx.beginPath(); ctx.moveTo(pts[0][0] * W, pts[0][1] * H); ctx.lineTo(pts[0][0] * W + 0.1, pts[0][1] * H + 0.1); ctx.stroke();
+          pi = 1;
+        }
+        while (pi < pts.length && pts[pi][2] <= now) {
+          ctx.beginPath(); ctx.moveTo(pts[pi - 1][0] * W, pts[pi - 1][1] * H); ctx.lineTo(pts[pi][0] * W, pts[pi][1] * H); ctx.stroke();
+          pi++;
+        }
+        if (pi < pts.length) break;
+        si++; pi = 0;
+      }
+      if (si < strokes.length) movieRaf = requestAnimationFrame(frame);
+      else { box.dataset.playing = "0"; hint.textContent = `${penStrokes} stroke${penStrokes === 1 ? "" : "s"} · tap to watch again`; }
+    };
+    movieRaf = requestAnimationFrame(frame);
+  };
+  const ready = () => {
+    const w = Math.min(img.naturalWidth || 800, 1400), h = Math.round(w * ((img.naturalHeight || 500) / (img.naturalWidth || 800)));
+    ink.width = w; ink.height = h;
+    play();
+  };
+  if (img.complete && img.naturalWidth) ready(); else img.onload = ready;
+  box.onclick = (e) => { e.stopPropagation(); play(); }; // a tap replays rather than shrinking
+}
+
 /* Sketch gallery — with a teacher-driven spotlight for discussing one big. */
 function renderSketches(agg, isImage) {
   if (!agg.sketches.length) {
@@ -1120,9 +1187,17 @@ function renderSketches(agg, isImage) {
   }
   if (agg.spotlight) {
     const rest = agg.sketches.filter((s) => s.sid !== agg.spotlight.sid);
+    const movie = agg.spotlight.strokes?.length;
     return `
       <div class="spot-stage">
-        <img class="spot-img tappable" data-spot="${agg.spotlight.sid}" src="${agg.spotlight.image}" alt="spotlighted drawing — tap to shrink" />
+        ${movie
+          ? `<div class="spot-movie" id="spotMovie" data-sid="${agg.spotlight.sid}" title="Tap to watch it again">
+               <img id="spotMovieImg" src="${agg.spotlight.image}" alt="spotlighted letter" />
+               <canvas id="spotMovieInk"></canvas>
+               <div class="spot-movie-hint" id="spotMovieHint">✍️ watch how it was formed…</div>
+             </div>
+             <div><button class="spot-back" data-spot="${agg.spotlight.sid}">✕ Back to all the letters</button></div>`
+          : `<img class="spot-img tappable" data-spot="${agg.spotlight.sid}" src="${agg.spotlight.image}" alt="spotlighted drawing — tap to shrink" />`}
         ${agg.spotlight.text ? `<div class="sketch-cap big">${esc(agg.spotlight.text)}</div>` : ""}
         ${agg.spotlight.name ? `<div class="sketch-name" style="font-size:clamp(1.1rem,2.2vw,1.7rem)">${esc(agg.spotlight.name)}</div>` : ""}
       </div>

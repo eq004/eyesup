@@ -2053,7 +2053,8 @@ function buildSpotlight(itx, id = itx.spotlightId, peek = false) {
   if (IMAGE_MODES.has(m)) {
     const list = imgsOf(r);
     const k = Math.min(Math.max(0, parseInt(noteIdx, 10) || 0), Math.max(0, list.length - 1));
-    return { kind: "image", image: list[k], text: r.payload.text, name, sid: key };
+    // Letter Formation carries the stroke record too, so the board can play the tracing back as a little movie.
+    return { kind: "image", image: list[k], text: r.payload.text, name, sid: key, strokes: m === "trace" && Array.isArray(r.payload.strokes) ? r.payload.strokes : undefined };
   }
   if (m === "post_its") {
     const i = parseInt(noteIdx, 10);
