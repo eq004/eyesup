@@ -106,6 +106,10 @@ const MODES = {
 };
 
 const TOOL_STEP_LABEL = "🧰 Room tools";
+// The Free plan's activities (room tools are always included). Everything else shows a 🔒 on the Free plan.
+const FREE_MODES = new Set(["short_answer", "word_cloud", "mindmap", "post_its", "agree_disagree"]);
+const onFreePlan = () => (state?.tier || me?.tier) === "free";
+const isLocked = (key) => onFreePlan() && !MODES[key]?.toolUI && !FREE_MODES.has(MODES[key]?.launchAs || key);
 Object.assign(MODES, {
   tool_timer:  { icon: "⏱", name: "Timer", hint: "A countdown on the classroom screen — 30 seconds to 15 minutes", opts: null, toolUI: "timer" },
   tool_pick:   { icon: "🎲", name: "Random student", hint: "Picks someone at random — no repeats until everyone has had a turn", opts: null, toolUI: "pick" },
@@ -238,6 +242,10 @@ function connect() {
       showSubscribe(msg.reason);
       return;
     }
+    if (msg.type === "error" && (msg.error === "locked_activity" || msg.error === "locked_plans" || msg.error === "locked_downloads")) {
+      showSubscribe(msg.error);
+      return;
+    }
     if (msg.type === "error" && msg.error === "bad_link") {
       toast("That website address doesn't look right — edit the step and paste the full address");
       return;
@@ -346,12 +354,14 @@ function buildModeGrid() {
   const addTile = (key, cat) => {
     const m = MODES[key];
     const isFav = favs.includes(key);
+    const locked = isLocked(key);
     const b = document.createElement("button");
-    b.className = "mode-tile";
+    b.className = `mode-tile ${locked ? "locked" : ""}`;
     b.innerHTML = `<span class="fav-star ${isFav ? "on" : ""}" title="${isFav ? "Remove from favourites" : "Favourite — pins it up top here and on your phone remote"}">${isFav ? "★" : "☆"}</span>
+      ${locked ? `<span class="lock" title="Part of the Individual plan">🔒</span>` : ""}
       <span class="icon">${m.icon}</span><span class="name">${m.name}</span><span class="hint">${m.hint}</span>`;
     // Switching between image modes keeps the image you already loaded.
-    b.onclick = () => openComposer(key, !!(MODES[key].imageUpload && composerImage));
+    b.onclick = () => (locked ? showSubscribe("locked_activity") : openComposer(key, !!(MODES[key].imageUpload && composerImage)));
     b.querySelector(".fav-star").onclick = (e) => {
       e.stopPropagation();
       const next = isFav ? favs.filter((f) => f !== key) : [...favs, key];
@@ -856,6 +866,7 @@ function render() {
   $("lessonsBtn").style.display = state.storage ? "" : "none";
   $("dataBtn").style.display = state.storage ? "" : "none";
   const za = $("zipAll");
+  if (onFreePlan()) { za.style.display = "none"; return; }
   za.style.display = state.pictureCount ? "" : "none";
   za.textContent = `🖼 Pictures ZIP (${state.pictureCount || 0})`;
   za.href = `/api/images/${state.code}?${authQuery()}`;
@@ -884,7 +895,7 @@ function render() {
   if ($("classSel") && $("classSel").value !== String(state.classId || "")) renderClassSel();
   if ($("classEdit")) $("classEdit").style.display = state.classId ? "" : "none";
   applyRememberedClass();
-  const favsKey = JSON.stringify(state.favs || []);
+  const favsKey = JSON.stringify([state.tier || "full", state.favs || []]); // the grid also redraws if the plan tier changes (locks)
   if (favsKey !== render._favsKey) {
     render._favsKey = favsKey;
     buildModeGrid();
@@ -1201,7 +1212,7 @@ function renderLive() {
       : "";
     const hint = itx.responses.length
       ? `<p style="margin-top:0.8rem;font-size:0.9rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the classroom screen; click again to shrink it back.
-         <a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a></p>`
+         ${onFreePlan() ? "" : `<a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a>`}</p>`
       : "";
     body = source + hint + revealCards((r) => {
       const pics = picsOf(r);
@@ -1595,7 +1606,7 @@ async function loadLessonsList(attempt) {
                 <b>${esc(name)}</b> <span style="color:var(--muted);font-size:0.9rem">· ${esc(l.code)}</span><br/>
                 <span style="color:var(--ink-soft);font-size:0.9rem">${esc(when)} — ${l.participated ?? 0}/${l.joined ?? 0} students · ${l.interactions ?? 0} interactions${pics ? ` · ${pics} picture${pics === 1 ? "" : "s"}` : ""}</span>
               </a>
-              ${pics ? `<a class="btn" href="/api/lessons/${l.id}/images?${authQuery()}" style="text-decoration:none;white-space:nowrap" title="Every picture from this lesson as one ZIP — a folder per activity, a file per student">🖼 ZIP</a>` : ""}
+              ${pics && !onFreePlan() ? `<a class="btn" href="/api/lessons/${l.id}/images?${authQuery()}" style="text-decoration:none;white-space:nowrap" title="Every picture from this lesson as one ZIP — a folder per activity, a file per student">🖼 ZIP</a>` : ""}
             </div>`;
           })
           .join("")
@@ -1734,6 +1745,7 @@ $("launchBtn").onclick = () => {
   closeComposer();
 };
 $("addStepBtn").onclick = () => {
+  if (onFreePlan()) return showSubscribe("locked_plans");
   const data = readComposer();
   if (!data) return;
   send({ type: "set_sequence", items: [...(state?.sequence || []), data] });
@@ -2102,7 +2114,8 @@ function renderPlanBanner() {
 function planLine() {
   const a = me.access;
   if (me.admin) return "<b>Owner</b> — full access.";
-  if (!me.billing || a.plan === "free") return "<b>Full access</b> — nothing to pay.";
+  if (me.tier === "free") return `<b>Free plan</b> — Short Answer, Word Cloud, Mind Map, Post-its, Agree / Disagree and the room tools.${a.lapsed === "trial_ended" ? ` Your free trial ended on ${fmtDay(a.until)}.` : a.lapsed ? ` Your ${a.lapsed === "licence_ended" ? "school's licence" : "subscription"} ended on ${fmtDay(a.until)}.` : ""}`;
+  if (!me.billing || a.plan === "free" || a.plan === "complimentary") return "<b>Full access</b> — nothing to pay.";
   if (a.plan === "trial") return a.ok ? `<b>Free trial</b> — ${a.daysLeft} day${a.daysLeft === 1 ? "" : "s"} left (ends ${fmtDay(a.until)}).` : `<b>Your free trial ended</b> on ${fmtDay(a.until)}.`;
   if (a.plan === "school") return a.ok ? `<b>School licence</b> — covered until ${fmtDay(a.until)}.` : `<b>Your school's licence ended</b> on ${fmtDay(a.until)}.`;
   return a.ok ? `<b>Subscriber</b> — ${me.hasSubscription ? "renews" : "paid until"} ${fmtDay(a.until)}.` : `<b>Your subscription ended</b> on ${fmtDay(a.until)}.`;
@@ -2123,12 +2136,15 @@ const money = (p) => new Intl.NumberFormat(undefined, { style: "currency", curre
 
 async function showSubscribe(reason) {
   const head = {
-    trial_ended: ["Your free trial has ended", "Subscribe to keep running classes."],
-    subscription_ended: ["Your subscription has ended", "Subscribe again to keep running classes."],
-    licence_ended: ["Your school's licence has ended", "Ask your school to renew, or subscribe yourself."],
+    trial_ended: ["Your free trial has ended", "You are on the Free plan: Short Answer, Word Cloud, Mind Map, Post-its, Agree / Disagree and the room tools. Subscribe to get everything back."],
+    subscription_ended: ["Your subscription has ended", "You are on the Free plan now. Subscribe again for every activity, lesson plans and downloads."],
+    licence_ended: ["Your school's licence has ended", "Ask your school to renew, or subscribe yourself. Until then you are on the Free plan."],
     trial_ending: ["Keep Eyes Up after your trial", "Subscribe now and nothing changes when the trial ends."],
+    locked_activity: ["This activity is in the Individual plan", "The Free plan includes Short Answer, Word Cloud, Mind Map, Post-its, Agree / Disagree and the room tools. Individual unlocks all 60+ activities, lesson plans and downloads."],
+    locked_plans: ["Lesson plans are in the Individual plan", "Plan your questions and slides ahead of time and teach them with ▶ Next. Individual unlocks lesson plans, every activity and downloads."],
+    locked_downloads: ["Downloads are in the Individual plan", "Reports, picture ZIPs and CSVs of every question come with Individual. Your lessons are still kept and viewable here."],
   }[reason] || ["Subscribe to Eyes Up", ""];
-  const locked = reason !== "trial_ending";
+  const locked = false; // nothing locks a teacher out any more: the Free plan is always there
   $("subSheet").innerHTML = `
     <div style="font-size:2.2rem">👀</div>
     <h2 style="font-family:var(--font-display);margin-top:0.3rem">${head[0]}</h2>
@@ -2157,7 +2173,7 @@ async function showSubscribe(reason) {
 function showAccount() {
   if (!me) return;
   const a = me.access;
-  const canSubscribe = me.billing && !me.admin && (a.plan === "trial" || !a.ok);
+  const canSubscribe = me.billing && !me.admin && (a.plan === "trial" || me.tier === "free");
   $("accountSheet").innerHTML = `
     <h2 style="font-family:var(--font-display)">👤 My account</h2>
     <p style="color:var(--ink-soft);margin-top:0.3rem"><b>${esc(me.name)}</b> · sign-in name <b>${esc(me.username)}</b></p>
@@ -2379,6 +2395,13 @@ function renderLibrary() {
     lib.innerHTML = `<div class="empty-plans"><h2>Lesson plans need an account</h2>
       <p style="color:var(--ink-soft);margin-top:0.5rem">This copy of Eyes Up isn't connected to a database, so plans can't be saved. You can still teach on the spot.</p>
       <p style="margin-top:1.2rem"><button class="btn primary big" data-go="teach">🎤 Start teaching</button></p></div>`;
+    return bindLibrary();
+  }
+  if (onFreePlan()) {
+    lib.innerHTML = `<div class="empty-plans"><div style="font-size:2.6rem">🔒</div><h2>Lesson plans are in the Individual plan</h2>
+      <p style="color:var(--ink-soft);margin-top:0.5rem;max-width:52ch;margin-left:auto;margin-right:auto">Plan your questions, slides and room tools ahead of time and teach them with ▶ Next. Individual is $6.99 a month or $59.99 a year and also unlocks every activity and downloads.</p>
+      <p style="margin-top:1.2rem;display:flex;gap:0.6rem;justify-content:center;flex-wrap:wrap"><button class="btn primary big" id="plansUpgrade">Get Individual</button><button class="btn big" data-go="teach">🎤 Teach on the spot</button></p></div>`;
+    $("plansUpgrade").onclick = () => showSubscribe("locked_plans");
     return bindLibrary();
   }
   const liveId = state?.planId;

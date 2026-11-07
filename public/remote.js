@@ -255,7 +255,7 @@ function bindActions() {
     const [sid, i] = b.dataset.note.split("|");
     send({ type: "reveal", studentId: sid, noteIndex: +i });
   }));
-  main.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openComposer(b.dataset.open)));
+  main.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => (b.dataset.locked ? toast("This activity is in the Individual plan — subscribe from My account on the computer") : openComposer(b.dataset.open))));
   main.querySelectorAll("[data-jump]").forEach((b) => (b.onclick = () => send({ type: "jump_to_step", index: +b.dataset.jump })));
   main.querySelectorAll("[data-point]").forEach((b) => (b.onclick = () => send({ type: "seq_point", index: +b.dataset.point })));
 }
@@ -505,7 +505,9 @@ function renderLaunch() {
   const recent = (state?.recentModes || []).filter((m) => MODES[m] && !favs.includes(m)).slice(0, 3);
   const q = launchQuery.trim().toLowerCase();
   const matches = (m) => !q || `${MODES[m].name} ${m.replace(/_/g, " ")} ${SEARCH_WORDS[m] || ""}`.toLowerCase().includes(q);
-  const tile = (m) => `<button class="rbtn ${q && matches(m) ? "hit" : ""}" data-open="${m}"><span class="ic">${MODES[m].icon}</span>${esc(MODES[m].name)}</button>`;
+  const FREE_MODES = new Set(["short_answer", "word_cloud", "mindmap", "post_its", "agree_disagree"]);
+  const locked = (m) => state?.tier === "free" && !/^tool_/.test(m) && !FREE_MODES.has(MODES[m].launchAs || m);
+  const tile = (m) => `<button class="rbtn ${q && matches(m) ? "hit" : ""}" data-open="${m}" ${locked(m) ? 'data-locked="1" style="opacity:0.6"' : ""}><span class="ic">${locked(m) ? "🔒" : MODES[m].icon}</span>${esc(MODES[m].name)}</button>`;
   const group = (label, modes) => {
     const shown = modes.filter(matches);
     return shown.length ? `<div class="cat-label">${label}</div>` + shown.map(tile).join("") : "";

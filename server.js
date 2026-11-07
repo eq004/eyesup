@@ -230,18 +230,32 @@ function accessOf(t) {
   if (t.status === "disabled") return { ok: false, reason: "disabled" };
   const plan = t.plan || "free";
   if (t.is_admin) return { ok: true, plan: "owner" };
-  if (!BILLING_ON || plan === "free") return { ok: true, plan };
+  if (!BILLING_ON || plan === "free" || plan === "complimentary") return { ok: true, plan };
   const now = Date.now();
   if (plan === "trial") {
     const end = t.trial_ends_at ? +new Date(t.trial_ends_at) : 0;
     return end > now
       ? { ok: true, plan, until: t.trial_ends_at, daysLeft: Math.ceil((end - now) / 86400000) }
-      : { ok: false, reason: "trial_ended", plan, until: t.trial_ends_at };
+      : { ok: true, plan: "free", lapsed: "trial_ended", until: t.trial_ends_at }; // the trial is over: on to the Free plan
   }
   const end = t.paid_until ? +new Date(t.paid_until) + GRACE_DAYS * 86400000 : 0;
   return end > now
     ? { ok: true, plan, until: t.paid_until }
-    : { ok: false, reason: plan === "school" ? "licence_ended" : "subscription_ended", plan, until: t.paid_until };
+    : { ok: true, plan: "free", lapsed: plan === "school" ? "licence_ended" : "subscription_ended", until: t.paid_until };
+}
+
+/* ---- the Free plan ----
+   Once billing is on (or FREE_TIER=1 forces it, for testing), an account on plan "free" teaches with five
+   activities and the room tools, and cannot save lesson plans or download work. Everything else — trial,
+   subscriber, school licence, complimentary, owner — is the full product. With billing off, everyone is full. */
+const FREE_MODES = new Set(["short_answer", "word_cloud", "mindmap", "post_its", "agree_disagree"]);
+const FREE_TIER_ON = BILLING_ON || process.env.FREE_TIER === "1";
+function tierOf(t) {
+  if (!FREE_TIER_ON) return "full";
+  if (!t) return process.env.FREE_TIER === "1" ? "free" : "full"; // password-only local server: FREE_TIER=1 makes it the Free plan
+  if (t.is_admin) return "full";
+  const a = accessOf(t);
+  return a.ok && a.plan !== "free" ? "full" : "free";
 }
 
 function signToken(id, passHash) {
@@ -666,6 +680,7 @@ const mePayload = (t) => ({
   id: t.id, name: t.display_name, username: t.username, email: t.email || "", admin: !!t.is_admin,
   billing: BILLING_ON, trialDays: TRIAL_DAYS, hasSubscription: !!t.stripe_sub, canManageBilling: !!t.stripe_customer,
   access: accessOf(t),
+  tier: tierOf(t),
 });
 
 app.get("/api/me", async (req, res) => {
@@ -773,7 +788,7 @@ app.post("/api/admin/teacher/:id", async (req, res) => {
     }
     if (action === "set_plan") {
       const plan = String(req.body?.plan || "");
-      if (!["free", "trial", "paid", "school"].includes(plan)) return res.status(400).json({ error: "bad_plan" });
+      if (!["free", "complimentary", "trial", "paid", "school"].includes(plan)) return res.status(400).json({ error: "bad_plan" });
       const until = req.body?.until ? new Date(req.body.until) : null;
       if (plan !== "free" && (!until || isNaN(until))) return res.status(400).json({ error: "bad_date" });
       await db.query(
@@ -1062,6 +1077,7 @@ app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
   if (!db) return res.status(404).end();
   const t = await authHttp(res, req.query.t);
   if (!t) return;
+  if (tierOf(t) === "free") return res.status(402).json({ error: "locked_downloads" });
   try {
     const { rows } = await db.query(
       `SELECT * FROM lessons WHERE id = $1 AND (teacher_id = $2 OR teacher_id IS NULL)`,
@@ -1399,6 +1415,7 @@ app.post("/api/plans", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
   const t = await authHttp(res, req.body?.t);
   if (!t) return;
+  if (tierOf(t) === "free") return res.status(402).json({ error: "locked_plans" });
   const { title, steps } = cleanPlanBody(req.body);
   try {
     const { rows } = await db.query(
@@ -1415,6 +1432,7 @@ app.put("/api/plans/:id", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
   const t = await authHttp(res, req.body?.t);
   if (!t) return;
+  if (tierOf(t) === "free") return res.status(402).json({ error: "locked_plans" });
   const { title, steps } = cleanPlanBody(req.body);
   try {
     const { rows } = await db.query(
@@ -1439,6 +1457,7 @@ app.post("/api/plans/:id/duplicate", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
   const t = await authHttp(res, req.body?.t);
   if (!t) return;
+  if (tierOf(t) === "free") return res.status(402).json({ error: "locked_plans" });
   try {
     const { rows } = await db.query(
       `INSERT INTO lesson_plans (teacher_id, title, steps)
@@ -1597,6 +1616,7 @@ async function ownedSession(req, res) {
 app.get("/api/question/:code/:itx", async (req, res) => {
   const session = await ownedSession(req, res);
   if (!session) return;
+  if (session.tier === "free") return res.status(402).json({ error: "locked_downloads" });
   const wantId = String(req.params.itx).replace(/\.csv$/i, "");
   const all = [...session.history, ...(session.interaction ? [session.interaction] : [])];
   const itx = all.find((i) => String(i.id) === wantId);
@@ -1691,6 +1711,7 @@ function imageFilesFor(session, itx, folder) {
 app.get("/api/images/:code/:itx?", async (req, res) => {
   const session = await ownedSession(req, res);
   if (!session) return;
+  if (session.tier === "free") return res.status(402).json({ error: "locked_downloads" });
   const all = [...session.history, ...(session.interaction ? [session.interaction] : [])];
   const wanted = req.params.itx ? all.filter((i) => String(i.id) === String(req.params.itx)) : all.filter((i) => IMAGE_MODES.has(i.mode));
   const lessonName = safeName(session.title || `Lesson ${session.code}`);
@@ -2393,6 +2414,7 @@ function teacherState(session) {
     lanHost: `${lanAddress()}:${PORT}`, // so the dashboard can QR the phone remote locally
     storage: !!db, // lessons persist to Postgres
     teacherName: session.teacherName || null,
+    tier: session.tier || "full", // "free" = the Free plan: five activities + room tools, no plans, no downloads
     favs: session.favs || [],
     phase: session.phase,
     slide: session.phase === "slide" ? session.slide : null,
@@ -2467,7 +2489,7 @@ function projectorState(session) {
   return {
     type: "state",
     role: "projector",
-    dl: dlToken(session.code), // lets the classroom screen download this room's answers
+    dl: session.tier === "free" ? null : dlToken(session.code), // lets the classroom screen download this room's answers (not on the Free plan)
     code: session.code,
     title: session.title,
     className: session.className,
@@ -2955,6 +2977,8 @@ async function handle(ws, msg) {
       session.teacherName = auth.teacher.display_name;
       try { session.favs = JSON.parse(auth.teacher.favs || "[]"); } catch { session.favs = []; }
     }
+    session.tier = tierOf(auth.teacher);
+    if (session.tier === "free" && !session.favs?.length) session.favs = [...FREE_MODES]; // the five Free activities start as favourites
     ws.meta = { role: "teacher", code: session.code };
     broadcast(session);
     return;
@@ -2972,6 +2996,8 @@ async function handle(ws, msg) {
     if (auth.teacher && !session.favs?.length) {
       try { session.favs = JSON.parse(auth.teacher.favs || "[]"); } catch { /* keep */ }
     }
+    session.tier = tierOf(auth.teacher);
+    if (session.tier === "free" && !session.favs?.length) session.favs = [...FREE_MODES];
     session.teachers.add(ws);
     ws.meta = { role: "teacher", code: session.code };
     broadcast(session);
@@ -3129,6 +3155,7 @@ async function handle(ws, msg) {
         return;
       }
       if (TOOL_MODES.has(msg.mode)) { const st = sanitizeStep(msg); if (st) runTool(session, st); break; }
+      if (session.tier === "free" && !FREE_MODES.has(msg.mode)) return safeSend(ws, { type: "error", error: "locked_activity" });
       startInteraction(session, msg);
       break;
     }
@@ -3249,6 +3276,7 @@ async function handle(ws, msg) {
       break;
     }
     case "set_sequence": {
+      if (session.tier === "free" && (msg.items || []).length) return safeSend(ws, { type: "error", error: "locked_plans" });
       session.sequence = (msg.items || []).slice(0, MAX_STEPS).map(sanitizeStep).filter(Boolean);
       // Loading a saved lesson starts it from the top.
       if (msg.reset) {

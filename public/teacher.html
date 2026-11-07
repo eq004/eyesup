@@ -495,6 +495,10 @@
   }
   .mode-tile:hover { transform: translateY(-2px); border-color: var(--accent); background: var(--accent-soft); }
   .mode-tile { position: relative; }
+  .mode-tile.locked { opacity: 0.72; background: var(--surface); }
+  .mode-tile.locked:hover { border-color: var(--amber); background: #fff8ec; }
+  .mode-tile .lock { position: absolute; top: 0.4rem; left: 0.55rem; font-size: 0.95rem; line-height: 1; }
+  .mode-tile.locked .icon { margin-top: 1.1rem; }
   .fav-star {
     position: absolute;
     top: 0.35rem;

@@ -192,7 +192,8 @@ function openManage(id) {
     <hr />
     <div class="row"><label for="mPlan">Plan</label>
       <select id="mPlan" ${t.admin ? "disabled" : ""}>
-        <option value="free" ${t.plan === "free" ? "selected" : ""}>Free access — no end date</option>
+        <option value="free" ${t.plan === "free" ? "selected" : ""}>Free plan — five activities and room tools</option>
+        <option value="complimentary" ${t.plan === "complimentary" ? "selected" : ""}>Complimentary — full access, no end date</option>
         <option value="trial" ${t.plan === "trial" ? "selected" : ""}>Trial — free until a date</option>
         <option value="school" ${t.plan === "school" ? "selected" : ""}>School licence — paid by invoice, until a date</option>
         <option value="paid" ${t.plan === "paid" ? "selected" : ""}>Subscriber — paid until a date</option>
