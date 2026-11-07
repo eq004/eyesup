@@ -545,6 +545,18 @@ function openComposer(key, keepImage) {
     opts.appendChild(wrap);
   }
   if (m.picDrop) buildPicDrop(opts);
+  if (key === "multi_choice") {
+    // A whole quiz at once: paste numbered questions with A) B) C) options and "Answer: B" lines.
+    const box = document.createElement("div");
+    box.className = "paste-quiz-box";
+    box.innerHTML = `<span>📋 <b>Got a whole quiz typed up?</b> Paste it and every question becomes its own Multiple Choice step — numbered questions, A) B) C) options and “Answer: B” lines are understood.</span>
+      <button type="button" class="btn" id="composerPasteQuiz">📋 Paste a quiz</button>`;
+    opts.appendChild(box);
+    box.querySelector("#composerPasteQuiz").onclick = () => {
+      if (composerTarget.kind === "launch") closeComposer(); else closeActivityPicker();
+      $("pasteQuizBtn").click();
+    };
+  }
   if (m.opts && !m.picDrop) {
     for (let i = 0; i < m.opts.max; i++) {
       const inp = document.createElement("input");
