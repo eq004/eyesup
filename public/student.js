@@ -372,6 +372,7 @@ function render(force) {
 
 function show(html, after) {
   screenEl.classList.remove("wide"); // drawing modes opt back in
+  document.querySelector("main").style.justifyContent = ""; // back to a centred column
   screenEl.innerHTML = html;
   if (after) after();
 }
@@ -1700,17 +1701,21 @@ function renderInteraction(itx) {
       // the buttons, keeping 4:3. Resolution follows the display size so an
       // iPad drawing is crisp and prints well.
       screenEl.classList.add("wide");
+      // Pin the content to the top while the pad is measured: a centred column would push the pad
+      // down and make it think there is less room than there is.
+      document.querySelector("main").style.justifyContent = "flex-start";
       let padAspect = null; // height / width, fixed once the pad exists
       const fitPad = (first) => {
-        const controls = 120; // buttons + hint below the pad
+        const controls = 116; // Send button + hint below the pad
         const top = wrap.getBoundingClientRect().top;
         const availH = Math.max(260, window.innerHeight - top - controls);
         const availW = screenEl.clientWidth;
         let w, hgt;
         if (first) {
-          // Take the whole space, within sane shapes (not a thin strip).
+          // Take the whole width, and only as much height as fits above the Send button — the pad,
+          // the tools and Send must all be on one screen (little fingers do not scroll).
           w = availW;
-          hgt = Math.min(Math.max(availH, w * 0.55), w * 1.3);
+          hgt = Math.min(availH, w * 1.3);
           padAspect = hgt / w;
           const dpr = Math.min(2, window.devicePixelRatio || 1);
           canvas.width = Math.min(2000, Math.round(w * dpr));
@@ -1756,8 +1761,10 @@ function renderInteraction(itx) {
         if (!slots.length) return;
         // Up to four cards in a row; more than that wraps to two rows so every card stays big.
         const n = slots.length, gap = W * 0.02;
-        const rows = n > 4 ? 2 : 1, cols = Math.ceil(n / rows);
-        const size = Math.min((W - gap * (cols + 1)) / cols, (H - gap * (rows + 1)) / rows);
+        // One row or two: whichever gives the bigger cards on this pad (a wide, short iPad pad prefers one row).
+        const sizeFor = (r) => { const c = Math.ceil(n / r); return Math.min((W - gap * (c + 1)) / c, (H - gap * (r + 1)) / r); };
+        const rows = n > 1 && sizeFor(2) > sizeFor(1) ? 2 : 1, cols = Math.ceil(n / rows);
+        const size = sizeFor(rows);
         const x0 = (W - (size * cols + gap * (cols - 1))) / 2, y0 = (H - (size * rows + gap * (rows - 1))) / 2;
         bgx.lineCap = "round";
         bgx.lineJoin = "round";

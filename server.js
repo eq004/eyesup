@@ -3580,6 +3580,7 @@ function runTool(session, step) {
 // A lesson step: a slide goes up on the board, a room tool runs, anything else is launched as an activity.
 function runStep(session, step) {
   if (TOOL_MODES.has(step.mode)) return runTool(session, step);
+  session.showJoin = false; // slides and questions replace the join screen
   if (step.mode === "deck") {
     if (session.interaction) {
       session.interaction.open = false;
@@ -3605,6 +3606,7 @@ function runStep(session, step) {
 
 function startInteraction(session, spec) {
   session.slide = null; // a live deck stays loaded underneath (session.deck) so it resumes where it was
+  session.showJoin = false; // the big join screen steps aside: a launched question must be seen
   if (session.interaction) session.history.push(session.interaction);
   const itx = newInteraction(session, spec);
   session.interaction = itx;
