@@ -1,0 +1,49 @@
+/* Info pages (help, features, pricing, faq, privacy, terms, contact) and the site footer. */
+.site-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.6rem 1.4rem; padding: 1.4rem 1.25rem 1.6rem; font-size: 0.95rem; color: var(--navy-text); }
+.site-foot a { color: inherit; text-decoration: none; font-weight: 700; }
+.site-foot a:hover, .site-foot a[aria-current] { color: #fff; text-decoration: underline; }
+.site-foot-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem 1.2rem; }
+.site-foot-brand a { font-weight: 800; }
+.site-foot.slim { padding: 1rem 1.25rem 1.2rem; font-size: 0.9rem; color: var(--muted); border-top: 1px solid var(--line); background: var(--paper); }
+.site-foot.slim a:hover, .site-foot.slim a[aria-current] { color: var(--navy); }
+body.info { background: var(--paper); color: var(--ink); display: block; padding: 0; }
+.info-head { background: var(--navy); color: #fff; padding: 0.9rem 1.4rem; }
+.info-head .row { max-width: 980px; margin: 0 auto; display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
+.info-head .wordmark { font-size: 1.5rem; text-decoration: none; }
+.info-nav { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; margin-left: auto; }
+.info-nav a { color: var(--navy-text); text-decoration: none; font-weight: 700; font-size: 0.95rem; padding: 0.3rem 0; }
+.info-nav a:hover, .info-nav a[aria-current] { color: #fff; }
+.info-main { max-width: 980px; margin: 0 auto; padding: 2rem 1.4rem 3rem; }
+.info-main h1 { font-family: var(--font-display); font-size: clamp(1.9rem, 4vw, 2.6rem); font-weight: 800; color: var(--navy); margin: 0 0 0.4rem; letter-spacing: -0.02em; }
+.info-main .lede { font-size: 1.1rem; color: var(--ink-soft); margin: 0 0 1.6rem; max-width: 70ch; }
+.info-main h2 { font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; color: var(--navy); margin: 2rem 0 0.6rem; }
+.info-main p, .info-main li { font-size: 1.02rem; line-height: 1.6; max-width: 72ch; }
+.info-main ul, .info-main ol { padding-left: 1.3rem; }
+.info-main li { margin: 0.3rem 0; }
+.info-main a { color: var(--accent); font-weight: 700; }
+.info-main .note { background: var(--accent-soft); border-radius: 12px; padding: 0.8rem 1rem; color: var(--accent-ink); font-weight: 600; max-width: 72ch; }
+.info-main .updated { color: var(--muted); font-size: 0.9rem; margin-top: 2.4rem; }
+.info-main .btn-row { display: flex; flex-wrap: wrap; gap: 0.7rem; margin: 1rem 0 0; }
+.info-main .btn-link { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; padding: 0.6rem 1.2rem; border-radius: 12px; background: var(--accent); color: #fff; font-weight: 800; text-decoration: none; }
+.info-main .btn-link.ghost { background: var(--surface); color: var(--navy); border: 1px solid var(--line); }
+.steps, .feat { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin-top: 1rem; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+.step .n { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--navy); color: #fff; font-weight: 800; margin-bottom: 0.5rem; }
+.step .ico { font-size: 1.6rem; }
+.step > b { display: block; font-family: var(--font-display); font-size: 1.1rem; color: var(--navy); margin-bottom: 0.3rem; }
+.step p { margin: 0; font-size: 0.98rem; }
+.plans { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin-top: 1.2rem; align-items: stretch; }
+.plan { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 1.3rem 1.3rem 1.4rem; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.plan.hot { border-color: var(--accent); box-shadow: var(--shadow-lift); }
+.plan .tier { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; color: var(--navy); }
+.plan .price { font-family: var(--font-display); font-size: 2.2rem; font-weight: 800; color: var(--navy); margin: 0.4rem 0 0; letter-spacing: -0.02em; }
+.plan .price small { font-size: 1rem; color: var(--muted); font-weight: 700; letter-spacing: 0; }
+.plan .alt { color: var(--ink-soft); font-weight: 700; margin: 0.1rem 0 0.8rem; }
+.plan ul { padding-left: 1.1rem; margin: 0 0 1rem; }
+.plan li { font-size: 0.98rem; margin: 0.25rem 0; }
+.plan .btn-link { margin-top: auto; justify-content: center; }
+.plan .tag { align-self: flex-start; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--green); background: var(--green-soft); border-radius: 999px; padding: 0.2rem 0.6rem; margin-bottom: 0.5rem; }
+.faq details { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 0.2rem 1rem; margin: 0.6rem 0; }
+.faq summary { cursor: pointer; font-weight: 800; color: var(--navy); font-size: 1.05rem; padding: 0.7rem 0; min-height: 44px; display: flex; align-items: center; }
+.faq details p { margin: 0 0 0.9rem; }
+@media (max-width: 640px) { .info-nav { display: none; } }

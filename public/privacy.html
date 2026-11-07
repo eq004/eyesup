@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0e2445" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<title>Privacy — Eyes Up</title>
+<link rel="stylesheet" href="/shared.css" />
+<link rel="stylesheet" href="/pages.css" />
+</head>
+<body class="info">
+  <header class="info-head"><div class="row"><a class="wordmark inverted" href="/" aria-label="Eyes Up home"><svg class="logo-eyes" viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="var(--eyeball)"/><circle cx="97.5" cy="19" r="3.6" fill="var(--eyeball)"/></svg> <span class="logo-text">eyes up</span></a><nav class="info-nav" aria-label="Pages"><a href="/help">Help & setup</a><a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/faq">FAQ</a><a href="/privacy" aria-current="page">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></nav></div></header>
+  <main class="info-main">
+
+    <h1>Privacy</h1>
+    <p class="lede">Eyes Up is made for classrooms, so it collects as little as it can and keeps it only for the teacher who ran the lesson. This page says exactly what that means.</p>
+    <h2>Who we are</h2>
+    <p>Eyes Up is made and run by PeakYou in Australia. Questions about privacy go to the <a href="/contact">contact page</a>.</p>
+    <h2>Students</h2>
+    <ul>
+      <li><b>No accounts.</b> A student joins with a four-letter class code and a first name. We never ask for a surname, email, date of birth or photo of the student.</li>
+      <li><b>What is kept:</b> the name they typed and the answers they send during the lesson, including any drawing, writing or photo they choose to send. Letter Formation also keeps the order of pen strokes, used only for the teacher's replay.</li>
+      <li><b>Who sees it:</b> the teacher who ran the lesson, on their dashboard and in their saved lesson record. The classroom screen shows answers only when the teacher chooses, and names only when the teacher turns them on.</li>
+      <li><b>On the student's device</b> a small note remembers their seat for four hours so they can rejoin if the browser closes. Nothing else is stored there and nothing tracks them afterwards.</li>
+    </ul>
+    <h2>Teachers</h2>
+    <ul>
+      <li>An account holds a username, a display name, an email address if you give one, and a scrambled (hashed) password. We cannot read your password.</li>
+      <li>Your saved lessons, lesson plans, class lists and anything students sent are stored against your account. Only you can see them, and you can delete any lesson at any time from Past lessons.</li>
+      <li>If you subscribe, payment is handled by Stripe. Card details never reach Eyes Up; we only record that a subscription is active.</li>
+    </ul>
+    <h2>Where it is kept</h2>
+    <p>The database is hosted by Supabase in Sydney, Australia. The application runs on Render. Live lessons are held in memory on the server while they run and written to the database as the lesson goes. We do not sell data, show advertising or use analytics trackers.</p>
+    <h2>Third parties a lesson may touch</h2>
+    <ul>
+      <li>If a teacher adds live slides, the deck is played by Google, Microsoft or Canva inside the classroom screen, under that company's own privacy policy.</li>
+      <li>If a teacher launches a Website Link activity, students open that website directly.</li>
+    </ul>
+    <h2>Deleting data</h2>
+    <p>A teacher can delete any lesson, plan or class themselves. To close an account entirely, or for a school or parent asking about a child's data, use the <a href="/contact">contact page</a> and we will act on it promptly.</p>
+    <h2>Security</h2>
+    <p>Connections are encrypted (HTTPS). Teacher sign-ins use signed tokens, student rooms use short codes that expire with the lesson, and downloads are tied to the lesson they belong to. If you believe something has gone wrong, tell us straight away through the <a href="/contact">contact page</a>.</p>
+    <p class="updated">Last updated 8 November 2026.</p>
+  </main>
+  <div id="siteFooter" class="slim"></div>
+  <script src="/footer.js"></script>
+</body>
+</html>

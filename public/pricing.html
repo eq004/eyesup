@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0e2445" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<title>Pricing — Eyes Up</title>
+<link rel="stylesheet" href="/shared.css" />
+<link rel="stylesheet" href="/pages.css" />
+</head>
+<body class="info">
+  <header class="info-head"><div class="row"><a class="wordmark inverted" href="/" aria-label="Eyes Up home"><svg class="logo-eyes" viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="var(--eyeball)"/><circle cx="97.5" cy="19" r="3.6" fill="var(--eyeball)"/></svg> <span class="logo-text">eyes up</span></a><nav class="info-nav" aria-label="Pages"><a href="/help">Help & setup</a><a href="/features">Features</a><a href="/pricing" aria-current="page">Pricing</a><a href="/faq">FAQ</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact">Contact</a></nav></div></header>
+  <main class="info-main">
+
+    <h1>Pricing</h1>
+    <p class="lede">Simple and in Australian dollars. Students never pay and never need an account.</p>
+    <p class="note" id="launchNote" hidden>🎉 While we launch, every account has full access for free. Subscriptions open soon, and nothing changes for you until then.</p>
+    <div class="plans">
+      <div class="plan">
+        <span class="tag">Get started</span>
+        <div class="tier">Free</div>
+        <div class="price">$0</div>
+        <div class="alt">no card needed</div>
+        <ul>
+          <li>Every activity, live with your class</li>
+          <li>Classroom screen and teacher remote</li>
+          <li>Students join with a code, no accounts</li>
+          <li>Full access for your first 30 days</li>
+        </ul>
+        <a class="btn-link ghost" href="/teacher">Start free</a>
+      </div>
+      <div class="plan hot">
+        <span class="tag">Most popular</span>
+        <div class="tier">Individual teacher</div>
+        <div class="price">$6.99 <small>/ month</small></div>
+        <div class="alt">or $59.99 a year (save 28%)</div>
+        <ul>
+          <li>Everything in Free, all year</li>
+          <li>Saved lesson plans with slides</li>
+          <li>Past lessons, reports, picture ZIPs and data</li>
+          <li>Cancel any time from My account</li>
+        </ul>
+        <a class="btn-link" href="/teacher">Subscribe in My account</a>
+      </div>
+      <div class="plan">
+        <span class="tag">Whole school</span>
+        <div class="tier">School licence</div>
+        <div class="price">Let's talk</div>
+        <div class="alt">priced per school, invoiced</div>
+        <ul>
+          <li>Every teacher at the school</li>
+          <li>One invoice, no cards</li>
+          <li>Help getting staff started</li>
+        </ul>
+        <a class="btn-link ghost" href="/contact">Contact us</a>
+      </div>
+    </div>
+    <h2>Good to know</h2>
+    <ul>
+      <li>Prices are in Australian dollars. Payment is handled by Stripe; card details never touch Eyes Up.</li>
+      <li>A monthly subscription renews each month and a yearly one each year until you cancel. Cancelling stops the next renewal; you keep access to the end of the period you have paid for.</li>
+      <li>Your lessons and plans stay yours. If you stop subscribing, nothing is deleted.</li>
+    </ul>
+    <script>
+      fetch("/api/config").then((r) => r.json()).then((c) => { if (!c.billing) document.getElementById("launchNote").hidden = false; }).catch(() => {});
+    </script>
+  </main>
+  <div id="siteFooter" class="slim"></div>
+  <script src="/footer.js"></script>
+</body>
+</html>

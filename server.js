@@ -401,6 +401,8 @@ app.get("/projector", (_req, res) => res.sendFile(path.join(__dirname, "public/p
 app.get("/report", (_req, res) => res.sendFile(path.join(__dirname, "public/report.html")));
 app.get("/remote", (_req, res) => res.sendFile(path.join(__dirname, "public/remote.html")));
 app.get("/data", (_req, res) => res.sendFile(path.join(__dirname, "public/data.html")));
+// Plain-English site pages (linked from the footer on every page).
+for (const pg of ["help", "features", "pricing", "faq", "privacy", "terms", "contact"]) app.get(`/${pg}`, (_req, res) => res.sendFile(path.join(__dirname, `public/${pg}.html`)));
 app.get("/marks.js", (_req, res) => res.sendFile(path.join(__dirname, "lib/marks.js")));
 app.get("/class-sticker", (_req, res) => res.sendFile(path.join(__dirname, "public/class-sticker.html")));
 
@@ -657,7 +659,7 @@ app.get("/api/my-session", async (req, res) => {
 
 // What the sign-up screen needs to know before anyone is signed in.
 app.get("/api/config", (_req, res) => {
-  res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS });
+  res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS, contactEmail: process.env.CONTACT_EMAIL || "" });
 });
 
 const mePayload = (t) => ({

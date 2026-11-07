@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0e2445" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<title>Contact — Eyes Up</title>
+<link rel="stylesheet" href="/shared.css" />
+<link rel="stylesheet" href="/pages.css" />
+</head>
+<body class="info">
+  <header class="info-head"><div class="row"><a class="wordmark inverted" href="/" aria-label="Eyes Up home"><svg class="logo-eyes" viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="var(--eyeball)" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="var(--eyeball)"/><circle cx="97.5" cy="19" r="3.6" fill="var(--eyeball)"/></svg> <span class="logo-text">eyes up</span></a><nav class="info-nav" aria-label="Pages"><a href="/help">Help & setup</a><a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/faq">FAQ</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/contact" aria-current="page">Contact</a></nav></div></header>
+  <main class="info-main">
+
+    <h1>Contact</h1>
+    <p class="lede">Eyes Up is made by PeakYou, a teacher-run studio in Australia. We read everything.</p>
+    <div id="contactBox">
+      <p class="note">Contact details are being finalised. In the meantime you can reach PeakYou through <a href="https://peakyou.com.au" target="_blank" rel="noopener">peakyou.com.au</a>.</p>
+    </div>
+    <h2>What helps us help you</h2>
+    <ul>
+      <li>For a problem in class: the class code, the date and time, and what you pressed.</li>
+      <li>For a school licence: the school's name and roughly how many teachers.</li>
+      <li>For privacy questions about a child: the teacher's account name and the lesson date, and we will take it from there.</li>
+    </ul>
+    <script>
+      fetch("/api/config").then((r) => r.json()).then((c) => {
+        if (!c.contactEmail) return;
+        const e = c.contactEmail;
+        document.getElementById("contactBox").innerHTML = '<p>Email <a href="mailto:' + e + '">' + e + '</a>. We usually reply within one school day.</p><div class="btn-row"><a class="btn-link" href="mailto:' + e + '">✉️ Email us</a></div>';
+      }).catch(() => {});
+    </script>
+  </main>
+  <div id="siteFooter" class="slim"></div>
+  <script src="/footer.js"></script>
+</body>
+</html>

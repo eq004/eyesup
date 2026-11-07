@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <title>Eyes Up — Teacher</title>
 <link rel="stylesheet" href="/shared.css" />
+<link rel="stylesheet" href="/pages.css" />
 <style>
   body { min-height: 100vh; }
 
@@ -1068,7 +1069,7 @@
           <div class="modes" id="modeGrid"></div>
           <!-- Room tools: the same kind of section as ⚡ Fast votes, ☁️ Words & ideas… -->
           <div class="tools-cat" id="roomTools">
-            <button type="button" class="mode-cat" id="roomToolsHead"><span class="cat-chev"></span>🧰 Room tools</button>
+            <button type="button" class="mode-cat" id="roomToolsHead"><span class="cat-chev">▸</span><span class="cat-name">🧰 Room tools</span><span class="cat-count">4 tools</span></button>
             <div class="tools">
                   <div class="tool-block">
                     <div class="tool-title">⏱ Timer <span class="timer-display" id="timerDisplay"></span></div>
@@ -1126,6 +1127,7 @@
     </main>
 
   </div>
+  <div id="siteFooter" class="slim"></div>
   </div>
 
   <!-- Student preview (teacher testing) -->
@@ -1274,5 +1276,6 @@
   <script src="/vendor/qrcode.js"></script>
   <script src="/tune.js"></script>
   <script src="/teacher.js"></script>
+  <script src="/footer.js"></script>
 </body>
 </html>
