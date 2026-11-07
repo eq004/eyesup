@@ -331,7 +331,9 @@ async function persistNow(session) {
   if (!db) return;
   try {
     const summary = buildSummary(session);
-    if (!summary.interactionCount) return; // nothing worth keeping yet
+    // Save as soon as the room is in use — a question asked, or students sitting in it — so that a restart
+    // (every deploy is one) can rebuild the room with the same code before the class notices.
+    if (!summary.interactionCount && !summary.joinedCount) return;
     await db.query(
       `INSERT INTO lessons (code, title, created_at, saved_at, summary, teacher_id, teacher_name)
        VALUES ($1, $2, $3, now(), $4, $5, $6)
@@ -1791,8 +1793,15 @@ async function reviveSession(code, teacher, ws) {
       session.className = p.className ?? null;
       session.roster = Array.isArray(p.classRoster) ? p.classRoster : [];
       session.counter = Math.max(0, ...(p.items || []).map((it) => Number(it.id) || 0)); // new activities get fresh ids
+      // The question that was up when the server went away goes straight back up, open or closed as it was.
+      const live = p.live && STEP_MODES.has(p.live.mode) ? sanitizeStep(p.live) : null;
+      if (live) {
+        startInteraction(session, live);
+        session.interaction.open = p.live.open !== false;
+        session.interaction.reopened = true;
+      }
     }
-    console.log(`room ${code} revived for teacher ${teacher.id} after a restart`);
+    console.log(`room ${code} revived for teacher ${teacher.id} after a restart${session.interaction ? " with its question back up" : ""}`);
     return session;
   } catch (e) {
     console.error("revive failed:", e.message);
@@ -2714,6 +2723,18 @@ function describePayload(itx, p) {
   return p.text || "";
 }
 
+// The question that is up right now, as a step that can be launched again after a restart (pictures excepted:
+// they live in memory and are gone with the old process).
+function liveSpec(itx) {
+  const keep = ["mode", "prompt", "options", "correct", "moderated", "multi", "passage", "wordBank", "expected", "counterKind", "tableRows",
+    "url", "linkLabel", "sig", "bars", "level", "staff", "keys", "chords", "key", "trace", "traceCase", "traceGuide"];
+  const o = {};
+  for (const k of keep) if (itx[k] !== undefined && itx[k] !== null) o[k] = itx[k];
+  if (itx.timeLimit) o.sprintSeconds = itx.timeLimit;
+  o.open = itx.open !== false;
+  return o;
+}
+
 function buildSummary(session, { withImages = false } = {}) {
   const all = [...session.history];
   if (session.interaction) all.push(session.interaction);
@@ -2883,6 +2904,7 @@ function buildSummary(session, { withImages = false } = {}) {
     commonWords,
     items,
     ended: session.phase === "ended" || undefined,
+    live: session.interaction && !session.interaction.imageUrl && !session.interaction.optionImages ? liveSpec(session.interaction) : undefined,
   };
   // A room revived after a restart carries the lesson's earlier part in front of the new one.
   const p = session.prior;

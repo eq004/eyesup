@@ -97,7 +97,7 @@ let seatRetryTimer = null;
 // Was this device in a live class within the last few minutes? Then a vanished room is a server
 // restart, not a finished lesson — keep the seat and knock again rather than drop to the join page.
 function recentSeat() {
-  try { const s = JSON.parse(localStorage.getItem("eyesup_seat") || "null"); return !!(s && Date.now() - s.at < 3 * 60 * 1000); } catch { return false; }
+  try { const s = JSON.parse(localStorage.getItem("eyesup_seat") || "null"); return !!(s && Date.now() - s.at < 15 * 60 * 1000); } catch { return false; }
 }
 function touchSeat() {
   try { const s = JSON.parse(localStorage.getItem("eyesup_seat") || "null"); if (s && Date.now() - s.at > 60000) { s.at = Date.now(); localStorage.setItem("eyesup_seat", JSON.stringify(s)); } } catch {}
