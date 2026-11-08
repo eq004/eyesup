@@ -136,6 +136,9 @@ if (process.env.DATABASE_URL) {
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS stripe_sub text`,
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS last_seen_at timestamptz`,
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS note text`,
+    // Who signs up: the school and the year levels they teach (comma list, e.g. "K,1,2").
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS school text`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS grades text`,
     // Everyone who joined before plans existed keeps full access.
     `UPDATE teachers SET plan = 'free' WHERE plan IS NULL`,
     // Student pictures, saved the moment they arrive so nothing depends on
@@ -324,6 +327,15 @@ const cleanEmail = (e) => {
   const v = String(e || "").trim().toLowerCase().slice(0, 120);
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? v : "";
 };
+// Year levels a teacher can tick at sign-up. Stored as a comma list in teachers.grades.
+const GRADE_OPTIONS = ["K", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "Other"];
+const cleanGrades = (v) => {
+  const list = Array.isArray(v) ? v : String(v || "").split(",");
+  const seen = new Set();
+  for (const g of list) { const k = String(g || "").trim().toUpperCase().replace(/^YEAR\s*/, "").replace(/^KINDY|^KINDER.*|^PREP|^FOUNDATION|^F$/, "K"); if (GRADE_OPTIONS.includes(k === "OTHER" ? "Other" : k)) seen.add(k === "OTHER" ? "Other" : k); }
+  return GRADE_OPTIONS.filter((g) => seen.has(g)).join(",");
+};
+const cleanSchool = (v) => String(v || "").trim().replace(/\s+/g, " ").slice(0, 80);
 const baseUrl = (req) => process.env.PUBLIC_URL || `${String(req.headers["x-forwarded-proto"] || req.protocol).split(",")[0]}://${req.get("host")}`;
 
 // Write the session's full summary to the database right now.
@@ -529,7 +541,10 @@ app.post("/api/signup", async (req, res) => {
   if (!OPEN_SIGNUP && TEACHER_PASSWORD && String(invite || "").trim() !== TEACHER_PASSWORD)
     return res.status(403).json({ error: "bad_invite" });
   const email = cleanEmail(req.body?.email);
-  if (req.body?.email && !email) return res.status(400).json({ error: "bad_email" });
+  if (!String(req.body?.email || "").trim()) return res.status(400).json({ error: "need_email" });
+  if (!email) return res.status(400).json({ error: "bad_email" });
+  const school = cleanSchool(req.body?.school);
+  const grades = cleanGrades(req.body?.grades);
   // On sale: new accounts start a free trial. Before that: full access.
   const plan = BILLING_ON ? "trial" : "free";
   const trialEnds = BILLING_ON ? new Date(Date.now() + TRIAL_DAYS * 86400000) : null;
@@ -544,9 +559,9 @@ app.post("/api/signup", async (req, res) => {
     const u = n === 0 ? base : `${base.slice(0, 22)}${n + 1}`;
     try {
       const { rows } = await db.query(
-        `INSERT INTO teachers (username, display_name, pass_hash, email, plan, trial_ends_at, last_seen_at)
-         VALUES ($1, $2, $3, $4, $5, $6, now()) RETURNING id, username, display_name, pass_hash`,
-        [u, displayName || u, hash, email || null, plan, trialEnds]
+        `INSERT INTO teachers (username, display_name, pass_hash, email, plan, trial_ends_at, last_seen_at, school, grades)
+         VALUES ($1, $2, $3, $4, $5, $6, now(), $7, $8) RETURNING id, username, display_name, pass_hash`,
+        [u, displayName || u, hash, email || null, plan, trialEnds, school || null, grades || null]
       );
       return res.json({ token: signToken(rows[0].id, rows[0].pass_hash), name: rows[0].display_name, username: u });
     } catch (e) {
@@ -675,11 +690,12 @@ app.get("/api/my-session", async (req, res) => {
 
 // What the sign-up screen needs to know before anyone is signed in.
 app.get("/api/config", (_req, res) => {
-  res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS, contactEmail: process.env.CONTACT_EMAIL || "" });
+  res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS, contactEmail: process.env.CONTACT_EMAIL || "", gradeOptions: GRADE_OPTIONS });
 });
 
 const mePayload = (t) => ({
   id: t.id, name: t.display_name, username: t.username, email: t.email || "", admin: !!t.is_admin,
+  school: t.school || "", grades: t.grades || "", gradeOptions: GRADE_OPTIONS,
   billing: BILLING_ON, trialDays: TRIAL_DAYS, hasSubscription: !!t.stripe_sub, canManageBilling: !!t.stripe_customer,
   access: accessOf(t),
   tier: tierOf(t),
@@ -691,15 +707,17 @@ app.get("/api/me", async (req, res) => {
   res.json(mePayload(t));
 });
 
-// A teacher can add or change their own email.
+// A teacher can add or change their own email, school and year levels.
 app.post("/api/me", async (req, res) => {
   const t = await authHttp(res, req.body?.t);
   if (!t) return;
   const email = cleanEmail(req.body?.email);
   if (req.body?.email && !email) return res.status(400).json({ error: "bad_email" });
+  const school = "school" in (req.body || {}) ? cleanSchool(req.body.school) : t.school || "";
+  const grades = "grades" in (req.body || {}) ? cleanGrades(req.body.grades) : t.grades || "";
   try {
-    await db.query(`UPDATE teachers SET email = $1 WHERE id = $2`, [email || null, t.id]);
-    res.json(mePayload({ ...t, email }));
+    await db.query(`UPDATE teachers SET email = $1, school = $2, grades = $3 WHERE id = $4`, [email || null, school || null, grades || null, t.id]);
+    res.json(mePayload({ ...t, email, school, grades }));
   } catch {
     res.status(500).json({ error: "db_error" });
   }
@@ -731,7 +749,7 @@ app.get("/api/admin/overview", async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT t.id, t.username, t.display_name, t.email, t.is_admin, t.status, t.plan, t.trial_ends_at, t.paid_until,
-              t.created_at, t.last_seen_at, t.note, t.stripe_sub, t.stripe_customer,
+              t.created_at, t.last_seen_at, t.note, t.stripe_sub, t.stripe_customer, t.school, t.grades,
               count(l.id)::int AS lessons,
               count(l.id) FILTER (WHERE l.saved_at > now() - interval '30 days')::int AS lessons_30d,
               max(l.saved_at) AS last_lesson,
@@ -744,6 +762,7 @@ app.get("/api/admin/overview", async (req, res) => {
     res.json({
       me: me.id,
       billing: { on: BILLING_ON, trialDays: TRIAL_DAYS, openSignup: OPEN_SIGNUP, yearly: !!STRIPE_PRICE_YEARLY, webhook: !!STRIPE_WEBHOOK_SECRET },
+      gradeOptions: GRADE_OPTIONS,
       ai: !!AI_KEY,
       separateSecret: !!process.env.AUTH_SECRET,
       live: { classes: live.length, students: live.reduce((a, s) => a + s.students.size, 0) },
@@ -752,6 +771,7 @@ app.get("/api/admin/overview", async (req, res) => {
         plan: r.plan || "free", trialEndsAt: r.trial_ends_at, paidUntil: r.paid_until, joined: r.created_at,
         lastSeen: r.last_seen_at, lastLesson: r.last_lesson, lessons: r.lessons, lessons30: r.lessons_30d,
         students: r.students, plans: r.plans, note: r.note || "", hasSubscription: !!r.stripe_sub,
+        school: r.school || "", grades: r.grades || "",
         access: accessOf(r),
       })),
     });
@@ -807,7 +827,8 @@ app.post("/api/admin/teacher/:id", async (req, res) => {
     if (action === "set_details") {
       const email = cleanEmail(req.body?.email);
       if (req.body?.email && !email) return res.status(400).json({ error: "bad_email" });
-      await db.query(`UPDATE teachers SET email = $1, note = $2 WHERE id = $3`, [email || null, String(req.body?.note || "").slice(0, 300) || null, id]);
+      await db.query(`UPDATE teachers SET email = $1, note = $2, school = $3, grades = $4 WHERE id = $5`,
+        [email || null, String(req.body?.note || "").slice(0, 300) || null, cleanSchool(req.body?.school) || null, cleanGrades(req.body?.grades) || null, id]);
       return res.json({ ok: true });
     }
     res.status(400).json({ error: "bad_action" });

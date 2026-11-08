@@ -36,6 +36,11 @@
   .card h2 { font-size: 1rem; font-weight: 800; margin-bottom: 0.2rem; }
   .card .sub { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.9rem; }
 
+  .yr-tally { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .yr-tally .yr { display: inline-flex; flex-direction: column; align-items: center; min-width: 58px; padding: 0.45rem 0.6rem; border-radius: 12px; background: var(--paper); color: var(--muted); font-size: 0.95rem; font-weight: 800; }
+  .yr-tally .yr b { font-size: 0.72rem; font-weight: 700; margin-bottom: 0.15rem; }
+  .yr-tally .yr.on { background: var(--navy); color: #fff; }
+  .yr-tally .yr.on b { color: #c7d6ec; }
   .setup { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.6rem; }
   .setup .item { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.7rem 0.8rem; border-radius: 12px; background: var(--paper); font-size: 0.86rem; line-height: 1.4; }
   .setup .item b { display: block; }

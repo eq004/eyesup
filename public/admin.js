@@ -6,6 +6,7 @@
 const wrap = document.getElementById("wrap");
 const overlay = document.getElementById("sheetOverlay");
 const sheet = document.getElementById("sheet");
+const gradesLabel = (g) => String(g || "").split(",").filter(Boolean).map((x) => (x === "K" ? "Kindy" : x === "Other" ? "Other" : `Yr ${x}`)).join(", ");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const token = localStorage.getItem("eyesup_token") || "";
 
@@ -76,7 +77,7 @@ function render() {
 
   const q = search.trim().toLowerCase();
   const shown = ts.filter((t) => {
-    if (q && !`${t.name} ${t.username} ${t.email} ${t.note}`.toLowerCase().includes(q)) return false;
+    if (q && !`${t.name} ${t.username} ${t.email} ${t.note} ${t.school} ${t.grades}`.toLowerCase().includes(q)) return false;
     if (filter === "active") return t.lessons30 > 0;
     if (filter === "quiet") return t.lessons30 === 0;
     if (filter === "paying") return t.plan === "paid" || t.plan === "school";
@@ -113,6 +114,12 @@ function render() {
     </div>
 
     <div class="card">
+      <h2>Who signs up</h2>
+      <div class="sub">What teachers told us when they joined. ${ts.filter((t) => t.email).length} of ${ts.length} gave an email · ${ts.filter((t) => t.school).length} named a school · ${ts.filter((t) => t.grades).length} ticked year levels.</div>
+      <div class="yr-tally">${(data.gradeOptions || []).map((g) => { const n = ts.filter((t) => String(t.grades || "").split(",").includes(g)).length; return `<span class="yr ${n ? "on" : ""}"><b>${g === "K" ? "Kindy" : g === "Other" ? "Other" : `Yr ${g}`}</b>${n}</span>`; }).join("")}</div>
+    </div>
+
+    <div class="card">
       <h2>Teachers</h2>
       <div class="sub">Everyone with an account. Click Manage to change a plan, reset a password or switch an account off.</div>
       <div class="toolbar">
@@ -128,7 +135,7 @@ function render() {
         <thead><tr><th>Teacher</th><th>Plan</th><th class="num">Lessons</th><th class="num">Last 30 days</th><th class="num">Students</th><th>Last lesson</th><th>Joined</th><th></th></tr></thead>
         <tbody>${shown
           .map((t) => `<tr class="${t.status === "disabled" ? "off" : ""}">
-            <td class="who"><b>${esc(t.name)}</b><small>${esc(t.username)}${t.email ? ` · ${esc(t.email)}` : ""}</small>${t.note ? `<small>📝 ${esc(t.note)}</small>` : ""}</td>
+            <td class="who"><b>${esc(t.name)}</b><small>${esc(t.username)}${t.email ? ` · ${esc(t.email)}` : ""}</small>${t.school || t.grades ? `<small>🏫 ${esc([t.school, gradesLabel(t.grades)].filter(Boolean).join(" · "))}</small>` : ""}${t.note ? `<small>📝 ${esc(t.note)}</small>` : ""}</td>
             <td>${badge(t)}</td>
             <td class="num">${t.lessons}</td>
             <td class="num">${t.lessons30}</td>
@@ -156,8 +163,8 @@ function render() {
 
 function downloadCsv() {
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const lines = [["Name", "Sign-in name", "Email", "Plan", "Status", "Trial ends", "Paid until", "Lessons", "Lessons (30 days)", "Students", "Last lesson", "Joined", "Note"]]
-    .concat(data.teachers.map((t) => [t.name, t.username, t.email, t.admin ? "owner" : t.plan, t.status, t.trialEndsAt ? isoDate(t.trialEndsAt) : "", t.paidUntil ? isoDate(t.paidUntil) : "", t.lessons, t.lessons30, t.students, t.lastLesson ? isoDate(t.lastLesson) : "", isoDate(t.joined), t.note]))
+  const lines = [["Name", "Sign-in name", "Email", "School", "Year levels", "Plan", "Status", "Trial ends", "Paid until", "Lessons", "Lessons (30 days)", "Students", "Last lesson", "Joined", "Note"]]
+    .concat(data.teachers.map((t) => [t.name, t.username, t.email, t.school, t.grades, t.admin ? "owner" : t.plan, t.status, t.trialEndsAt ? isoDate(t.trialEndsAt) : "", t.paidUntil ? isoDate(t.paidUntil) : "", t.lessons, t.lessons30, t.students, t.lastLesson ? isoDate(t.lastLesson) : "", isoDate(t.joined), t.note]))
     .map((row) => row.map(cell).join(","));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
@@ -186,7 +193,9 @@ function openManage(id) {
     <div class="muted" style="font-size:0.85rem">Signs in as <b>${esc(t.username)}</b> · joined ${day(t.joined)} · ${t.lessons} lessons · last seen ${ago(t.lastSeen || t.lastLesson)}</div>
 
     <div class="row"><label for="mEmail">Email</label><input id="mEmail" type="email" placeholder="not given" value="${esc(t.email)}" /></div>
-    <div class="row"><label for="mNote">Your private note (school, invoice number…)</label><input id="mNote" maxlength="300" value="${esc(t.note)}" /></div>
+    <div class="row"><label for="mSchool">School</label><input id="mSchool" maxlength="80" placeholder="not given" value="${esc(t.school)}" /></div>
+    <div class="row"><label for="mGrades">Year levels (e.g. K, 1, 2)</label><input id="mGrades" maxlength="80" placeholder="not given" value="${esc(t.grades)}" /></div>
+    <div class="row"><label for="mNote">Your private note (invoice number…)</label><input id="mNote" maxlength="300" value="${esc(t.note)}" /></div>
     <div class="actions"><button class="btn-s primary" id="mSaveDetails">Save details</button></div>
 
     <hr />
@@ -233,7 +242,7 @@ function openManage(id) {
 
   sheet.querySelector("#mClose").onclick = closeSheet;
   sheet.querySelector("#mSaveDetails").onclick = () =>
-    done(() => act(id, { action: "set_details", email: sheet.querySelector("#mEmail").value, note: sheet.querySelector("#mNote").value }), "Saved ✓");
+    done(() => act(id, { action: "set_details", email: sheet.querySelector("#mEmail").value, note: sheet.querySelector("#mNote").value, school: sheet.querySelector("#mSchool").value, grades: sheet.querySelector("#mGrades").value }), "Saved ✓");
   sheet.querySelector("#mSavePlan").onclick = async () => {
     const plan = planSel.value;
     const until = plan === "free" ? null : `${sheet.querySelector("#mUntil").value}T23:59:59`;

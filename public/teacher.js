@@ -2012,6 +2012,19 @@ function inviteCode() {
   return localStorage.getItem("eyesup_invite") || "";
 }
 
+// Year levels as tap-to-tick chips. `picked` is the stored comma list ("K,1,2").
+const GRADE_OPTIONS_FALLBACK = ["K", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "Other"];
+function gradeChips(id, picked, options) {
+  const on = new Set(String(picked || "").split(",").filter(Boolean));
+  return `<div class="yr-chips" id="${id}">${(options || GRADE_OPTIONS_FALLBACK)
+    .map((g) => `<button type="button" class="yr-chip ${on.has(g) ? "on" : ""}" data-g="${g}" aria-pressed="${on.has(g)}">${g === "K" ? "Kindy / Prep" : g === "Other" ? "Other" : `Year ${g}`}</button>`)
+    .join("")}</div>`;
+}
+function wireChips(root) {
+  root.querySelectorAll(".yr-chip").forEach((b) => (b.onclick = () => { b.classList.toggle("on"); b.setAttribute("aria-pressed", b.classList.contains("on")); }));
+}
+const pickedGrades = (root) => [...root.querySelectorAll(".yr-chip.on")].map((b) => b.dataset.g);
+
 function showAuthOverlay(mode) {
   authMode = mode || (localStorage.getItem("eyesup_has_account") ? "login" : "signup");
   const fields = $("authFields");
@@ -2022,8 +2035,11 @@ function showAuthOverlay(mode) {
       ? `<input id="aUser" placeholder="Your name" autocomplete="username" />
          <input id="aPass" type="password" placeholder="Password" autocomplete="current-password" />`
       : `<input id="aName" placeholder="Your name (e.g. Sarah Jones)" maxlength="40" autocomplete="name" />
+         <input id="aEmail" type="email" placeholder="Your email" title="Used to reset your password and to tell you about Eyes Up — never shared" maxlength="120" autocomplete="email" />
          <input id="aPass" type="password" placeholder="Choose a password (6+ characters)" autocomplete="new-password" />
-         <input id="aEmail" type="email" placeholder="Email (optional)" title="Optional — it helps if you ever forget your password" maxlength="120" autocomplete="email" />
+         <label class="auth-q" for="aSchool">What do you teach? <span>Tap all that apply — optional</span></label>
+         ${gradeChips("aGrades", "", siteConfig.gradeOptions)}
+         <input id="aSchool" placeholder="Your school (optional)" maxlength="80" autocomplete="organization" />
          ${siteConfig.openSignup
            ? siteConfig.billing ? `<p style="color:var(--muted);font-size:0.9rem;margin:0.2rem 0 0">✓ ${siteConfig.trialDays}-day free trial — no card needed to start.</p>` : ""
            : inviteCode()
@@ -2033,6 +2049,7 @@ function showAuthOverlay(mode) {
     i.style.cssText = "border:1.5px solid var(--line);border-radius:10px;padding:0.7rem 0.9rem;font-size:0.95rem";
     i.onkeydown = (e) => { if (e.key === "Enter") $("authGo").click(); };
   });
+  wireChips(fields);
   $("authGo").textContent = authMode === "login" ? "Sign in" : "Create account";
   $("authError").style.display = "none";
   $("authOverlay").classList.add("show");
@@ -2045,7 +2062,8 @@ const AUTH_ERRORS = {
   taken: "That name is already in use — add a surname or initial.",
   bad_name: "Please enter your name.",
   bad_pass: "Password needs at least 6 characters.",
-  bad_email: "That email address doesn't look right — check it, or leave it blank.",
+  bad_email: "That email address doesn't look right — check it.",
+  need_email: "Please add your email — it's how you reset your password.",
   account_disabled: "This account has been switched off. Please contact Eyes Up to have it turned back on.",
   slow_down: "Too many tries — wait a few minutes and try again.",
 };
@@ -2056,7 +2074,8 @@ $("authGo").onclick = async () => {
   const body =
     authMode === "login"
       ? { username: $("aUser").value, password: $("aPass").value }
-      : { invite: ($("aInvite")?.value || inviteCode()).trim(), name: $("aName").value, password: $("aPass").value, email: $("aEmail")?.value.trim() || "" };
+      : { invite: ($("aInvite")?.value || inviteCode()).trim(), name: $("aName").value, password: $("aPass").value, email: $("aEmail")?.value.trim() || "",
+          school: $("aSchool")?.value.trim() || "", grades: $("aGrades") ? pickedGrades($("aGrades")) : [] };
   try {
     const res = await fetch(authMode === "login" ? "/api/login" : "/api/signup", {
       method: "POST",
@@ -2109,6 +2128,11 @@ async function loadMe() {
     $("accountBtn").style.display = "";
     $("adminLink").style.display = me.admin ? "" : "none";
     renderPlanBanner();
+    // Accounts made before email was asked for: one quiet reminder per device.
+    if (!me.email && !localStorage.getItem("eyesup_email_nudge")) {
+      localStorage.setItem("eyesup_email_nudge", "1");
+      setTimeout(() => toast("Tip: add your email in 👤 My account so you can reset your password."), 1500);
+    }
   } catch { /* offline — the dashboard still works */ }
 }
 
@@ -2197,7 +2221,9 @@ function showAccount() {
       </div>
     </div>
     <div class="acct-row"><label for="acctEmail">Email</label><input id="acctEmail" type="email" maxlength="120" placeholder="you@school.edu" value="${esc(me.email)}" /></div>
-    <button class="btn" id="acctSaveEmail" style="margin-top:0.6rem">Save email</button>
+    <div class="acct-row"><label for="acctSchool">School</label><input id="acctSchool" maxlength="80" placeholder="optional" value="${esc(me.school || "")}" /></div>
+    <div class="acct-row"><label>What do you teach? <span style="font-weight:600;color:var(--muted)">tap all that apply</span></label>${gradeChips("acctGrades", me.grades, me.gradeOptions)}</div>
+    <button class="btn" id="acctSaveEmail" style="margin-top:0.6rem">Save details</button>
     <div class="acct-msg" id="acctEmailMsg"></div>
     <div class="acct-row"><label for="acctCur">Change password</label>
       <input id="acctCur" type="password" placeholder="Current password" autocomplete="current-password" />
@@ -2206,13 +2232,15 @@ function showAccount() {
     <div class="acct-msg" id="acctPwMsg"></div>
     <div style="text-align:right;margin-top:0.6rem"><button class="btn" id="acctClose">Close</button></div>`;
   $("accountOverlay").classList.add("show");
+  wireChips($("accountSheet"));
   $("acctClose").onclick = () => $("accountOverlay").classList.remove("show");
   if ($("acctSub")) $("acctSub").onclick = () => { $("accountOverlay").classList.remove("show"); showSubscribe(a.ok ? "trial_ending" : a.reason); };
   if ($("acctPortal")) $("acctPortal").onclick = () => goBilling("portal", {});
   const say = (id, text, ok) => { $(id).textContent = text; $(id).style.color = ok ? "var(--green)" : "var(--red)"; };
   $("acctSaveEmail").onclick = async () => {
     try {
-      const res = await fetch("/api/me", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), email: $("acctEmail").value.trim() }) });
+      const res = await fetch("/api/me", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ t: teacherToken(), email: $("acctEmail").value.trim(), school: $("acctSchool").value.trim(), grades: pickedGrades($("acctGrades")) }) });
       const data = await res.json();
       if (!res.ok) return say("acctEmailMsg", AUTH_ERRORS[data.error] || "Couldn't save — try again.", false);
       me = data;
