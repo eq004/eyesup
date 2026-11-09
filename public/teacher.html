@@ -901,6 +901,8 @@
   .acct-msg { font-size: 0.9rem; margin-top: 0.5rem; min-height: 1.1em; }
   .auth-q { font-size: 0.9rem; font-weight: 800; color: var(--ink-soft); text-align: left; margin-top: 0.3rem; }
   .auth-q span { font-weight: 600; color: var(--muted); }
+  .auth-or { display: flex; align-items: center; gap: 0.7rem; margin: 0.8rem 0 0.7rem; color: var(--muted); font-size: 0.9rem; font-weight: 700; }
+  .auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1.5px; background: var(--line); }
   .yr-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; text-align: left; }
   .yr-chip { font: inherit; font-size: 0.9rem; font-weight: 700; min-height: 44px; padding: 0.45rem 0.8rem; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer; }
   .yr-chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
@@ -1267,6 +1269,10 @@
       <div id="authFields" style="margin-top:1.1rem;display:flex;flex-direction:column;gap:0.55rem"></div>
       <p id="authError" style="color:var(--red);font-size:0.9rem;margin-top:0.6rem;display:none"></p>
       <button class="btn primary big" id="authGo" style="width:100%;margin-top:0.9rem">Sign in</button>
+      <div id="authGoogle" style="display:none">
+        <div class="auth-or"><span>or</span></div>
+        <div id="authGoogleBtn" style="display:flex;justify-content:center;min-height:44px"></div>
+      </div>
       <p style="color:var(--muted);font-size:0.9rem;margin-top:0.9rem;text-align:center">Students never sign in — they just enter the class code.</p>
       <p style="text-align:center;margin-top:0.6rem">Eyes Up <a class="by-peakyou" href="https://peakyou.com.au" target="_blank" rel="noopener">by <b>PeakYou</b></a></p>
     </div>

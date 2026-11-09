@@ -104,9 +104,22 @@ The architecture leaves a clean seam for a future **✨ Create Recall** feature:
 
 ## Teacher accounts
 
-### Inviting another teacher
+### Creating an account (no invite code)
 
-Signed-in teachers click **➕ Invite a colleague** (dashboard header, or the remote's More tab) — it copies a link like `https://eyesup.onrender.com/teacher?invite=…`. The colleague opens it, types **their name and a password**, and they're in. Their sign-in name is made from their name automatically (`Sarah Jones` → `sarah.jones`), and either form works at sign-in. Without the link, the invite code (`TEACHER_PASSWORD`) can be typed by hand.
+Any teacher can create an account at `/teacher`: name, email, password, and two optional questions (year levels, school). There is no invite code. **➕ Invite a colleague** (dashboard menu, or the remote's More tab) simply copies the site's address to send on. Their sign-in name is made from their name automatically (`Sarah Jones` → `sarah.jones`), and either form works at sign-in. `OPEN_SIGNUP=0` closes sign-up again; it then needs the invite code (`TEACHER_PASSWORD`).
+
+### Sign in with Google (dormant until `GOOGLE_CLIENT_ID` is set)
+
+With a Google OAuth client ID on the host, the sign-in sheet shows Google's own button under the main one, on both tabs. Google hands the browser a signed note (an ID token); `POST /api/google` checks it in `lib/google.js` with no dependency — Google's signature (keys fetched from Google and remembered for an hour), made for this site, not expired, email verified by Google — and then: a Google person we know goes to their account; an email we know goes to that account, which is now tied to Google and whose old password stops working (the email on a password account was never proven; Google has just proven who owns it), with sign-in then answering `use_google`; anyone else gets a new account, carrying the year levels and school if they ticked them. An account made through Google has no password; My account offers **Set password** without asking for a current one. The Google script loads only on the teacher sign-in sheet, never on a student page. In Google Cloud the client needs the site's address under *Authorised JavaScript origins*.
+
+### Stopping cleanly
+
+On `SIGTERM` (every deploy starts with one) or `SIGINT` the server writes every room to the database before it exits, capped at 8 seconds. Saving otherwise runs up to four seconds behind a room, which is how a question asked moments before a restart used to be lost.
+
+### Testing with a real database on this machine
+
+`scratchpad/localdb/` (untracked) holds a throwaway Postgres (PGlite) and helpers: `node db-server.mjs` (port 5544), then run the server with `DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5544/postgres node -r ./scratchpad/localdb/no-ssl.js server.js`. `fake-google.js` stands in for Google's key server (`GOOGLE_CERTS_URL=http://127.0.0.1:5545/certs`, `GOOGLE_CLIENT_ID=test-client.apps.googleusercontent.com`); `auth-test.js` runs every sign-up and sign-in path and `revive-test.js <ms> <signal>` kills the server mid-question and checks the room and question come back.
+
 
 ## Student images after the lesson
 
@@ -125,7 +138,8 @@ Pictures students submit (Drop an Image, Image + Writing, Sketch, Annotate) are 
 | `STRIPE_PRICE_YEARLY` | *(optional)* Price ID of a yearly option |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret (`whsec_…`) of a Stripe webhook pointing at `https://<site>/api/stripe/webhook`, sending `checkout.session.completed` and `customer.subscription.created/updated/deleted` |
 | `TRIAL_DAYS` | *(optional)* free-trial length for new accounts, default 30 |
-| `OPEN_SIGNUP` | *(optional)* `1`/`0` to force sign-up open or invite-only; by default it opens when billing is on |
+| `OPEN_SIGNUP` | *(optional)* sign-up is open by default; `0` makes it invite-only again |
+| `GOOGLE_CLIENT_ID` | *(optional)* a Google OAuth client ID (`….apps.googleusercontent.com`) — switches on Sign in with Google |
 | `AUTH_SECRET` | *(recommended before selling)* a long random string that signs sign-ins, so the invite code is no longer also the signing key. Setting it signs everyone out once. |
 | `PUBLIC_URL` | *(optional)* site address used for Stripe return links |
 

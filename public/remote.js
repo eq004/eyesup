@@ -916,8 +916,8 @@ function renderMore() {
       const data = await res.json();
       if (!res.ok) throw new Error();
       await navigator.clipboard.writeText(`${location.origin}/teacher${data.invite ? `?invite=${encodeURIComponent(data.invite)}` : ""}`);
-      toast("Invite link copied");
-    } catch { toast("Couldn't get the invite link"); }
+      toast("Link copied — send it to your colleague");
+    } catch { toast("Couldn't copy the link"); }
   };
 
   $("titleIn").onchange = () => { send({ type: "set_title", title: $("titleIn").value }); toast("Title saved"); };

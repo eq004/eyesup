@@ -90,8 +90,9 @@ function render() {
     [true, "Owner access", "You're signed in as the owner. Only you can open this page."],
     [b.on, "Card payments (Stripe)", b.on ? `On — new teachers get a ${b.trialDays}-day free trial, then subscribe.` : "Not connected yet. Until it is, every account has full access and nobody is charged."],
     [b.on ? b.webhook : false, "Payment updates from Stripe", b.webhook ? "Connected — subscriptions switch on and off by themselves." : "Not connected yet (set up together with Stripe)."],
-    [b.openSignup, "Public sign-up", b.openSignup ? "Anyone can create an account and start a trial." : "Invite-only — new teachers need your invite link."],
-    [data.separateSecret, "Separate sign-in secret", data.separateSecret ? "Set — the invite code can be shared safely." : "Not set yet. Recommended before strangers sign up."],
+    [b.openSignup, "Public sign-up", b.openSignup ? "Any teacher can create an account — no invite code." : "Closed — new teachers need the invite code."],
+    [data.google, "Sign in with Google", data.google ? "On — teachers can use their Google account." : "Not connected yet (needs a Google client ID). Name and password work as always."],
+    [data.separateSecret, "Separate sign-in secret", data.separateSecret ? "Set." : "Not set yet. Recommended now that anyone can sign up."],
     [data.ai, "AI summaries", data.ai ? "On." : "Off — needs an Anthropic API key."],
   ];
 
@@ -135,7 +136,7 @@ function render() {
         <thead><tr><th>Teacher</th><th>Plan</th><th class="num">Lessons</th><th class="num">Last 30 days</th><th class="num">Students</th><th>Last lesson</th><th>Joined</th><th></th></tr></thead>
         <tbody>${shown
           .map((t) => `<tr class="${t.status === "disabled" ? "off" : ""}">
-            <td class="who"><b>${esc(t.name)}</b><small>${esc(t.username)}${t.email ? ` · ${esc(t.email)}` : ""}</small>${t.school || t.grades ? `<small>🏫 ${esc([t.school, gradesLabel(t.grades)].filter(Boolean).join(" · "))}</small>` : ""}${t.note ? `<small>📝 ${esc(t.note)}</small>` : ""}</td>
+            <td class="who"><b>${esc(t.name)}</b><small>${esc(t.username)}${t.email ? ` · ${esc(t.email)}` : ""}${t.google ? " · Google sign-in" : ""}</small>${t.school || t.grades ? `<small>🏫 ${esc([t.school, gradesLabel(t.grades)].filter(Boolean).join(" · "))}</small>` : ""}${t.note ? `<small>📝 ${esc(t.note)}</small>` : ""}</td>
             <td>${badge(t)}</td>
             <td class="num">${t.lessons}</td>
             <td class="num">${t.lessons30}</td>

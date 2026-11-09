@@ -2053,7 +2053,75 @@ function showAuthOverlay(mode) {
   $("authGo").textContent = authMode === "login" ? "Sign in" : "Create account";
   $("authError").style.display = "none";
   $("authOverlay").classList.add("show");
+  showGoogleButton();
   fields.querySelector("input")?.focus();
+}
+
+/* Sign in with Google — shown only when the site has a Google client ID. Google's own
+   script draws the button and hands back a signed note; the server checks it. */
+let gsiLoading = null;
+let gsiReady = false;
+function loadGsi() {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  if (!gsiLoading)
+    gsiLoading = new Promise((ok, bad) => {
+      const el = document.createElement("script");
+      el.src = "https://accounts.google.com/gsi/client";
+      el.async = true;
+      el.onload = ok;
+      el.onerror = () => { gsiLoading = null; bad(); };
+      document.head.appendChild(el);
+    });
+  return gsiLoading;
+}
+function showGoogleButton() {
+  const box = $("authGoogle");
+  if (!siteConfig.googleClientId) { box.style.display = "none"; return; }
+  loadGsi()
+    .then(() => {
+      if (!gsiReady) {
+        google.accounts.id.initialize({ client_id: siteConfig.googleClientId, callback: onGoogleCredential, auto_select: false });
+        gsiReady = true;
+      }
+      box.style.display = "";
+      google.accounts.id.renderButton($("authGoogleBtn"), {
+        type: "standard", theme: "outline", size: "large", shape: "pill", logo_alignment: "center",
+        text: authMode === "login" ? "signin_with" : "signup_with",
+        width: Math.max(220, Math.min(380, $("authFields").clientWidth || 340)),
+      });
+    })
+    .catch(() => { box.style.display = "none"; }); // Google blocked on this network: name and password still work
+}
+async function onGoogleCredential(resp) {
+  const signingUp = authMode === "signup";
+  try {
+    const res = await fetch("/api/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credential: resp.credential, invite: inviteCode(),
+        ...(signingUp ? { school: $("aSchool")?.value.trim() || "", grades: $("aGrades") ? pickedGrades($("aGrades")) : [] } : {}),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) return authFail(AUTH_ERRORS[data.error] || "Google sign-in didn't work — try again, or use your name and password.");
+    finishSignIn(data, data.created ? `Welcome, ${data.name}! Next time, just tap “Sign in with Google”.` : "");
+  } catch {
+    authFail("Couldn't reach the server — try again.");
+  }
+}
+function authFail(text) {
+  $("authError").textContent = text;
+  $("authError").style.display = "block";
+}
+function finishSignIn(data, welcome) {
+  localStorage.setItem("eyesup_token", data.token);
+  localStorage.setItem("eyesup_teacher_name", data.name || data.username);
+  localStorage.setItem("eyesup_has_account", "1");
+  $("authOverlay").classList.remove("show");
+  if (welcome) toast(welcome);
+  if (ws && ws.readyState === 1) attach();
+  loadMe();
 }
 
 const AUTH_ERRORS = {
@@ -2066,6 +2134,10 @@ const AUTH_ERRORS = {
   need_email: "Please add your email — it's how you reset your password.",
   account_disabled: "This account has been switched off. Please contact Eyes Up to have it turned back on.",
   slow_down: "Too many tries — wait a few minutes and try again.",
+  use_google: "This account signs in with Google — tap the Google button below.",
+  bad_google: "Google sign-in didn't work — try again, or use your name and password.",
+  google_unavailable: "Google isn't answering right now — try again in a moment, or use your name and password.",
+  google_off: "Google sign-in isn't switched on — use your name and password.",
 };
 
 $("tabLogin").onclick = () => showAuthOverlay("login");
@@ -2083,21 +2155,10 @@ $("authGo").onclick = async () => {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok) {
-      $("authError").textContent = AUTH_ERRORS[data.error] || "That didn't work — try again.";
-      $("authError").style.display = "block";
-      return;
-    }
-    localStorage.setItem("eyesup_token", data.token);
-    localStorage.setItem("eyesup_teacher_name", data.name || data.username);
-    localStorage.setItem("eyesup_has_account", "1");
-    $("authOverlay").classList.remove("show");
-    if (authMode === "signup") toast(`Welcome, ${data.name}! Sign in next time with your name or "${data.username}".`);
-    if (ws && ws.readyState === 1) attach();
-    loadMe();
+    if (!res.ok) return authFail(AUTH_ERRORS[data.error] || "That didn't work — try again.");
+    finishSignIn(data, authMode === "signup" ? `Welcome, ${data.name}! Sign in next time with your name or "${data.username}".` : "");
   } catch {
-    $("authError").textContent = "Couldn't reach the server — try again.";
-    $("authError").style.display = "block";
+    authFail("Couldn't reach the server — try again.");
   }
 };
 
@@ -2108,9 +2169,9 @@ $("inviteBtn").onclick = async () => {
     if (!res.ok) throw new Error();
     const link = `${location.origin}/teacher${data.invite ? `?invite=${encodeURIComponent(data.invite)}` : ""}`;
     await navigator.clipboard.writeText(link);
-    toast("Invite link copied — send it to your colleague. They just enter a name and a password.");
+    toast("Link copied — send it to your colleague. They create their own free account.");
   } catch {
-    toast("Couldn't fetch the invite link — are you signed in?");
+    toast("Couldn't copy the link — are you signed in?");
   }
 };
 
@@ -2225,10 +2286,14 @@ function showAccount() {
     <div class="acct-row"><label>What do you teach? <span style="font-weight:600;color:var(--muted)">tap all that apply</span></label>${gradeChips("acctGrades", me.grades, me.gradeOptions)}</div>
     <button class="btn" id="acctSaveEmail" style="margin-top:0.6rem">Save details</button>
     <div class="acct-msg" id="acctEmailMsg"></div>
-    <div class="acct-row"><label for="acctCur">Change password</label>
+    ${me.hasPassword === false
+      ? `<div class="acct-row"><label for="acctNew">Password <span style="font-weight:600;color:var(--muted)">optional — you sign in with Google</span></label>
+      <input id="acctNew" type="password" placeholder="Set a password (6+ characters)" autocomplete="new-password" /></div>
+    <button class="btn" id="acctSavePw" style="margin-top:0.6rem">Set password</button>`
+      : `<div class="acct-row"><label for="acctCur">Change password</label>
       <input id="acctCur" type="password" placeholder="Current password" autocomplete="current-password" />
       <input id="acctNew" type="password" placeholder="New password (6+ characters)" autocomplete="new-password" /></div>
-    <button class="btn" id="acctSavePw" style="margin-top:0.6rem">Change password</button>
+    <button class="btn" id="acctSavePw" style="margin-top:0.6rem">Change password</button>`}
     <div class="acct-msg" id="acctPwMsg"></div>
     <div style="text-align:right;margin-top:0.6rem"><button class="btn" id="acctClose">Close</button></div>`;
   $("accountOverlay").classList.add("show");
@@ -2249,12 +2314,14 @@ function showAccount() {
   };
   $("acctSavePw").onclick = async () => {
     try {
-      const res = await fetch("/api/me/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), current: $("acctCur").value, next: $("acctNew").value }) });
+      const res = await fetch("/api/me/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: teacherToken(), current: $("acctCur")?.value || "", next: $("acctNew").value }) });
       const data = await res.json();
       if (!res.ok) return say("acctPwMsg", data.error === "bad_login" ? "The current password isn't right." : AUTH_ERRORS[data.error] || "Couldn't change it — try again.", false);
       localStorage.setItem("eyesup_token", data.token); // this device stays signed in; others are signed out
-      $("acctCur").value = $("acctNew").value = "";
-      say("acctPwMsg", "Password changed ✓", true);
+      if ($("acctCur")) $("acctCur").value = "";
+      $("acctNew").value = "";
+      if (me) me.hasPassword = true;
+      say("acctPwMsg", "Password saved ✓", true);
     } catch { say("acctPwMsg", "Couldn't reach the server — try again.", false); }
   };
 }

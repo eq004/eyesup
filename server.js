@@ -43,8 +43,12 @@ const STRIPE_PRICE_YEARLY = process.env.STRIPE_PRICE_YEARLY || "";
 const BILLING_ON = !!(STRIPE_KEY && STRIPE_PRICE_MONTHLY);
 const TRIAL_DAYS = Math.max(1, parseInt(process.env.TRIAL_DAYS || "30", 10) || 30);
 const GRACE_DAYS = 3; // a late payment doesn't lock a teacher out mid-week
-// Once Eyes Up is on sale anyone can start a trial; before that, sign-up needs an invite.
-const OPEN_SIGNUP = process.env.OPEN_SIGNUP ? process.env.OPEN_SIGNUP === "1" : BILLING_ON;
+// Any teacher can create an account — no invite code. OPEN_SIGNUP=0 closes the door again
+// (sign-up then needs the invite code, TEACHER_PASSWORD) should it ever be needed.
+const OPEN_SIGNUP = process.env.OPEN_SIGNUP !== "0";
+// "Sign in with Google": dormant until a Google client ID is set on the host.
+const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || "").trim();
+const { verifyGoogleIdToken } = require("./lib/google");
 
 /* ------------------------------------------------------------------ */
 /* Optional persistent storage (Supabase/Postgres via DATABASE_URL).  */
@@ -139,6 +143,11 @@ if (process.env.DATABASE_URL) {
     // Who signs up: the school and the year levels they teach (comma list, e.g. "K,1,2").
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS school text`,
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS grades text`,
+    // Sign in with Google: Google's id for the person, and whether the account has a password
+    // its owner knows (false for accounts made, or reclaimed, through Google).
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS google_sub text`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS pass_set boolean NOT NULL DEFAULT true`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS teachers_google_sub ON teachers (google_sub) WHERE google_sub IS NOT NULL`,
     // Everyone who joined before plans existed keeps full access.
     `UPDATE teachers SET plan = 'free' WHERE plan IS NULL`,
     // Student pictures, saved the moment they arrive so nothing depends on
@@ -224,7 +233,7 @@ if (process.env.DATABASE_URL) {
 // AUTH_SECRET signs sign-ins. Set it separately on the host so the invite
 // code (TEACHER_PASSWORD) can be shared without also being the signing key.
 const AUTH_SECRET = process.env.AUTH_SECRET || TEACHER_PASSWORD || "eyesup-local-secret";
-const TEACHER_COLS = `id, username, display_name, pass_hash, favs, email, is_admin, status, plan, trial_ends_at, paid_until, stripe_customer, stripe_sub`;
+const TEACHER_COLS = `id, username, display_name, pass_hash, favs, email, is_admin, status, plan, trial_ends_at, paid_until, stripe_customer, stripe_sub, school, grades, google_sub, pass_set`;
 
 // Can this account start a class right now? Past lessons and data stay
 // readable whatever the answer — a lapsed teacher never loses their work.
@@ -534,6 +543,30 @@ function slugName(s) {
   return String(s || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").slice(0, 24);
 }
 
+// Make the account. If the sign-in name is taken, quietly number it (sarah.jones2, …).
+// On sale: new accounts start a free trial. Before that: full access.
+async function createTeacher({ displayName, base, hash, email, school, grades, googleSub }) {
+  const plan = BILLING_ON ? "trial" : "free";
+  const trialEnds = BILLING_ON ? new Date(Date.now() + TRIAL_DAYS * 86400000) : null;
+  if (base.length < 3) base = (base + ".teacher").slice(0, 24);
+  for (let n = 0; n < 30; n++) {
+    const u = n === 0 ? base : `${base.slice(0, 22)}${n + 1}`;
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO teachers (username, display_name, pass_hash, email, plan, trial_ends_at, last_seen_at, school, grades, google_sub, pass_set)
+         VALUES ($1, $2, $3, $4, $5, $6, now(), $7, $8, $9, $10) RETURNING id, username, display_name, pass_hash`,
+        [u, displayName || u, hash, email || null, plan, trialEnds, school || null, grades || null, googleSub || null, !googleSub]
+      );
+      return rows[0];
+    } catch (e) {
+      if (!String(e.message).includes("duplicate") || String(e.message).includes("google_sub")) throw e;
+    }
+  }
+  return null;
+}
+// A password nobody knows, for accounts that sign in with Google.
+const unusableHash = () => bcrypt.hashSync(crypto.randomBytes(32).toString("hex"), 10);
+
 app.post("/api/signup", async (req, res) => {
   if (!db) return res.status(400).json({ error: "storage_off" });
   if (limited(req, res, "signup", 60, 3600000)) return; // generous: a whole staff room can share one school address
@@ -545,37 +578,73 @@ app.post("/api/signup", async (req, res) => {
   if (!email) return res.status(400).json({ error: "bad_email" });
   const school = cleanSchool(req.body?.school);
   const grades = cleanGrades(req.body?.grades);
-  // On sale: new accounts start a free trial. Before that: full access.
-  const plan = BILLING_ON ? "trial" : "free";
-  const trialEnds = BILLING_ON ? new Date(Date.now() + TRIAL_DAYS * 86400000) : null;
   const displayName = String(name || "").trim().slice(0, 40);
-  let base = slugName(username || displayName);
+  const base = slugName(username || displayName);
   if (!displayName && !base) return res.status(400).json({ error: "bad_name" });
-  if (base.length < 3) base = (base + ".teacher").slice(0, 24);
   if (String(password || "").length < 6) return res.status(400).json({ error: "bad_pass" });
-  const hash = bcrypt.hashSync(String(password), 10);
-  // If the sign-in name is taken, quietly number it (sarah.jones2, …).
-  for (let n = 0; n < 30; n++) {
-    const u = n === 0 ? base : `${base.slice(0, 22)}${n + 1}`;
-    try {
-      const { rows } = await db.query(
-        `INSERT INTO teachers (username, display_name, pass_hash, email, plan, trial_ends_at, last_seen_at, school, grades)
-         VALUES ($1, $2, $3, $4, $5, $6, now(), $7, $8) RETURNING id, username, display_name, pass_hash`,
-        [u, displayName || u, hash, email || null, plan, trialEnds, school || null, grades || null]
-      );
-      return res.json({ token: signToken(rows[0].id, rows[0].pass_hash), name: rows[0].display_name, username: u });
-    } catch (e) {
-      if (!String(e.message).includes("duplicate")) return res.status(500).json({ error: "db_error" });
-    }
+  try {
+    const row = await createTeacher({ displayName, base, hash: bcrypt.hashSync(String(password), 10), email, school, grades });
+    if (!row) return res.status(409).json({ error: "taken" });
+    res.json({ token: signToken(row.id, row.pass_hash), name: row.display_name, username: row.username });
+  } catch {
+    res.status(500).json({ error: "db_error" });
   }
-  res.status(409).json({ error: "taken" });
+});
+
+// Sign in with Google. The browser hands over Google's signed note; we check it, then:
+// a known Google person → their account; a known email → that account, now tied to Google
+// (its old password stops working, because the email on a password account was never proven
+// and Google has just proven who owns it); otherwise a new account.
+app.post("/api/google", async (req, res) => {
+  if (!db) return res.status(400).json({ error: "storage_off" });
+  if (!GOOGLE_CLIENT_ID) return res.status(400).json({ error: "google_off" });
+  if (limited(req, res, "login", 80, 900000)) return;
+  let g;
+  try {
+    g = await verifyGoogleIdToken(req.body?.credential, GOOGLE_CLIENT_ID);
+  } catch {
+    return res.status(503).json({ error: "google_unavailable" });
+  }
+  if (!g) return res.status(403).json({ error: "bad_google" });
+  try {
+    let { rows } = await db.query(`SELECT * FROM teachers WHERE google_sub = $1 LIMIT 1`, [g.sub]);
+    let t = rows[0];
+    let created = false;
+    if (!t) {
+      ({ rows } = await db.query(`SELECT * FROM teachers WHERE email = $1 AND google_sub IS NULL ORDER BY id LIMIT 1`, [g.email]));
+      t = rows[0];
+      if (t) {
+        if (t.status === "disabled") return res.status(403).json({ error: "account_disabled" });
+        const hash = unusableHash();
+        await db.query(`UPDATE teachers SET google_sub = $1, pass_hash = $2, pass_set = false WHERE id = $3`, [g.sub, hash, t.id]);
+        t = { ...t, google_sub: g.sub, pass_hash: hash, pass_set: false };
+      }
+    }
+    if (!t) {
+      if (!OPEN_SIGNUP && TEACHER_PASSWORD && String(req.body?.invite || "").trim() !== TEACHER_PASSWORD)
+        return res.status(403).json({ error: "bad_invite" });
+      const displayName = g.name || g.email.split("@")[0].slice(0, 40);
+      const row = await createTeacher({
+        displayName, base: slugName(displayName) || "teacher", hash: unusableHash(), email: g.email,
+        school: cleanSchool(req.body?.school), grades: cleanGrades(req.body?.grades), googleSub: g.sub,
+      });
+      if (!row) return res.status(409).json({ error: "taken" });
+      t = row;
+      created = true;
+    }
+    if (t.status === "disabled") return res.status(403).json({ error: "account_disabled" });
+    res.json({ token: signToken(t.id, t.pass_hash), name: t.display_name, username: t.username, admin: !!t.is_admin, created });
+  } catch (e) {
+    console.error("google sign-in failed:", e.message);
+    res.status(500).json({ error: "db_error" });
+  }
 });
 
 // Signed-in teachers can hand the invite to a colleague as a link.
 app.get("/api/invite", async (req, res) => {
   const t = await authHttp(res, req.query.t);
   if (!t) return;
-  res.json({ invite: TEACHER_PASSWORD || "" });
+  res.json({ invite: OPEN_SIGNUP ? "" : TEACHER_PASSWORD || "" });
 });
 
 app.post("/api/login", async (req, res) => {
@@ -591,7 +660,7 @@ app.post("/api/login", async (req, res) => {
     );
     const t = rows[0];
     if (!t || !bcrypt.compareSync(String(req.body?.password || ""), t.pass_hash))
-      return res.status(403).json({ error: "bad_login" });
+      return res.status(403).json({ error: t && t.google_sub && t.pass_set === false ? "use_google" : "bad_login" });
     if (t.status === "disabled") return res.status(403).json({ error: "account_disabled" });
     res.json({ token: signToken(t.id, t.pass_hash), name: t.display_name, username: t.username, admin: !!t.is_admin });
   } catch {
@@ -690,12 +759,13 @@ app.get("/api/my-session", async (req, res) => {
 
 // What the sign-up screen needs to know before anyone is signed in.
 app.get("/api/config", (_req, res) => {
-  res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS, contactEmail: process.env.CONTACT_EMAIL || "", gradeOptions: GRADE_OPTIONS });
+  res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS, contactEmail: process.env.CONTACT_EMAIL || "", gradeOptions: GRADE_OPTIONS, googleClientId: db ? GOOGLE_CLIENT_ID : "" });
 });
 
 const mePayload = (t) => ({
   id: t.id, name: t.display_name, username: t.username, email: t.email || "", admin: !!t.is_admin,
   school: t.school || "", grades: t.grades || "", gradeOptions: GRADE_OPTIONS,
+  google: !!t.google_sub, hasPassword: t.pass_set !== false,
   billing: BILLING_ON, trialDays: TRIAL_DAYS, hasSubscription: !!t.stripe_sub, canManageBilling: !!t.stripe_customer,
   access: accessOf(t),
   tier: tierOf(t),
@@ -728,11 +798,12 @@ app.post("/api/me/password", async (req, res) => {
   if (limited(req, res, "pw", 10, 900000)) return;
   const t = await authHttp(res, req.body?.t);
   if (!t) return;
-  if (!bcrypt.compareSync(String(req.body?.current || ""), t.pass_hash)) return res.status(403).json({ error: "bad_login" });
+  // An account that signs in with Google has no password to give: it may simply set one.
+  if (t.pass_set !== false && !bcrypt.compareSync(String(req.body?.current || ""), t.pass_hash)) return res.status(403).json({ error: "bad_login" });
   if (String(req.body?.next || "").length < 6) return res.status(400).json({ error: "bad_pass" });
   try {
     const hash = bcrypt.hashSync(String(req.body.next), 10);
-    await db.query(`UPDATE teachers SET pass_hash = $1 WHERE id = $2`, [hash, t.id]);
+    await db.query(`UPDATE teachers SET pass_hash = $1, pass_set = true WHERE id = $2`, [hash, t.id]);
     res.json({ token: signToken(t.id, hash) });
   } catch {
     res.status(500).json({ error: "db_error" });
@@ -749,7 +820,7 @@ app.get("/api/admin/overview", async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT t.id, t.username, t.display_name, t.email, t.is_admin, t.status, t.plan, t.trial_ends_at, t.paid_until,
-              t.created_at, t.last_seen_at, t.note, t.stripe_sub, t.stripe_customer, t.school, t.grades,
+              t.created_at, t.last_seen_at, t.note, t.stripe_sub, t.stripe_customer, t.school, t.grades, t.google_sub,
               count(l.id)::int AS lessons,
               count(l.id) FILTER (WHERE l.saved_at > now() - interval '30 days')::int AS lessons_30d,
               max(l.saved_at) AS last_lesson,
@@ -763,6 +834,7 @@ app.get("/api/admin/overview", async (req, res) => {
       me: me.id,
       billing: { on: BILLING_ON, trialDays: TRIAL_DAYS, openSignup: OPEN_SIGNUP, yearly: !!STRIPE_PRICE_YEARLY, webhook: !!STRIPE_WEBHOOK_SECRET },
       gradeOptions: GRADE_OPTIONS,
+      google: !!GOOGLE_CLIENT_ID,
       ai: !!AI_KEY,
       separateSecret: !!process.env.AUTH_SECRET,
       live: { classes: live.length, students: live.reduce((a, s) => a + s.students.size, 0) },
@@ -771,7 +843,7 @@ app.get("/api/admin/overview", async (req, res) => {
         plan: r.plan || "free", trialEndsAt: r.trial_ends_at, paidUntil: r.paid_until, joined: r.created_at,
         lastSeen: r.last_seen_at, lastLesson: r.last_lesson, lessons: r.lessons, lessons30: r.lessons_30d,
         students: r.students, plans: r.plans, note: r.note || "", hasSubscription: !!r.stripe_sub,
-        school: r.school || "", grades: r.grades || "",
+        school: r.school || "", grades: r.grades || "", google: !!r.google_sub,
         access: accessOf(r),
       })),
     });
@@ -805,7 +877,7 @@ app.post("/api/admin/teacher/:id", async (req, res) => {
     if (action === "reset_password") {
       // Shown once to the owner, who passes it on; the teacher then changes it under My account.
       const pw = tempPassword();
-      await db.query(`UPDATE teachers SET pass_hash = $1 WHERE id = $2`, [bcrypt.hashSync(pw, 10), id]);
+      await db.query(`UPDATE teachers SET pass_hash = $1, pass_set = true WHERE id = $2`, [bcrypt.hashSync(pw, 10), id]);
       return res.json({ ok: true, password: pw, self });
     }
     if (action === "set_plan") {
@@ -4014,3 +4086,24 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Eyes Up running → http://localhost:${PORT}`);
 });
+
+// A deploy or restart begins with SIGTERM. Saving normally runs a few seconds behind the room,
+// so write every room down before leaving — otherwise a question asked seconds ago, or a class
+// that has only just sat down, is gone when the server comes back.
+let leaving = false;
+async function saveAllAndExit(signal) {
+  if (leaving) return;
+  leaving = true;
+  const rooms = [...sessions.values()];
+  if (db && rooms.length) console.log(`${signal}: saving ${rooms.length} room(s) before stopping`);
+  try {
+    await Promise.race([
+      Promise.allSettled(rooms.map((s) => { clearTimeout(s.persistTimer); s.persistTimer = null; return persistNow(s); })),
+      new Promise((r) => setTimeout(r, 8000)), // never hang a deploy on a slow database
+    ]);
+  } finally {
+    process.exit(0);
+  }
+}
+process.on("SIGTERM", () => saveAllAndExit("SIGTERM"));
+process.on("SIGINT", () => saveAllAndExit("SIGINT"));
