@@ -97,6 +97,8 @@ const MODES = {
                    ph: "Optional instruction, e.g. “Start at the top and go round”" },
   annotate:      { icon: "🖍️", name: "Annotate",     hint: "Upload an image — students draw on it", opts: null, imageUpload: true,
                    ph: "What should they mark up? e.g. “Circle the error / label the diagram”" },
+  annotate_caption: { icon: "💬", name: "Annotate + Writing", hint: "Upload an image — students mark it up and explain in writing", opts: null, imageUpload: true,
+                   ph: "e.g. “Circle the part that shows erosion and explain what is happening”" },
   image_drop:    { icon: "📥", name: "Drop an Image", hint: "Students drop, choose or photograph an image as their answer", opts: null,
                    ph: "What should they show? e.g. “A photo of your finished model”" },
   image_long:    { icon: "📓", name: "Image + Long Answer", hint: "Images plus a full written answer, sent together", opts: null,
@@ -123,7 +125,7 @@ const CATEGORIES = [
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
-  { label: "🎨 Draw & images", modes: ["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long"] },
+  { label: "🎨 Draw & images", modes: ["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long"] },
   { label: "🎵 Music", modes: ["compose_beginner", "compose", "compose_advanced"] },
   // Plan steps for the room tools; on the spot the tools have their own section under the grid, so these tiles show only in the plan picker.
   { label: TOOL_STEP_LABEL, modes: ["tool_timer", "tool_pick", "tool_groups", "tool_dice"] },
@@ -135,7 +137,7 @@ const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes where the teacher gates responses onto the classroom screen.
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "question_set" || m === "sketch" || m === "trace" || m === "annotate" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || m === "question_set" || m === "sketch" || m === "trace" || m === "annotate" || m === "annotate_caption" || m === "image_drop" || m === "image_caption" || m === "image_long" || m === "maths_board" || m === "counters_draw" ||
   m === "example_nonexample" || m === "post_its" || m === "phonics" || m === "working" ||
   m === "counters" || m === "table" || m === "dot_points" || m === "plus_minus" || m === "compose";
 
@@ -1217,14 +1219,14 @@ function renderLive() {
         .filter(Boolean)
         .join("<br/>")
     );
-  } else if (["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
+  } else if (["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
     const picsOf = (r) => (r.payload.images && r.payload.images.length ? r.payload.images : [r.payload.image]);
     const totalPics = itx.responses.reduce((n, r) => n + picsOf(r).length, 0);
     const source = itx.imageUrl
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.9rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
     const hint = itx.responses.length
-      ? `<p style="margin-top:0.8rem;font-size:0.9rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the classroom screen; click again to shrink it back.
+      ? `<p style="margin-top:0.8rem;font-size:0.9rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate", "annotate_caption"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the classroom screen; click again to shrink it back.
          ${onFreePlan() ? "" : `<a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a>`}</p>`
       : "";
     body = source + hint + revealCards((r) => {
@@ -1237,7 +1239,7 @@ function renderLive() {
             style="height:${pics.length > 1 ? 70 : 90}px;border-radius:8px;background:#fff;cursor:zoom-in;border:3px solid ${itx.spotlightId === id ? "var(--amber)" : "var(--line)"}" />`;
         })
         .join("")}</span>
-       ${pics.length > 1 ? `<span style="font-size:0.9rem;font-weight:800;color:var(--muted)">${pics.length} images</span>` : ""}
+       ${pics.length > 1 ? `<span style="font-size:0.9rem;font-weight:800;color:var(--muted)">${pics.length} ${["image_drop", "image_caption", "image_long"].includes(itx.mode) ? "images" : "drawings"}</span>` : ""}
        ${itx.mode === "trace" && r.payload.strokes?.length ? `<button type="button" class="reveal-btn" data-replay="${r.studentId}" title="Watch how this letter was formed, stroke by stroke" style="margin-left:0.4rem">▶ Replay · ${r.payload.strokes.filter((s) => s.tool !== "rubber").length} stroke${r.payload.strokes.filter((s) => s.tool !== "rubber").length === 1 ? "" : "s"}</button>` : ""}
        ${onScreen ? `<span style="font-size:0.9rem;font-weight:800;color:var(--amber)">◉ BIG ON SCREEN</span>` : ""}
        ${r.payload.text ? `<div style="font-size:0.9rem;margin-top:0.3rem;max-width:420px;max-height:9em;overflow:auto;white-space:pre-wrap">${esc(r.payload.text)}</div>` : ""}`;
@@ -1469,7 +1471,8 @@ function openStrokeReplay(r, itx) {
     bgx.globalAlpha = 0.28; bgx.drawImage(img, 0, 0, w, h); bgx.globalAlpha = 1;
     play();
   };
-  img.src = r.payload.image;
+  // the faint copy under the replay is the picture the strokes belong to (the newest, after Send another)
+  img.src = (r.payload.images?.length ? r.payload.images : [r.payload.image])[Number.isInteger(r.payload.strokesFor) ? r.payload.strokesFor : 0];
   el.querySelector("#srAgain").onclick = play;
   el.querySelector("#srSpeed").onchange = play;
 }

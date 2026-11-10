@@ -10,7 +10,7 @@ let state = null;
 let code = (new URLSearchParams(location.search).get("code") || "").toUpperCase();
 let retryUntil = 0; // after a class has been live, a vanished room is retried quietly for a while (server restart)
 let retryTimer = null;
-const DL_IMAGE_MODES = new Set(["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
+const DL_IMAGE_MODES = new Set(["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
 
 const MODE_TAGS = {
   tool_timer: "Timer", tool_pick: "Random student", tool_groups: "Random groups", tool_dice: "Question dice",
@@ -27,7 +27,7 @@ const MODE_TAGS = {
   notice_wonder: "Notice / Wonder", quick_challenge: "Quick Challenge",
   three_two_one: "3 – 2 – 1", before_after: "Before / After",
   venn: "Venn Diagram", multi_choice: "Multiple Choice", post_its: "Post-it Board",
-  smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate",
+  smiley: "Smiley Review", scale: "Where Do You Stand?", annotate: "Annotate", annotate_caption: "Annotate + Writing",
   picture_prompt: "Picture Prompt", picture_vote: "Picture Vote", phonics: "Build the Word",
   spelling: "Spelling Test", cloze: "Fill the Gaps", working: "Show Your Working",
   counters: "Build It With Counters", table: "Fill the Table", question_set: "Question Set", dot_points: "Dot Points", compose: "Make a Tune", link: "Website", plus_minus: "Plus & Minus",
@@ -613,7 +613,7 @@ function renderInteraction(itx) {
     body = renderSmileys(itx, agg);
   } else if (itx.mode === "scale") {
     body = renderScale(agg);
-  } else if (itx.mode === "annotate") {
+  } else if (itx.mode === "annotate" || itx.mode === "annotate_caption") {
     body = agg.sketches.length
       ? renderSketches(agg)
       : `${itx.imageUrl ? `<img src="${itx.imageUrl}" alt="image to annotate" style="max-height:45vh;max-width:80%;border-radius:14px;box-shadow:0 16px 44px rgba(0,0,0,0.45)" />` : ""}
@@ -673,7 +673,7 @@ function renderInteraction(itx) {
 
   // A spotlighted response (any type, except sketch which has its own stage)
   // replaces the body until tapped away.
-  if (agg?.spotlight && !["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
+  if (agg?.spotlight && !["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
     body = renderGenericSpotlight(agg.spotlight);
   }
 

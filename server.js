@@ -372,9 +372,10 @@ async function persistNow(session) {
 // answer replaces the earlier one).
 async function persistImage(session, itx, student, record) {
   if (!db || student.name === "👁 Preview") return;
-  const parts = (UPLOAD_MODES.has(itx.mode)
-    ? imgsOf(record).map((_, k) => session.respImages.get(`${itx.id}/${student.id}/${k}`))
-    : [record.payload.image]).map(imageBytes);
+  // Each picture is either parked bytes (photos, and a pad's set of drawings) or an inline data URL.
+  const parts = imgsOf(record)
+    .map((img, k) => (String(img).startsWith("data:") ? img : session.respImages.get(`${itx.id}/${student.id}/${k}`)))
+    .map(imageBytes);
   if (!parts.length || parts.some((m) => !m)) return;
   const at = new Date(session.createdAt);
   try {
@@ -1228,7 +1229,7 @@ const STEP_MODES = new Set([
   "long_response", "picture_prompt", "retrieval_sprint", "question_set", "table", "dot_points", "link", "compose", "exit_ticket", "finish_sentence", "give_example",
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
-  "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "trace", "annotate", "image_drop",
+  "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "trace", "annotate", "annotate_caption", "image_drop",
   "image_caption", "image_long", "slide", "deck",
   "tool_timer", "tool_pick", "tool_groups", "tool_dice", // room tools as lesson steps
 ]);
@@ -1958,7 +1959,9 @@ const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes whose answer is a picture (drawn, marked up, or uploaded).
-const IMAGE_MODES = new Set(["sketch", "trace", "annotate", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
+const IMAGE_MODES = new Set(["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
+// Drawing pads: a child can Send another — the whole set so far comes each time, newest last.
+const PAD_MODES = new Set(["sketch", "trace", "annotate", "annotate_caption", "maths_board", "counters_draw"]);
 // Uploaded (not drawn) pictures — stored server-side, sent to screens by URL.
 const UPLOAD_MODES = new Set(["image_drop", "image_caption", "image_long"]);
 const MAX_UPLOAD_IMAGES = 6; // per student, per activity
@@ -2089,7 +2092,7 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
 
   let imageUrl = null;
   if (
-    (mode === "annotate" || mode === "picture_prompt" || mode === "picture_vote" || mode === "phonics_cloze") &&
+    (mode === "annotate" || mode === "annotate_caption" || mode === "picture_prompt" || mode === "picture_vote" || mode === "phonics_cloze") &&
     typeof image === "string" &&
     /^data:image\/(png|jpeg|webp);base64,/.test(image) &&
     image.length < 900000
@@ -2179,7 +2182,8 @@ function buildSpotlight(itx, id = itx.spotlightId, peek = false) {
     const list = imgsOf(r);
     const k = Math.min(Math.max(0, parseInt(noteIdx, 10) || 0), Math.max(0, list.length - 1));
     // Letter Formation carries the stroke record too, so the board can play the tracing back as a little movie.
-    return { kind: "image", image: list[k], text: r.payload.text, name, sid: key, strokes: m === "trace" && Array.isArray(r.payload.strokes) ? r.payload.strokes : undefined };
+    const strokesFor = Number.isInteger(r.payload.strokesFor) ? r.payload.strokesFor : 0;
+    return { kind: "image", image: list[k], text: r.payload.text, name, sid: key, strokes: m === "trace" && k === strokesFor && Array.isArray(r.payload.strokes) ? r.payload.strokes : undefined };
   }
   if (m === "post_its") {
     const i = parseInt(noteIdx, 10);
@@ -2765,9 +2769,9 @@ function describePayload(itx, p) {
     return itx.fields.map((_, i) => `Q${i + 1}: ${(p.parts || [])[i] || "—"}`).join("   |   ");
   if (itx.fields)
     return (p.parts || []).filter(Boolean).join("  ·  ");
-  if (itx.mode === "image_caption" || itx.mode === "image_long") {
+  if (itx.mode === "image_caption" || itx.mode === "image_long" || itx.mode === "annotate_caption") {
     const n = imgsOf({ payload: p }).length;
-    const tag = n > 1 ? `(${n} images)` : "(image)";
+    const tag = itx.mode === "annotate_caption" ? (n > 1 ? `(${n} drawings)` : "(drawing)") : n > 1 ? `(${n} images)` : "(image)";
     return p.text ? `${tag} ${p.text}` : `${tag} submitted`;
   }
   if (itx.mode === "maths_board") return p.text ? `(board) ${p.text}` : "(board submitted, no answer typed)";
@@ -2776,7 +2780,7 @@ function describePayload(itx, p) {
     const n = imgsOf({ payload: p }).length;
     return n > 1 ? `(${n} images submitted)` : "(image submitted)";
   }
-  if (IMAGE_MODES.has(itx.mode)) return "(drawing submitted)";
+  if (IMAGE_MODES.has(itx.mode)) { const n = imgsOf({ payload: p }).length; return n > 1 ? `(${n} drawings submitted)` : "(drawing submitted)"; }
   if (itx.mode === "spelling")
     return itx.words
       .map((w, i) => `${p.answers[i] || "—"}${markMatch(p.answers[i], w) ? " ✓" : ` ✗(${w})`}`)
@@ -2898,7 +2902,7 @@ function buildSummary(session, { withImages = false } = {}) {
         item.images = [...itx.responses.values()]
           .filter((r) => r.name !== "👁 Preview")
           .flatMap((r) => imgsOf(r).map((image, k) => ({ name: r.name, image, text: k === 0 ? r.payload.text : undefined })));
-      if (itx.mode === "image_caption" || itx.mode === "image_long" || itx.mode === "maths_board")
+      if (itx.mode === "image_caption" || itx.mode === "image_long" || itx.mode === "annotate_caption" || itx.mode === "maths_board")
         item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
     }
     if (itx.mode === "counters") item.counterKind = itx.counterKind;
@@ -3187,12 +3191,12 @@ async function handle(ws, msg) {
     // One answer each unless the teacher has switched "change answers" on. Boards that students
     // add to one item at a time (Venn, Post-its, Plus/Minus, links) always take more, and so do the
     // picture activities: a child sends a photo, then more — each send is the whole set so far.
-    if (!session.allowChange && itx.responses.has(student.id) && !["venn", "post_its", "plus_minus", "link", "image_drop", "image_caption", "image_long"].includes(itx.mode)) return;
+    if (!session.allowChange && itx.responses.has(student.id) && !["venn", "post_its", "plus_minus", "link", "image_drop", "image_caption", "image_long"].includes(itx.mode) && !PAD_MODES.has(itx.mode)) return;
     const payload = sanitizePayload(itx, msg.payload);
     if (!payload) return;
-    if (UPLOAD_MODES.has(itx.mode)) {
-      // Full-size photos would multiply across every broadcast to every
-      // screen; park the bytes here and send everyone links instead.
+    if (UPLOAD_MODES.has(itx.mode) || (payload.images && payload.images.length > 1)) {
+      // Full-size photos (and a pad's second, third… drawing) would multiply across every
+      // broadcast to every screen; park the bytes here and send everyone links instead.
       const prefix = `${itx.id}/${student.id}/`;
       for (const key of [...session.respImages.keys()]) if (key.startsWith(prefix)) session.respImages.delete(key);
       // Keep one room from eating the server's memory with photos.
@@ -4017,27 +4021,33 @@ function sanitizePayload(itx, payload) {
   }
 
   if (IMAGE_MODES.has(itx.mode)) {
-    const image = String(payload.image || "");
     // Uploaded photos stay print-size (≈2000px), so they get more room.
     const cap = UPLOAD_MODES.has(itx.mode) ? 2600000 : 1400000; // drawings are bigger now that the pad fills an iPad
-    if (!/^data:image\/(png|jpeg);base64,/.test(image) || image.length > cap) return null;
-    if (itx.mode === "image_caption") {
+    // A drawing pad may send several pictures (Send another): the whole set so far, newest last.
+    const list = (Array.isArray(payload.images) && payload.images.length ? payload.images : [payload.image]).map((x) => String(x || ""));
+    if (!list.length || list.length > MAX_UPLOAD_IMAGES) return null;
+    if (!list.every((im) => /^data:image\/(png|jpeg);base64,/.test(im) && im.length <= cap)) return null;
+    if (list.reduce((a, im) => a + im.length, 0) > 9000000) return null;
+    const image = list[0];
+    const out = list.length > 1 ? { image, images: list } : { image };
+    if (itx.mode === "annotate_caption") {
       const text = String(payload.text || "").trim().slice(0, 1500);
       if (!text) return null; // the writing is half the answer
-      return { image, text };
+      return { ...out, text };
     }
     if (itx.mode === "maths_board") {
       const answer = String(payload.answer || "").trim().slice(0, 30);
       const mark = answer && itx.expected ? (markMatch(answer, itx.expected) ? " ✓" : " ✗") : "";
-      return { image, answer, text: answer ? `Answer: ${answer}${mark}` : undefined };
+      return { ...out, answer, text: answer ? `Answer: ${answer}${mark}` : undefined };
     }
     if (itx.mode === "trace") {
       // Letter Formation sends the stroke record too: how the letter was made, for the
-      // teacher's replay. Keep only well-formed strokes, within sane limits.
+      // teacher's replay. Keep only well-formed strokes, within sane limits. With several
+      // letters sent one after another, the record belongs to the newest.
       const strokes = sanitizeStrokes(payload.strokes);
-      return strokes ? { image, strokes } : { image };
+      return strokes ? { ...out, strokes, strokesFor: list.length - 1 } : out;
     }
-    return { image };
+    return out;
   }
 
   const textCap = itx.mode === "long_response" ? 3000 : itx.mode === "retrieval_sprint" ? 1500 : 500;

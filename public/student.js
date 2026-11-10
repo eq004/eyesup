@@ -16,6 +16,9 @@ let postNotes = []; // sticky notes this student has sent so far
 let dropImages = []; // pictures this student has added (Drop an Image and friends), sent or not
 let dropSent = 0; // how many of them have reached the teacher
 let dropText = ""; // the writing that went with them
+let padSent = []; // drawings this student has sent in this activity (Send another adds to the set)
+let padAnother = false; // the child tapped Send another: show a fresh pad instead of "Response received"
+const PAD_MODES = ["sketch", "annotate", "annotate_caption", "trace", "maths_board", "counters_draw"];
 let sprintDeadline = null; // retrieval-sprint countdown target
 let sprintTimer = null;
 let lastRenderKey = null; // skip re-renders that would wipe half-typed input
@@ -34,7 +37,7 @@ const MODE_NAMES = {
   notice_wonder: "👀 Notice / Wonder", quick_challenge: "🚀 Quick Challenge",
   three_two_one: "3️⃣ 3 – 2 – 1", before_after: "🔄 Before / After",
   venn: "◉ Venn Diagram", multi_choice: "🅰️ Multiple Choice", post_its: "🗒️ Post-its",
-  smiley: "😊 Smiley Review", scale: "🎚️ Scale", annotate: "🖍️ Annotate",
+  smiley: "😊 Smiley Review", scale: "🎚️ Scale", annotate: "🖍️ Annotate", annotate_caption: "🖍️ Annotate + Writing",
   picture_prompt: "🖼️ Picture Prompt", picture_vote: "🗳️ Picture Vote",
   phonics: "🔤 Phonics Keyboard",
   spelling: "🔡 Spelling Test", cloze: "▭ Cloze Passage", phonics_cloze: "🖼️ Picture Phonics", working: "🧮 Working Out",
@@ -343,6 +346,7 @@ function render(force) {
     pmItems = [];
     postNotes = [];
     dropImages = []; dropSent = 0; dropText = "";
+    padSent = []; padAnother = false;
     phonParts = [];
     workLines = [];
     workCur = "";
@@ -359,14 +363,20 @@ function render(force) {
   }
 
   // Venn, Post-its, Plus/Minus and the picture activities keep their input screen — students add more one by one.
-  if (state.submitted && !changingAnswer && !["venn", "post_its", "plus_minus", "link", "image_drop", "image_caption", "image_long"].includes(itx.mode)) {
+  if (state.submitted && !changingAnswer && !(padAnother && PAD_MODES.includes(itx.mode)) && !["venn", "post_its", "plus_minus", "link", "image_drop", "image_caption", "image_long"].includes(itx.mode)) {
+    // Drawing pads: the picture is in, and the child can send another one (up to six in all).
+    const pad = PAD_MODES.includes(itx.mode);
+    const n = pad ? padSent.length : 0;
     return show(`
       <div class="big-emoji">✓</div>
       <div class="state-title">Response received</div>
-      <p class="state-sub">Eyes up while the rest of the class finishes.</p>
+      <p class="state-sub">${n > 1 ? `${n} sent ✓ · ` : ""}Eyes up while the rest of the class finishes.</p>
+      ${pad && n < 6 ? `<button class="btn send" id="anotherBtn" style="margin-top:1rem;max-width:320px;margin-left:auto;margin-right:auto">➕ Send another</button>` : ""}
       ${state.allowChange ? `<button class="change-link" id="changeBtn">Change my answer</button>` : ""}`, () => {
       const cb = $("changeBtn");
       if (cb) cb.onclick = () => { changingAnswer = true; render(); };
+      const ab = $("anotherBtn");
+      if (ab) ab.onclick = () => { padAnother = true; render(true); };
     });
   }
 
@@ -1428,7 +1438,10 @@ function renderInteraction(itx) {
           }
         }
         o.drawImage(canvas, 0, 0);
-        submit({ image: out.toDataURL("image/jpeg", 0.85), answer });
+        const img = out.toDataURL("image/jpeg", 0.85);
+        const list = [...padSent, img].slice(-6); // Send another: the whole set so far
+        padSent = list; padAnother = false;
+        submit(list.length > 1 ? { images: list, image: list[0], answer } : { image: img, answer });
       };
       const isBlank = () => { const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data; for (let i = 3; i < d.length; i += 4 * 97) if (d[i]) return false; return true; };
       paint();
@@ -1698,8 +1711,9 @@ function renderInteraction(itx) {
   }
 
   /* --- sketch & annotate --- */
-  if (itx.mode === "sketch" || itx.mode === "annotate" || itx.mode === "trace") {
-    const anno = itx.mode === "annotate";
+  if (itx.mode === "sketch" || itx.mode === "annotate" || itx.mode === "annotate_caption" || itx.mode === "trace") {
+    const anno = itx.mode === "annotate" || itx.mode === "annotate_caption";
+    const withText = itx.mode === "annotate_caption";
     const tracing = itx.mode === "trace";
     show(`${h}
       <div class="pad-tools">
@@ -1708,8 +1722,10 @@ function renderInteraction(itx) {
         <button type="button" class="pad-tool" id="clearPad">↺ Clear all</button>
       </div>
       <div class="pad-wrap" id="padWrap"><canvas id="padBg" width="600" height="450"></canvas><canvas id="pad" width="600" height="450"></canvas></div>
+      ${withText ? `<textarea id="capText" rows="3" maxlength="1500" placeholder="Explain what you marked and why…"
+        style="width:100%;margin-top:0.6rem;font:inherit;padding:0.6rem 0.8rem;border:1.5px solid var(--line);border-radius:12px;resize:none"></textarea>` : ""}
       <div style="display:flex;gap:0.6rem;margin-top:0.8rem">
-        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0">${anno ? "Send my annotation" : tracing ? "Send my writing" : "Send my sketch"}</button>
+        <button class="btn send" id="sendBtn" style="flex:1;margin-top:0">${withText ? "Send my annotation + writing" : anno ? "Send my annotation" : tracing ? "Send my writing" : "Send my sketch"}</button>
       </div>
       <p class="hint">${anno ? "Draw on the image with your finger or mouse. The rubber only removes your drawing, not the picture." : tracing ? "Trace over the dotted letters with your finger. Start at the top." : "Draw with your finger or mouse. Use the rubber to fix mistakes."}</p>`, () => {
       // Two layers: the background (white, or the teacher's picture) underneath
@@ -1726,7 +1742,7 @@ function renderInteraction(itx) {
       document.querySelector("main").style.justifyContent = "flex-start";
       let padAspect = null; // height / width, fixed once the pad exists
       const fitPad = (first) => {
-        const controls = 116; // Send button + hint below the pad
+        const controls = 116 + (withText ? ($("capText")?.offsetHeight || 0) + 10 : 0); // Send button + hint (+ the writing box) below the pad
         const top = wrap.getBoundingClientRect().top;
         const availH = Math.max(260, window.innerHeight - top - controls);
         const availW = screenEl.clientWidth;
@@ -1915,8 +1931,14 @@ function renderInteraction(itx) {
         const o = out.getContext("2d");
         o.drawImage(bgCanvas, 0, 0);
         o.drawImage(canvas, 0, 0);
+        if (withText && !$("capText").value.trim()) { $("capText").focus(); $("capText").style.borderColor = "var(--red)"; return; }
         // annotations carry a photo background — jpeg keeps them small
-        const payload = { image: anno ? out.toDataURL("image/jpeg", 0.8) : out.toDataURL("image/png") };
+        const img = anno ? out.toDataURL("image/jpeg", 0.8) : out.toDataURL("image/png");
+        // Send another: every send carries the whole set so far, newest last.
+        const list = [...padSent, img].slice(-6);
+        padSent = list; padAnother = false;
+        const payload = list.length > 1 ? { images: list, image: list[0] } : { image: img };
+        if (withText) payload.text = $("capText").value.trim();
         if (rec) {
           recEnd();
           // the stroke record rides along with the picture (a letter is a few KB); skip it if it somehow balloons
