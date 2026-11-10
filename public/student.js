@@ -13,6 +13,9 @@ let matchShuffle = null; // shuffled display order for match-up choices
 let vennItems = []; // ideas this student has sorted so far
 let pmItems = []; // plus/minus points sent so far
 let postNotes = []; // sticky notes this student has sent so far
+let dropImages = []; // pictures this student has added (Drop an Image and friends), sent or not
+let dropSent = 0; // how many of them have reached the teacher
+let dropText = ""; // the writing that went with them
 let sprintDeadline = null; // retrieval-sprint countdown target
 let sprintTimer = null;
 let lastRenderKey = null; // skip re-renders that would wipe half-typed input
@@ -292,7 +295,7 @@ function render(force) {
   // a classmate submitting must never wipe this student's half-typed answer.
   if (state.submitted) clearTimeout(sendWatch); // the photos arrived
   if (changingAnswer && !state.allowChange) changingAnswer = false; // the teacher switched changes off mid-edit
-  const key = [state.phase, itx?.id, itx?.open, state.submitted, changingAnswer, state.allowChange, itx?.maxEach].join("|");
+  const key = [state.phase, itx?.id, itx?.open, state.submitted, state.submittedAt, changingAnswer, state.allowChange, itx?.maxEach].join("|");
   if (!force && key === lastRenderKey) return;
   lastRenderKey = key;
 
@@ -339,6 +342,7 @@ function render(force) {
     vennItems = [];
     pmItems = [];
     postNotes = [];
+    dropImages = []; dropSent = 0; dropText = "";
     phonParts = [];
     workLines = [];
     workCur = "";
@@ -354,8 +358,8 @@ function render(force) {
       <p class="state-sub">Responses are closed. Back to the room.</p>`);
   }
 
-  // Venn, Post-its and Plus/Minus keep their input screen — students add more one by one.
-  if (state.submitted && !changingAnswer && !["venn", "post_its", "plus_minus", "link"].includes(itx.mode)) {
+  // Venn, Post-its, Plus/Minus and the picture activities keep their input screen — students add more one by one.
+  if (state.submitted && !changingAnswer && !["venn", "post_its", "plus_minus", "link", "image_drop", "image_caption", "image_long"].includes(itx.mode)) {
     return show(`
       <div class="big-emoji">✓</div>
       <div class="state-title">Response received</div>
@@ -1596,10 +1600,15 @@ function renderInteraction(itx) {
         style="width:100%;margin-top:0.8rem;font:inherit;padding:0.7rem 0.8rem;border:1.5px solid var(--line);border-radius:12px;resize:vertical"></textarea>
         ${longText ? `<p class="hint" id="capCount" style="margin:0.2rem 0 0;text-align:right"></p>` : ""}` : ""}
       <button class="btn send" id="sendBtn" style="margin-top:0.8rem" disabled></button>`, () => {
-      const images = []; // print-size JPEG data URLs, in the order added
+      // The pictures live outside this screen (dropImages) so that sending doesn't end the activity:
+      // the sent ones stay, marked ✓, and the child can add more and send again. Each send carries
+      // the whole set, which replaces the earlier answer on the teacher's side.
+      const images = dropImages; // print-size JPEG data URLs, in the order added
       const file = $("dropFile"), grid = $("imgGrid");
       const textOf = () => (withText ? $("capText").value.trim() : "");
+      if (withText) $("capText").value = dropText;
       const paint = () => {
+        const sent = state.submitted ? Math.min(dropSent, images.length) : 0;
         const addTile = images.length < MAX
           ? `<button class="img-add ${images.length ? "" : "empty"}" id="imgAdd" type="button">
               ${images.length
@@ -1609,18 +1618,25 @@ function renderInteraction(itx) {
           : "";
         grid.classList.toggle("has-images", images.length > 0);
         grid.innerHTML = images
-          .map((src, i) => `<div class="img-tile"><img src="${src}" alt="your image ${i + 1}" /><span class="img-n">${i + 1}</span>
+          .map((src, i) => `<div class="img-tile ${i < sent ? "sent" : ""}"><img src="${src}" alt="your image ${i + 1}" /><span class="img-n">${i < sent ? "✓" : i + 1}</span>
             <button class="img-x" data-rm="${i}" type="button" aria-label="Remove image ${i + 1}">✕</button></div>`)
           .join("") + addTile;
-        grid.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); images.splice(+b.dataset.rm, 1); paint(); }));
+        grid.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); images.splice(+b.dataset.rm, 1); if (+b.dataset.rm < dropSent) dropSent = Math.max(0, dropSent - 1); paint(); }));
         const add = $("imgAdd");
         if (add) add.onclick = () => file.click();
-        $("imgCount").textContent = images.length ? `${images.length} of ${MAX} images${images.length < MAX ? " — you can add more" : ""}` : "";
-        const n = images.length;
-        $("sendBtn").textContent = n > 1
-          ? (withText ? `Send ${n} images + my answer` : `Send my ${n} images`)
-          : (withText ? (longText ? "Send image + my answer" : "Send image + writing") : "Send my image");
-        $("sendBtn").disabled = !n || (withText && !textOf());
+        const n = images.length, fresh = n - sent;
+        const textChanged = withText && sent > 0 && textOf() && textOf() !== dropText;
+        $("imgCount").textContent = sent
+          ? fresh
+            ? `${sent} sent ✓ · ${fresh} more to send`
+            : n >= MAX ? `${sent} sent ✓ — that's the most for one answer. Eyes up! 👀` : `${sent} sent ✓ — add more if you like`
+          : n ? `${n} of ${MAX} images${n < MAX ? " — you can add more" : ""}` : "";
+        $("sendBtn").textContent = sent
+          ? fresh ? `Send ${fresh} more image${fresh > 1 ? "s" : ""}` : textChanged ? "Send my new writing" : "Sent ✓"
+          : n > 1
+            ? (withText ? `Send ${n} images + my answer` : `Send my ${n} images`)
+            : (withText ? (longText ? "Send image + my answer" : "Send image + writing") : "Send my image");
+        $("sendBtn").disabled = !n || (withText && !textOf()) || (sent > 0 && !fresh && !textChanged);
       };
       // 1280 px on the long edge: sharp on the board, prints a page of work
       // legibly, and about a quarter of the old 2000 px size, so a whole class
@@ -1665,11 +1681,15 @@ function renderInteraction(itx) {
         };
       }
       $("sendBtn").onclick = () => {
-        if (!images.length || (withText && !textOf())) return;
+        if (!images.length || (withText && !textOf()) || $("sendBtn").disabled) return;
         const btn = $("sendBtn");
         btn.disabled = true;
-        btn.textContent = images.length > 1 ? `Sending ${images.length} images…` : "Sending…";
-        watchSend(btn, () => { btn.disabled = false; paint(); });
+        const fresh = images.length - (state.submitted ? Math.min(dropSent, images.length) : 0);
+        btn.textContent = fresh > 1 ? `Sending ${fresh} images…` : "Sending…";
+        const before = dropSent;
+        watchSend(btn, () => { dropSent = before; btn.disabled = false; paint(); });
+        dropSent = images.length; // optimistic; the server's "submitted" redraws the ✓ marks
+        dropText = textOf();
         submit(withText ? { images: [...images], text: textOf() } : { images: [...images] });
       };
       paint();

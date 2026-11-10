@@ -2656,6 +2656,7 @@ function studentState(session, student) {
     name: student.name,
     className: session.className,
     submitted,
+    submittedAt: submitted ? itx.responses.get(student.id).at || 0 : 0, // changes on every send, so a re-send redraws
     allowChange: session.allowChange,
     answerLimit: session.answerLimit,
     interaction:
@@ -3184,8 +3185,9 @@ async function handle(ws, msg) {
     if (!itx || !itx.open || !student || session.phase !== "interaction") return;
     if (msg.interactionId !== itx.id) return;
     // One answer each unless the teacher has switched "change answers" on. Boards that students
-    // add to one item at a time (Venn, Post-its, Plus/Minus, links) always take more.
-    if (!session.allowChange && itx.responses.has(student.id) && !["venn", "post_its", "plus_minus", "link"].includes(itx.mode)) return;
+    // add to one item at a time (Venn, Post-its, Plus/Minus, links) always take more, and so do the
+    // picture activities: a child sends a photo, then more — each send is the whole set so far.
+    if (!session.allowChange && itx.responses.has(student.id) && !["venn", "post_its", "plus_minus", "link", "image_drop", "image_caption", "image_long"].includes(itx.mode)) return;
     const payload = sanitizePayload(itx, msg.payload);
     if (!payload) return;
     if (UPLOAD_MODES.has(itx.mode)) {
