@@ -1768,7 +1768,7 @@ function renderInteraction(itx) {
           if (/[a-z]/i.test(ch)) {
             for (const f of kase === "both" ? ["upper", "lower"] : [kase]) {
               const L = f === "upper" ? ch.toUpperCase() : ch.toLowerCase();
-              out.push({ ch: L, url: `/trace/${f}/${guide}/${L}.svg` });
+              out.push({ ch: L, url: `/trace/${f}/${guide}/${L}.png` });
             }
           } else out.push({ ch });
         }
