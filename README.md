@@ -165,6 +165,10 @@ Plans are stored per teacher in the `lesson_plans` table (steps as JSON, picture
 
 A Mind Map idea is a short phrase, and it is never cut: the server keeps up to 120 characters per idea (was 40), the student box takes 500 characters of comma-separated ideas (was 160), and the classroom screen wraps each idea onto two or three lines at a slightly smaller size, steps it outward along its branch until it sits clear of the centre and of every other idea, and keeps it inside the picture. The central concept wraps too instead of ending in “…”. Ideas several students gave are bigger and carry ×n. The tile reads “Short text ideas branch around a concept” and the student box “Short ideas connected to it — separate with commas”.
 
+## Back to the dashboard from the classroom screen
+
+The classroom screen's top bar starts with **← Back to main dashboard**, a link to `/teacher` in the same window: the room keeps running, the dashboard picks its room up again, and the classroom screen can be reopened from the Classroom screen door.
+
 ## Send another (drawing pads) and Annotate + Writing
 
 On Sketch It, Annotate, Annotate + Writing, Letter Formation, Maths Board and Counters + Drawing, “Response received” now carries a **➕ Send another** button (up to six pictures per student): a fresh pad appears, and each send carries the whole set so far, newest last, replacing the earlier answer — the teacher's card grows (“2 drawings”), the classroom screen shows every picture, and the line reads “2 sent ✓”. The server accepts these re-sends without “Change answers” (`PAD_MODES`), and a set of two or more drawings is parked in the room's image store and sent to screens as links, like photos, so broadcasts stay light; the Letter Formation stroke record belongs to the newest picture (`strokesFor`) for the replay and the board movie.
