@@ -298,10 +298,9 @@ function joinTarget() {
 
 /* ---------------- corner tools: pick a student, timer ---------------- */
 
-let toolsOpen = (() => { try { return localStorage.getItem("eyesup_tools_open") === "1"; } catch { return false; } })();
+let toolsOpen = false; // the Tools tray starts closed on every visit
 function setToolsOpen(open) {
   toolsOpen = open;
-  try { localStorage.setItem("eyesup_tools_open", open ? "1" : "0"); } catch {}
   document.getElementById("toolsDock").classList.toggle("open", open);
   document.getElementById("toolsArrow").textContent = open ? "▼" : "▲";
 }

@@ -385,6 +385,7 @@ function buildModeGrid() {
 
 /* Folds and pins: which areas a teacher has folded away or let scroll, remembered on this computer. */
 const folds = (() => { try { return JSON.parse(localStorage.getItem("eyesup_folds") || "{}") || {}; } catch { return {}; } })();
+delete folds.tools; // 🧰 Room tools start folded on every visit, however they were left last time
 // Activity categories and Room tools start folded; ⭐ Favourites, Live now and the lesson strip start open.
 const foldDefault = (key) => (key.startsWith("cat:") && key !== "cat:favs") || key === "tools";
 const foldOn = (key) => (key in folds ? !!folds[key] : foldDefault(key));
