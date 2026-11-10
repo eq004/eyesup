@@ -23,7 +23,7 @@ const MODES = {
   /* words & ideas */
   word_cloud:    { icon: "☁️", name: "Word Cloud",    hint: "Words build a live cloud",        opts: null, multiOpt: true },
   one_word:      { icon: "🗣️", name: "One Word",     hint: "Exactly one word each",           opts: null },
-  mindmap:       { icon: "🕸️", name: "Mindmap",      hint: "Ideas branch around a concept",   opts: null,
+  mindmap:       { icon: "🕸️", name: "Mindmap",      hint: "Short text ideas branch around a concept",   opts: null,
                    ph: "The central concept, e.g. “Generative AI”", multiOpt: true },
   post_its:      { icon: "🗒️", name: "Post-its",     hint: "Sticky notes fill the board — screened or straight up", opts: null, postits: true, multiOpt: true },
   phonics:       { icon: "🔤", name: "Phonics Keyboard", hint: "Say a word — students build it from sounds", opts: null,

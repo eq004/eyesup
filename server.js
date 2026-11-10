@@ -3791,7 +3791,7 @@ function sanitizePayload(itx, payload) {
 
   if (WORD_MODES.has(itx.mode)) {
     let words = Array.isArray(payload.words) ? payload.words : [];
-    const maxLen = itx.mode === "mindmap" ? 40 : 30; // mindmap allows short phrases
+    const maxLen = itx.mode === "mindmap" ? 120 : 30; // a mindmap idea is a short phrase, kept whole
     const cap = itx.mode === "one_word" ? 1 : itx.maxEach || (itx.multi === false ? 1 : itx.mode === "mindmap" ? 6 : 5);
     const seen = new Set();
     words = words

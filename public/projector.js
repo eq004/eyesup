@@ -751,27 +751,60 @@ function renderMindmap(itx, agg) {
   const items = agg.words.slice(0, 22);
   if (!items.length) return `<p class="waiting-note">Ideas will branch out here as they land…</p>`;
   const W = 1200, H = 560, cx = W / 2, cy = H / 2;
+  // Whole ideas, never clipped: a long idea wraps onto two or three lines at a slightly smaller size,
+  // and every idea is kept inside the picture and clear of the others.
+  const wrap = (text, per) => {
+    const lines = [];
+    let cur = "";
+    for (const w of String(text).split(" ")) {
+      if (!cur) cur = w;
+      else if ((cur + " " + w).length <= per) cur += " " + w;
+      else { lines.push(cur); cur = w; }
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  };
   const max = Math.max(...items.map((w) => w.count));
+  const placed = [];
+  const centerLines = wrap(itx.prompt || "the idea", 22).slice(0, 3);
+  const centerRx = Math.min(230, 40 + Math.max(...centerLines.map((l) => l.length)) * 7.2);
+  const centerRy = 34 + centerLines.length * 14;
+  placed.push({ x: cx, y: cy, w: centerRx * 2 + 24, h: centerRy * 2 + 24 });
+  const overlaps = (a, b) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y - b.y) < (a.h + b.h) / 2;
   const nodes = items.map((w, i) => {
+    const label = w.word + (w.count > 1 ? ` ×${w.count}` : "");
+    let size = 23 + (max > 1 ? ((w.count - 1) / (max - 1)) * 17 : 5);
+    let lines = wrap(label, 20);
+    if (lines.length > 1) size = Math.round(size * (lines.length > 2 ? 0.8 : 0.9));
+    const lineH = size * 1.18;
+    const box = { w: Math.max(...lines.map((l) => l.length)) * size * 0.58 + 18, h: lines.length * lineH + 10 };
     const angle = i * 2.39996; // golden angle — organic spread
-    const r = 130 + 150 * Math.sqrt(i / Math.max(1, items.length - 1));
-    return {
-      ...w,
-      x: cx + Math.cos(angle) * r * 1.55,
-      y: cy + Math.sin(angle) * r * 0.78,
-      size: 20 + (max > 1 ? ((w.count - 1) / (max - 1)) * 22 : 8),
-      color: CLOUD_COLORS[i % CLOUD_COLORS.length],
-    };
+    // Step outward along the branch until the idea sits clear of everything placed so far.
+    let node = null;
+    for (let r = 120 + 130 * Math.sqrt(i / Math.max(1, items.length - 1)); r < 1400 && !node; r += 14) {
+      const cand = {
+        x: Math.min(W - box.w / 2 - 6, Math.max(box.w / 2 + 6, cx + Math.cos(angle) * r * 1.6)),
+        y: Math.min(H - box.h / 2 - 6, Math.max(box.h / 2 + 6, cy + Math.sin(angle) * r * 0.8)),
+        w: box.w, h: box.h,
+      };
+      if (!placed.some((p) => overlaps(p, cand))) node = cand;
+    }
+    if (!node) node = { x: cx + Math.cos(angle) * 420, y: cy + Math.sin(angle) * 230, w: box.w, h: box.h }; // crowded: tuck it in anyway
+    placed.push(node);
+    return { ...node, lines, size, lineH, color: CLOUD_COLORS[i % CLOUD_COLORS.length] };
   });
-  const center = itx.prompt || "the idea";
+  const text = (n, i) => {
+    const top = n.y - ((n.lines.length - 1) * n.lineH) / 2;
+    return `<text x="${n.x}" y="${top}" text-anchor="middle" dominant-baseline="middle" font-size="${n.size}" font-weight="800" fill="${n.color}"
+        style="animation:fade-in 0.5s ${(i % 10) * 0.05}s ease both">${n.lines.map((l, k) => `<tspan x="${n.x}" dy="${k ? n.lineH : 0}">${esc(l)}</tspan>`).join("")}</text>`;
+  };
+  const cTop = cy - ((centerLines.length - 1) * 27) / 2;
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:58vh" role="img" aria-label="class mindmap">
     ${nodes.map((n) => `<line x1="${cx}" y1="${cy}" x2="${n.x}" y2="${n.y}" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>`).join("")}
-    ${nodes.map((n, i) => `<text x="${n.x}" y="${n.y}" text-anchor="middle" dominant-baseline="middle"
-        font-size="${n.size}" font-weight="800" fill="${n.color}"
-        style="animation:fade-in 0.5s ${(i % 10) * 0.05}s ease both">${esc(n.word)}${n.count > 1 ? ` ×${n.count}` : ""}</text>`).join("")}
+    ${nodes.map(text).join("")}
     <g>
-      <ellipse cx="${cx}" cy="${cy}" rx="${Math.min(190, 40 + center.length * 7)}" ry="52" fill="#0f2a52" stroke="#7fa3dc" stroke-width="2"/>
-      <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="24" font-weight="800" fill="#eef3fa">${esc(center.length > 40 ? center.slice(0, 38) + "…" : center)}</text>
+      <ellipse cx="${cx}" cy="${cy}" rx="${centerRx}" ry="${centerRy}" fill="#0f2a52" stroke="#7fa3dc" stroke-width="2"/>
+      <text x="${cx}" y="${cTop}" text-anchor="middle" dominant-baseline="middle" font-size="24" font-weight="800" fill="#eef3fa">${centerLines.map((l, k) => `<tspan x="${cx}" dy="${k ? 27 : 0}">${esc(l)}</tspan>`).join("")}</text>
     </g>
   </svg>`;
 }

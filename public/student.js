@@ -405,10 +405,10 @@ function renderInteraction(itx) {
       : single
       ? (itx.mode === "mindmap" ? "One idea only" : "One word only")
       : itx.mode === "mindmap"
-      ? "Ideas connected to it — separate with commas"
+      ? "Short ideas connected to it — separate with commas"
       : "A word — or a few, separated by commas";
     show(`${h}
-      <input type="text" id="wordInput" autocomplete="off" placeholder="${ph}" maxlength="${single && itx.mode !== "mindmap" ? 30 : 160}" />
+      <input type="text" id="wordInput" autocomplete="off" placeholder="${ph}" maxlength="${single && itx.mode !== "mindmap" ? 30 : itx.mode === "mindmap" ? 500 : 160}" />
       <button class="btn send" id="sendBtn">Send</button>
       ${single ? `<p class="hint">Just one — make it count.</p>` : `<p class="hint">Up to ${capW} — separate them with commas.</p>`}`, () => {
       const input = $("wordInput");
