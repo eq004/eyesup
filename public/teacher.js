@@ -2420,6 +2420,7 @@ function applyFolds() {
   $("liveFold").textContent = foldOn("live") ? "▸" : "▾";
   $("liveFold").title = foldOn("live") ? "Open Live now" : "Fold Live now away (it opens again when something launches)";
   $("roomTools").classList.toggle("folded", foldOn("tools"));
+  $("roomToolsHead").classList.toggle("folded", foldOn("tools")); // the heading styles its chevron like every category heading (.mode-cat.folded)
   $("roomToolsHead").title = foldOn("tools") ? "Show the room tools" : "Fold the room tools away";
   setHeadH();
 }
