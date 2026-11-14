@@ -118,7 +118,11 @@ function saveSeat(code, sid) {
   sessionStorage.setItem("eyesup_sid", sid);
   sessionStorage.setItem("eyesup_code", code);
   const name = sessionStorage.getItem("eyesup_name") || localStorage.getItem("eyesup_name") || "";
-  try { localStorage.setItem("eyesup_seat", JSON.stringify({ code, sid, name, at: Date.now() })); } catch {}
+  // `via` is the code the child typed or scanned (a 5-letter class code, or the room code), so a
+  // shared iPad scanning a different class's sticker is never walked back into this seat.
+  const via = (pendingJoin && pendingJoin.code) || sessionStorage.getItem("eyesup_via") || code;
+  sessionStorage.setItem("eyesup_via", via);
+  try { localStorage.setItem("eyesup_seat", JSON.stringify({ code, sid, name, via, at: Date.now() })); } catch {}
 }
 function loadSeat() {
   const code = sessionStorage.getItem("eyesup_code"), sid = sessionStorage.getItem("eyesup_sid");
@@ -167,7 +171,7 @@ function connect() {
     // Back after a refresh, a closed tab or a reopened browser: pick the seat up again — unless this link points at a different room.
     const q = new URLSearchParams(location.search);
     const urlCode = (q.get("code") || q.get("c") || "").toUpperCase();
-    if (seat && (!urlCode || urlCode === seat.code || urlCode.length === 5)) ws.send(JSON.stringify({ type: "student_join", code: seat.code, studentId: seat.sid, name: seat.name }));
+    if (seat && (!urlCode || urlCode === seat.code || urlCode === seat.via)) ws.send(JSON.stringify({ type: "student_join", code: seat.code, studentId: seat.sid, name: seat.name }));
   };
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
@@ -2005,8 +2009,12 @@ function renderTiles(code, info, doJoin) {
 function renderJoin(forceFullForm, opts = {}) {
   const params = new URLSearchParams(location.search);
   const preset = opts.code !== undefined ? opts.code : (params.get("code") || params.get("c") || "").toUpperCase();
-  // The device remembers who you are — next lesson is one tap.
-  const savedName = opts.name !== undefined ? opts.name : localStorage.getItem("eyesup_name") || "";
+  // The device remembers who you are for the class you were last in, so coming back is one tap.
+  // A different code (another class's QR or sticker, as on an iPad shared between classes) starts
+  // with an empty name box, so the next child never joins as the last one.
+  const lastCode = (() => { try { return (localStorage.getItem("eyesup_last_code") || "").toUpperCase(); } catch { return ""; } })();
+  const sameClass = !preset || !lastCode || preset === lastCode;
+  const savedName = opts.name !== undefined ? opts.name : sameClass ? localStorage.getItem("eyesup_name") || "" : "";
 
   const say = (text, kind) => {
     const el = $("joinMsg");
@@ -2020,6 +2028,7 @@ function renderJoin(forceFullForm, opts = {}) {
     if (!n) { say("Type your first name so your teacher knows it's you.", "warn"); $("nameInput")?.focus(); return; }
     localStorage.setItem("eyesup_name", n);
     sessionStorage.setItem("eyesup_name", n);
+    try { localStorage.setItem("eyesup_last_code", c.toUpperCase()); } catch {}
     clearSeat();
     pendingJoin = { code: c, name: n };
     const btn = $("joinBtn") || $("quickJoin");
