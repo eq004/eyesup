@@ -101,9 +101,9 @@ const MODES = {
                    ph: "e.g. “Circle the part that shows erosion and explain what is happening”" },
   image_drop:    { icon: "📥", name: "Drop an Image", hint: "Students drop, choose or photograph an image as their answer", opts: null,
                    ph: "What should they show? e.g. “A photo of your finished model”" },
-  image_long:    { icon: "📓", name: "Image + Long Answer", hint: "Images plus a full written answer, sent together", opts: null,
+  image_long:    { icon: "📓", name: "Image + Long Answer", hint: "Images, each with its own full written answer", opts: null,
                    ph: "e.g. “Photograph each stage of your experiment and write up what happened”" },
-  image_caption: { icon: "📸", name: "Image + Writing", hint: "Images and a few sentences, submitted together", opts: null,
+  image_caption: { icon: "📸", name: "Image + Writing", hint: "Images, each with a few sentences about it", opts: null,
                    ph: "e.g. “Photograph your experiment and explain what happened”" },
 };
 
@@ -1243,7 +1243,9 @@ function renderLive() {
        ${pics.length > 1 ? `<span style="font-size:0.9rem;font-weight:800;color:var(--muted)">${pics.length} ${["image_drop", "image_caption", "image_long"].includes(itx.mode) ? "images" : "drawings"}</span>` : ""}
        ${itx.mode === "trace" && r.payload.strokes?.length ? `<button type="button" class="reveal-btn" data-replay="${r.studentId}" title="Watch how this letter was formed, stroke by stroke" style="margin-left:0.4rem">▶ Replay · ${r.payload.strokes.filter((s) => s.tool !== "rubber").length} stroke${r.payload.strokes.filter((s) => s.tool !== "rubber").length === 1 ? "" : "s"}</button>` : ""}
        ${onScreen ? `<span style="font-size:0.9rem;font-weight:800;color:var(--amber)">◉ BIG ON SCREEN</span>` : ""}
-       ${r.payload.text ? `<div style="font-size:0.9rem;margin-top:0.3rem;max-width:420px;max-height:9em;overflow:auto;white-space:pre-wrap">${esc(r.payload.text)}</div>` : ""}`;
+       ${Array.isArray(r.payload.texts) && pics.length > 1
+         ? `<div style="font-size:0.9rem;margin-top:0.3rem;max-width:420px;max-height:12em;overflow:auto">${pics.map((_, k) => `<div style="margin-top:0.25rem;white-space:pre-wrap"><b style="color:var(--muted)">Image ${k + 1}:</b> ${esc(r.payload.texts[k] || "")}</div>`).join("")}</div>`
+         : r.payload.text ? `<div style="font-size:0.9rem;margin-top:0.3rem;max-width:420px;max-height:9em;overflow:auto;white-space:pre-wrap">${esc(r.payload.text)}</div>` : ""}`;
     });
   } else if (itx.mode === "phonics") {
     body = revealCards((r) => phonChips(r.payload.parts));

@@ -15,7 +15,8 @@ let pmItems = []; // plus/minus points sent so far
 let postNotes = []; // sticky notes this student has sent so far
 let dropImages = []; // pictures this student has added (Drop an Image and friends), sent or not
 let dropSent = 0; // how many of them have reached the teacher
-let dropText = ""; // the writing that went with them
+let dropTexts = []; // the writing that goes with each of them (Image + Writing, Image + Long Answer)
+let sentTexts = []; // the writing as it was at the last send, to notice edits
 let padSent = []; // drawings this student has sent in this activity (Send another adds to the set)
 let padAnother = false; // the child tapped Send another: show a fresh pad instead of "Response received"
 const PAD_MODES = ["sketch", "annotate", "annotate_caption", "trace", "maths_board", "counters_draw"];
@@ -345,7 +346,7 @@ function render(force) {
     vennItems = [];
     pmItems = [];
     postNotes = [];
-    dropImages = []; dropSent = 0; dropText = "";
+    dropImages = []; dropSent = 0; dropTexts = []; sentTexts = [];
     padSent = []; padAnother = false;
     phonParts = [];
     workLines = [];
@@ -1605,51 +1606,69 @@ function renderInteraction(itx) {
     const withText = itx.mode !== "image_drop";
     const longText = itx.mode === "image_long";
     show(`${h}
-      <div id="imgGrid" class="img-grid"></div>
+      <div id="imgGrid" class="${withText ? "img-rows" : "img-grid"}"></div>
       <input type="file" id="dropFile" accept="image/*" multiple style="display:none" />
       <p class="hint" id="imgCount" style="margin:0.4rem 0 0"></p>
-      ${withText ? `<textarea id="capText" rows="${longText ? 10 : 4}" maxlength="${longText ? 3000 : 1500}"
-        placeholder="${longText ? "Write your full answer here…" : "Write a few sentences about your images…"}"
-        style="width:100%;margin-top:0.8rem;font:inherit;padding:0.7rem 0.8rem;border:1.5px solid var(--line);border-radius:12px;resize:vertical"></textarea>
-        ${longText ? `<p class="hint" id="capCount" style="margin:0.2rem 0 0;text-align:right"></p>` : ""}` : ""}
       <button class="btn send" id="sendBtn" style="margin-top:0.8rem" disabled></button>`, () => {
       // The pictures live outside this screen (dropImages) so that sending doesn't end the activity:
       // the sent ones stay, marked ✓, and the child can add more and send again. Each send carries
-      // the whole set, which replaces the earlier answer on the teacher's side.
+      // the whole set, which replaces the earlier answer on the teacher's side. In Image + Writing
+      // and Image + Long Answer every picture has its own writing (dropTexts[i] goes with dropImages[i]).
       const images = dropImages; // print-size JPEG data URLs, in the order added
+      const texts = dropTexts;
       const file = $("dropFile"), grid = $("imgGrid");
-      const textOf = () => (withText ? $("capText").value.trim() : "");
-      if (withText) $("capText").value = dropText;
+      const textAt = (i) => (withText ? (texts[i] || "").trim() : "");
+      const allWritten = () => !withText || images.every((_, i) => textAt(i));
+      const sentNow = () => (state.submitted ? Math.min(dropSent, images.length) : 0);
+      // Counts and the Send button only — typing must not rebuild the boxes under the child's fingers.
+      const refresh = () => {
+        const sent = sentNow();
+        const n = images.length, fresh = n - sent;
+        const textChanged = withText && sent > 0 && images.some((_, i) => i < sent && textAt(i) && textAt(i) !== (sentTexts[i] || ""));
+        $("imgCount").textContent = sent
+          ? fresh
+            ? `${sent} sent ✓ · ${fresh} more to send${withText && !allWritten() ? " — write about each new picture first" : ""}`
+            : n >= MAX ? `${sent} sent ✓ — that's the most for one answer. Eyes up! 👀` : `${sent} sent ✓ — add more if you like`
+          : n
+            ? `${n} of ${MAX} images${n < MAX ? " — you can add more" : ""}${withText && !allWritten() ? " · write about each picture" : ""}`
+            : "";
+        $("sendBtn").textContent = sent
+          ? fresh ? `Send ${fresh} more image${fresh > 1 ? "s" : ""}${withText ? " + writing" : ""}` : textChanged ? "Send my new writing" : "Sent ✓"
+          : n > 1
+            ? (withText ? `Send ${n} images + my writing` : `Send my ${n} images`)
+            : (withText ? (longText ? "Send image + my answer" : "Send image + writing") : "Send my image");
+        $("sendBtn").disabled = !n || !allWritten() || (sent > 0 && !fresh && !textChanged);
+      };
       const paint = () => {
-        const sent = state.submitted ? Math.min(dropSent, images.length) : 0;
+        const sent = sentNow();
+        const tile = (src, i) => `<div class="img-tile ${i < sent ? "sent" : ""}"><img src="${src}" alt="your image ${i + 1}" /><span class="img-n">${i < sent ? "✓" : i + 1}</span>
+            <button class="img-x" data-rm="${i}" type="button" aria-label="Remove image ${i + 1}">✕</button></div>`;
         const addTile = images.length < MAX
-          ? `<button class="img-add ${images.length ? "" : "empty"}" id="imgAdd" type="button">
+          ? `<button class="img-add ${images.length ? (withText ? "row" : "") : "empty"}" id="imgAdd" type="button">
               ${images.length
-                ? `<span style="font-size:1.6rem">＋</span><span>Add another</span>`
-                : `<span style="font-size:2rem">📥</span><b>Drop images here</b><span class="hint" style="margin:0">or tap to choose photos — or take one. Up to ${MAX}.</span>`}
+                ? `<span style="font-size:1.6rem">＋</span><span>Add another${withText ? " picture" : ""}</span>`
+                : `<span style="font-size:2rem">📥</span><b>Drop images here</b><span class="hint" style="margin:0">or tap to choose photos — or take one. Up to ${MAX}.${withText ? " Each picture gets its own writing." : ""}</span>`}
             </button>`
           : "";
         grid.classList.toggle("has-images", images.length > 0);
-        grid.innerHTML = images
-          .map((src, i) => `<div class="img-tile ${i < sent ? "sent" : ""}"><img src="${src}" alt="your image ${i + 1}" /><span class="img-n">${i < sent ? "✓" : i + 1}</span>
-            <button class="img-x" data-rm="${i}" type="button" aria-label="Remove image ${i + 1}">✕</button></div>`)
-          .join("") + addTile;
-        grid.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); images.splice(+b.dataset.rm, 1); if (+b.dataset.rm < dropSent) dropSent = Math.max(0, dropSent - 1); paint(); }));
+        grid.innerHTML = withText
+          ? images
+              .map((src, i) => `<div class="img-row ${i < sent ? "sent" : ""}">${tile(src, i)}
+                <textarea data-t="${i}" rows="${longText ? 5 : 3}" maxlength="${longText ? 3000 : 1500}" aria-label="Writing about image ${i + 1}"
+                  placeholder="${longText ? `Your full answer about picture ${i + 1}…` : `Write about picture ${i + 1}…`}">${esc(texts[i] || "")}</textarea></div>`)
+              .join("") + addTile
+          : images.map(tile).join("") + addTile;
+        grid.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = (e) => {
+          e.stopPropagation();
+          const i = +b.dataset.rm;
+          images.splice(i, 1); texts.splice(i, 1); sentTexts.splice(i, 1);
+          if (i < dropSent) dropSent = Math.max(0, dropSent - 1);
+          paint();
+        }));
+        grid.querySelectorAll("textarea[data-t]").forEach((t) => (t.oninput = () => { texts[+t.dataset.t] = t.value; refresh(); }));
         const add = $("imgAdd");
         if (add) add.onclick = () => file.click();
-        const n = images.length, fresh = n - sent;
-        const textChanged = withText && sent > 0 && textOf() && textOf() !== dropText;
-        $("imgCount").textContent = sent
-          ? fresh
-            ? `${sent} sent ✓ · ${fresh} more to send`
-            : n >= MAX ? `${sent} sent ✓ — that's the most for one answer. Eyes up! 👀` : `${sent} sent ✓ — add more if you like`
-          : n ? `${n} of ${MAX} images${n < MAX ? " — you can add more" : ""}` : "";
-        $("sendBtn").textContent = sent
-          ? fresh ? `Send ${fresh} more image${fresh > 1 ? "s" : ""}` : textChanged ? "Send my new writing" : "Sent ✓"
-          : n > 1
-            ? (withText ? `Send ${n} images + my answer` : `Send my ${n} images`)
-            : (withText ? (longText ? "Send image + my answer" : "Send image + writing") : "Send my image");
-        $("sendBtn").disabled = !n || (withText && !textOf()) || (sent > 0 && !fresh && !textChanged);
+        refresh();
       };
       // 1280 px on the long edge: sharp on the board, prints a page of work
       // legibly, and about a quarter of the old 2000 px size, so a whole class
@@ -1677,33 +1696,28 @@ function renderInteraction(itx) {
         if (picked.length > room) $("imgCount").textContent = `Only ${MAX} images fit — the first ${room} were added.`;
         for (const f of picked.slice(0, room)) {
           const url = await shrink(f);
-          if (url) images.push(url);
+          if (url) { images.push(url); texts.push(""); }
           paint();
         }
         file.value = "";
+        if (withText) { const boxes = grid.querySelectorAll("textarea[data-t]"); const last = boxes[boxes.length - 1]; if (last && !last.value) last.focus(); }
       };
       file.onchange = () => addFiles(file.files);
       ["dragenter", "dragover"].forEach((ev) => grid.addEventListener(ev, (e) => { e.preventDefault(); grid.classList.add("drag"); }));
       ["dragleave", "drop"].forEach((ev) => grid.addEventListener(ev, (e) => { e.preventDefault(); grid.classList.remove("drag"); }));
       grid.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
       document.onpaste = (e) => { if (e.clipboardData?.files?.length) addFiles(e.clipboardData.files); };
-      if (withText) {
-        $("capText").oninput = () => {
-          if (longText) $("capCount").textContent = `${$("capText").value.length} / 3000`;
-          paint();
-        };
-      }
       $("sendBtn").onclick = () => {
-        if (!images.length || (withText && !textOf()) || $("sendBtn").disabled) return;
+        if (!images.length || !allWritten() || $("sendBtn").disabled) return;
         const btn = $("sendBtn");
         btn.disabled = true;
-        const fresh = images.length - (state.submitted ? Math.min(dropSent, images.length) : 0);
+        const fresh = images.length - sentNow();
         btn.textContent = fresh > 1 ? `Sending ${fresh} images…` : "Sending…";
-        const before = dropSent;
-        watchSend(btn, () => { dropSent = before; btn.disabled = false; paint(); });
+        const before = dropSent, beforeTexts = [...sentTexts];
+        watchSend(btn, () => { dropSent = before; sentTexts = beforeTexts; btn.disabled = false; paint(); });
         dropSent = images.length; // optimistic; the server's "submitted" redraws the ✓ marks
-        dropText = textOf();
-        submit(withText ? { images: [...images], text: textOf() } : { images: [...images] });
+        sentTexts = images.map((_, i) => textAt(i));
+        submit(withText ? { images: [...images], texts: sentTexts.slice() } : { images: [...images] });
       };
       paint();
     });

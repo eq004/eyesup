@@ -283,6 +283,16 @@
   .img-add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; aspect-ratio: 1; border: 2px dashed var(--line); border-radius: 12px; background: var(--surface); color: var(--ink-soft); font: inherit; font-weight: 700; font-size: 0.8rem; cursor: pointer; }
   .img-add.empty { aspect-ratio: auto; padding: 1.8rem 1rem; font-size: 0.95rem; }
   .img-add:hover { border-color: var(--accent); }
+  /* Image + Writing / Image + Long Answer: one row per picture, its own writing box beside it. */
+  .img-rows { display: flex; flex-direction: column; gap: 0.6rem; }
+  .img-rows.drag { outline: 3px dashed var(--accent); outline-offset: 4px; border-radius: 14px; }
+  .img-row { display: flex; gap: 0.7rem; align-items: stretch; }
+  .img-row .img-tile { width: 120px; flex: none; }
+  .img-row textarea { flex: 1; min-width: 0; font: inherit; padding: 0.6rem 0.75rem; border: 1.5px solid var(--line); border-radius: 12px; resize: vertical; background: #fff; }
+  .img-row textarea:focus { outline: none; border-color: var(--accent); }
+  .img-row.sent textarea { border-color: var(--green); }
+  .img-add.row { aspect-ratio: auto; flex-direction: row; justify-content: center; gap: 0.5rem; padding: 0.7rem 1rem; width: 100%; font-size: 0.95rem; }
+  @media (max-width: 520px) { .img-row { flex-direction: column; } .img-row .img-tile { width: 100%; aspect-ratio: 16 / 9; } }
   /* maths board: counters + drawing on one surface */
   .mb-tools { display: flex; gap: 0.4rem; justify-content: center; margin-bottom: 0.5rem; }
   .mb-tools button { font: inherit; font-weight: 800; font-size: 0.85rem; padding: 0.45rem 0.8rem; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); }

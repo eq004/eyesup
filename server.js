@@ -368,6 +368,10 @@ async function persistNow(session) {
   }
 }
 
+// The writing that belongs to picture k of an answer: its own text in Image + Writing and
+// Image + Long Answer (texts[k]); otherwise the answer's one text sits with the first picture.
+const textOfPicture = (p, k) => (Array.isArray(p.texts) ? p.texts[k] || null : k === 0 ? p.text || null : null);
+
 // A student's picture goes straight to the archive (upsert: a changed
 // answer replaces the earlier one).
 async function persistImage(session, itx, student, record) {
@@ -391,7 +395,7 @@ async function persistImage(session, itx, student, record) {
          ON CONFLICT (lesson_code, lesson_created_at, itx_id, student_id, img_index)
          DO UPDATE SET student_name = $5, mime = $7, data = $8, text = $9, created_at = now()`,
         [session.code, at, itx.id, student.id, student.name, itx.mode, parts[k].mime,
-         parts[k].buf, k === 0 ? record.payload.text || null : null, k]
+         parts[k].buf, textOfPicture(record.payload, k), k]
       );
     }
   } catch (e) {
@@ -1206,7 +1210,7 @@ app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
       if (n > 1) base += ` (${n})`;
       const ext = x.mime === "image/jpeg" ? "jpg" : x.mime.replace("image/", "");
       files.push({ name: `${folder}${base}.${ext}`, data: x.data });
-      if (x.text) captions.set(folder, (captions.get(folder) || []).concat(`${x.student_name}: ${x.text}`));
+      if (x.text) captions.set(folder, (captions.get(folder) || []).concat(`${base}: ${x.text}`)); // named like its file ("Ava 2: …")
     }
     for (const [folder, lines] of captions) files.push({ name: `${folder}captions.txt`, data: Buffer.from(lines.join("\n\n") + "\n", "utf8") });
     const lessonName = safeName(lesson.title || `Lesson ${lesson.code}`);
@@ -1797,8 +1801,9 @@ function imageFilesFor(session, itx, folder) {
       seen.set(base, n);
       if (n > 1) base += ` (${n})`;
       files.push({ name: `${folder}${base}.${ext === "jpeg" ? "jpg" : ext}`, data: x.buf });
+      const words = textOfPicture(r.payload, k);
+      if (words) captions.push(`${base}: ${words}`); // one line per picture, named like its file
     }
-    if (r.payload.text) captions.push(`${r.name}: ${r.payload.text}`);
   }
   if (captions.length) files.push({ name: `${folder}captions.txt`, data: Buffer.from(captions.join("\n\n") + "\n", "utf8") });
   return files;
@@ -2183,7 +2188,7 @@ function buildSpotlight(itx, id = itx.spotlightId, peek = false) {
     const k = Math.min(Math.max(0, parseInt(noteIdx, 10) || 0), Math.max(0, list.length - 1));
     // Letter Formation carries the stroke record too, so the board can play the tracing back as a little movie.
     const strokesFor = Number.isInteger(r.payload.strokesFor) ? r.payload.strokesFor : 0;
-    return { kind: "image", image: list[k], text: r.payload.text, name, sid: key, strokes: m === "trace" && k === strokesFor && Array.isArray(r.payload.strokes) ? r.payload.strokes : undefined };
+    return { kind: "image", image: list[k], text: textOfPicture(r.payload, k) || undefined, name, sid: key, strokes: m === "trace" && k === strokesFor && Array.isArray(r.payload.strokes) ? r.payload.strokes : undefined };
   }
   if (m === "post_its") {
     const i = parseInt(noteIdx, 10);
@@ -2374,7 +2379,7 @@ function aggregate(session, itx) {
       const list = imgsOf(r);
       return list.map((image, k) => ({
         sid: k ? `${sid}|${k}` : sid, group: sid, k, of: list.length,
-        image, text: k === 0 ? r.payload.text : undefined, name: nm(r),
+        image, text: textOfPicture(r.payload, k) || undefined, name: nm(r),
       }));
     });
     return { ...base, sketches: revealed, revealedCount: shown.length };
@@ -2901,7 +2906,7 @@ function buildSummary(session, { withImages = false } = {}) {
       if (withImages)
         item.images = [...itx.responses.values()]
           .filter((r) => r.name !== "👁 Preview")
-          .flatMap((r) => imgsOf(r).map((image, k) => ({ name: r.name, image, text: k === 0 ? r.payload.text : undefined })));
+          .flatMap((r) => imgsOf(r).map((image, k) => ({ name: r.name, image, text: textOfPicture(r.payload, k) || undefined })));
       if (itx.mode === "image_caption" || itx.mode === "image_long" || itx.mode === "annotate_caption" || itx.mode === "maths_board")
         item.answers = [...itx.responses.values()].map((r) => r.payload.text).filter(Boolean).slice(0, 40);
     }
@@ -4013,9 +4018,15 @@ function sanitizePayload(itx, payload) {
     }
     if (total > 14000000) return null;
     if (itx.mode === "image_caption" || itx.mode === "image_long") {
-      const text = String(payload.text || "").trim().slice(0, itx.mode === "image_long" ? 3000 : 1500);
-      if (!text) return null; // the writing is half the answer
-      return { images: list, image: list[0], text };
+      // Each picture carries its own writing (texts[k] goes with images[k]); `text` is the
+      // whole answer in one string for the summary line, CSV, marking and AI summaries.
+      const max = itx.mode === "image_long" ? 3000 : 1500;
+      const given = Array.isArray(payload.texts) ? payload.texts : [payload.text];
+      const texts = list.map((_, k) => String(given[k] || "").trim().slice(0, max));
+      if (!texts[0]) return null; // the writing is half the answer
+      if (Array.isArray(payload.texts) && texts.some((t) => !t)) return null; // every picture needs its words
+      const text = texts.length > 1 ? texts.map((t, k) => `Image ${k + 1}: ${t}`).join("\n\n") : texts[0];
+      return { images: list, image: list[0], texts, text };
     }
     return { images: list, image: list[0] };
   }
