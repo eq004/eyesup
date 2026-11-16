@@ -103,6 +103,8 @@ const MODES = {
                    ph: "What should they show? e.g. “A photo of your finished model”" },
   image_long:    { icon: "📓", name: "Image + Long Answer", hint: "Images, each with its own full written answer", opts: null,
                    ph: "e.g. “Photograph each stage of your experiment and write up what happened”" },
+  video_drop:    { icon: "🎬", name: "Drop a Video", hint: "Students send one short clip — stop motion, a performance, an experiment. Video add-on.", opts: null, videoUI: true,
+                   ph: "What should the video show? e.g. “Your finished stop-motion”" },
   image_caption: { icon: "📸", name: "Image + Writing", hint: "Images, each with a few sentences about it", opts: null,
                    ph: "e.g. “Photograph your experiment and explain what happened”" },
 };
@@ -111,7 +113,10 @@ const TOOL_STEP_LABEL = "🧰 Room tools";
 // The Free plan's activities (room tools are always included). Everything else shows a 🔒 on the Free plan.
 const FREE_MODES = new Set(["short_answer", "word_cloud", "mindmap", "post_its", "agree_disagree"]);
 const onFreePlan = () => (state?.tier || me?.tier) === "free";
-const isLocked = (key) => onFreePlan() && !MODES[key]?.toolUI && !FREE_MODES.has(MODES[key]?.launchAs || key);
+// Drop a Video is the Video add-on: locked unless the owner has switched it on for this account.
+const videoOn = () => !!(state?.video ?? me?.video);
+const videoLocked = (key) => key === "video_drop" && !videoOn();
+const isLocked = (key) => videoLocked(key) || (onFreePlan() && !MODES[key]?.toolUI && !FREE_MODES.has(MODES[key]?.launchAs || key));
 Object.assign(MODES, {
   tool_timer:  { icon: "⏱", name: "Timer", hint: "A countdown on the classroom screen — 30 seconds to 15 minutes", opts: null, toolUI: "timer" },
   tool_pick:   { icon: "🎲", name: "Random student", hint: "Picks someone at random — no repeats until everyone has had a turn", opts: null, toolUI: "pick" },
@@ -125,7 +130,7 @@ const CATEGORIES = [
   { label: "🪞 Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "🧩 Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "🧪 Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
-  { label: "🎨 Draw & images", modes: ["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long"] },
+  { label: "🎨 Draw & images", modes: ["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "video_drop"] },
   { label: "🎵 Music", modes: ["compose_beginner", "compose", "compose_advanced"] },
   // Plan steps for the room tools; on the spot the tools have their own section under the grid, so these tiles show only in the plan picker.
   { label: TOOL_STEP_LABEL, modes: ["tool_timer", "tool_pick", "tool_groups", "tool_dice"] },
@@ -244,7 +249,8 @@ function connect() {
       showSubscribe(msg.reason);
       return;
     }
-    if (msg.type === "error" && (msg.error === "locked_activity" || msg.error === "locked_plans" || msg.error === "locked_downloads")) {
+    if (msg.type === "error" && msg.error === "video_unavailable") { toast("Video storage isn't connected on this site yet, so clips can't be sent."); return; }
+    if (msg.type === "error" && (msg.error === "locked_activity" || msg.error === "locked_plans" || msg.error === "locked_downloads" || msg.error === "locked_video")) {
       showSubscribe(msg.error);
       return;
     }
@@ -360,10 +366,10 @@ function buildModeGrid() {
     const b = document.createElement("button");
     b.className = `mode-tile ${locked ? "locked" : ""}`;
     b.innerHTML = `<span class="fav-star ${isFav ? "on" : ""}" title="${isFav ? "Remove from favourites" : "Favourite — pins it up top here and on your phone remote"}">${isFav ? "★" : "☆"}</span>
-      ${locked ? `<span class="lock" title="Part of the Individual plan">🔒</span>` : ""}
+      ${locked ? `<span class="lock" title="${videoLocked(key) ? "Video add-on" : "Part of the Individual plan"}">🔒</span>` : ""}
       <span class="icon">${m.icon}</span><span class="name">${m.name}</span><span class="hint">${m.hint}</span>`;
     // Switching between image modes keeps the image you already loaded.
-    b.onclick = () => (locked ? showSubscribe("locked_activity") : openComposer(key, !!(MODES[key].imageUpload && composerImage)));
+    b.onclick = () => (locked ? showSubscribe(videoLocked(key) ? "locked_video" : "locked_activity") : openComposer(key, !!(MODES[key].imageUpload && composerImage)));
     b.querySelector(".fav-star").onclick = (e) => {
       e.stopPropagation();
       const next = isFav ? favs.filter((f) => f !== key) : [...favs, key];
@@ -666,6 +672,18 @@ function openComposer(key, keepImage) {
     durSel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
     opts.appendChild(durSel);
   }
+  if (m.videoUI) {
+    const sel = document.createElement("select");
+    sel.id = "vidSel";
+    sel.innerHTML = `<option value="15">🎬 up to 15 seconds</option><option value="30" selected>🎬 up to 30 seconds</option><option value="60">🎬 up to 1 minute</option><option value="90">🎬 up to 1½ minutes</option>`;
+    sel.style.cssText = "margin-top:0.55rem;border:1px solid #c7d4e8;border-radius:10px;padding:0.5rem 0.7rem;background:#fff;font-size:0.9rem";
+    opts.appendChild(sel);
+    const note = document.createElement("p");
+    note.className = "hint";
+    note.style.marginTop = "0.5rem";
+    note.textContent = "One clip per student. Clips go straight to secure video storage, play on the classroom screen, and are kept for 30 days — download the ZIP to keep them.";
+    opts.appendChild(note);
+  }
   if (m.traceUI) {
     const wrap = document.createElement("div");
     wrap.innerHTML = `
@@ -848,6 +866,7 @@ function readComposer() {
   const counterKind = m.forceKind || undefined;
   const tableRows = m.tableUI ? parseInt($("rowsSel").value, 10) : undefined;
   const sprintSeconds = m.sprintUI ? parseInt($("durSel").value, 10) : undefined;
+  const maxSeconds = m.videoUI ? parseInt($("vidSel").value, 10) : undefined;
   const sig = m.tuneUI ? ($("sigSel") ? $("sigSel").value : "4/4") : undefined;
   const bars = m.tuneUI ? parseInt($("barsSel").value, 10) : undefined;
   const level = m.tuneUI ? m.forceLevel : undefined;
@@ -866,7 +885,7 @@ function readComposer() {
     });
     if (!pairImages.some(Boolean)) pairImages = undefined;
   }
-  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, trace, traceCase, traceGuide, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, optionImages, pairImages };
+  return { mode: m.launchAs || composerModeKey, prompt, options, correct, moderated, multi, image: composerImage || undefined, passage, wordBank, expected, trace, traceCase, traceGuide, counterKind, tableRows, sprintSeconds, maxSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, optionImages, pairImages };
 }
 
 /* ---------------- rendering ---------------- */
@@ -1220,15 +1239,17 @@ function renderLive() {
         .filter(Boolean)
         .join("<br/>")
     );
-  } else if (["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
+  } else if (["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "video_drop"].includes(itx.mode)) {
     const picsOf = (r) => (r.payload.images && r.payload.images.length ? r.payload.images : [r.payload.image]);
     const totalPics = itx.responses.reduce((n, r) => n + picsOf(r).length, 0);
     const source = itx.imageUrl
       ? `<div style="margin-top:0.9rem"><img src="${itx.imageUrl}" alt="source image" style="max-height:110px;border-radius:8px;border:1px solid var(--line)" /> <span style="font-size:0.9rem;color:var(--muted)">← what they're drawing on</span></div>`
       : "";
     const hint = itx.responses.length
-      ? `<p style="margin-top:0.8rem;font-size:0.9rem;color:var(--muted)">Click ${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate", "annotate_caption"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up on the classroom screen; click again to shrink it back.
-         ${onFreePlan() ? "" : `<a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a>`}</p>`
+      ? `<p style="margin-top:0.8rem;font-size:0.9rem;color:var(--muted)">Click ${itx.mode === "video_drop" ? "a clip to play it big" : `${["maths_board", "counters_draw"].includes(itx.mode) ? "a board" : ["sketch", "trace", "annotate", "annotate_caption"].includes(itx.mode) ? "a drawing" : "an image"} to blow it up`} on the classroom screen; click again to ${itx.mode === "video_drop" ? "stop" : "shrink it back"}.
+         ${onFreePlan() ? "" : itx.mode === "video_drop"
+           ? `<a href="/api/videos/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} clip${totalPics === 1 ? "" : "s"} as ZIP</a> <span style="color:var(--muted)">· kept for 30 days</span>`
+           : `<a href="/api/images/${state.code}/${itx.id}?${authQuery()}" style="margin-left:0.6rem;font-weight:800;color:var(--accent)">⬇ Download all ${totalPics} image${totalPics === 1 ? "" : "s"} as ZIP</a>`}</p>`
       : "";
     body = source + hint + revealCards((r) => {
       const pics = picsOf(r);
@@ -1242,7 +1263,8 @@ function renderLive() {
         .join("")}</span>
        ${pics.length > 1 ? `<span style="font-size:0.9rem;font-weight:800;color:var(--muted)">${pics.length} ${["image_drop", "image_caption", "image_long"].includes(itx.mode) ? "images" : "drawings"}</span>` : ""}
        ${itx.mode === "trace" && r.payload.strokes?.length ? `<button type="button" class="reveal-btn" data-replay="${r.studentId}" title="Watch how this letter was formed, stroke by stroke" style="margin-left:0.4rem">▶ Replay · ${r.payload.strokes.filter((s) => s.tool !== "rubber").length} stroke${r.payload.strokes.filter((s) => s.tool !== "rubber").length === 1 ? "" : "s"}</button>` : ""}
-       ${onScreen ? `<span style="font-size:0.9rem;font-weight:800;color:var(--amber)">◉ BIG ON SCREEN</span>` : ""}
+       ${itx.mode === "video_drop" ? (r.payload.video?.failed ? `<span style="font-size:0.9rem;font-weight:800;color:var(--red)">✗ couldn't be processed</span>` : r.payload.video?.ready ? `<span style="font-size:0.9rem;font-weight:800;color:var(--green)">▶ ready${r.payload.video.duration ? ` · ${r.payload.video.duration} s` : ""}</span>` : `<span style="font-size:0.9rem;font-weight:800;color:var(--muted)">⏳ converting…</span>`) : ""}
+       ${onScreen ? `<span style="font-size:0.9rem;font-weight:800;color:var(--amber)">◉ ${itx.mode === "video_drop" ? "PLAYING ON SCREEN" : "BIG ON SCREEN"}</span>` : ""}
        ${Array.isArray(r.payload.texts) && pics.length > 1
          ? `<div style="font-size:0.9rem;margin-top:0.3rem;max-width:420px;max-height:12em;overflow:auto">${pics.map((_, k) => `<div style="margin-top:0.25rem;white-space:pre-wrap"><b style="color:var(--muted)">Image ${k + 1}:</b> ${esc(r.payload.texts[k] || "")}</div>`).join("")}</div>`
          : r.payload.text ? `<div style="font-size:0.9rem;margin-top:0.3rem;max-width:420px;max-height:9em;overflow:auto;white-space:pre-wrap">${esc(r.payload.text)}</div>` : ""}`;
@@ -1499,7 +1521,7 @@ function renderSummary(s) {
         d = it.distribution.map((x) => `${esc(x.label)}: ${x.count}`).join(" · ");
       if (it.ranked) d = "Class order: " + it.ranked.map((r) => esc(r.label)).join(" → ");
       if (it.matchStats) d = it.matchStats.map((m) => `${esc(m.pair)} (${m.correctPct}%)`).join(" · ");
-      if (it.sketchCount != null) d = ["image_drop", "image_caption", "image_long"].includes(it.mode) ? `${it.sketchCount} student${it.sketchCount === 1 ? "" : "s"} sent image${it.sketchCount === 1 ? "" : "s"} submitted` : `${it.sketchCount} sketch${it.sketchCount === 1 ? "" : "es"} drawn`;
+      if (it.sketchCount != null) d = it.mode === "video_drop" ? `${it.sketchCount} video clip${it.sketchCount === 1 ? "" : "s"} sent` : ["image_drop", "image_caption", "image_long"].includes(it.mode) ? `${it.sketchCount} student${it.sketchCount === 1 ? "" : "s"} sent image${it.sketchCount === 1 ? "" : "s"} submitted` : `${it.sketchCount} sketch${it.sketchCount === 1 ? "" : "es"} drawn`;
       if (it.answers && it.answers.length)
         d = it.answers.slice(0, 5).map(esc).join(" — ") + (it.answers.length > 5 ? " …" : "");
       if (it.topWords && it.topWords.length)
@@ -2247,6 +2269,7 @@ async function showSubscribe(reason) {
     locked_activity: ["This activity is in the Individual plan", "The Free plan includes Short Answer, Word Cloud, Mind Map, Post-its, Agree / Disagree and the room tools. Individual unlocks all 60+ activities, lesson plans and downloads."],
     locked_plans: ["Lesson plans are in the Individual plan", "Plan your questions and slides ahead of time and teach them with ▶ Next. Individual unlocks lesson plans, every activity and downloads."],
     locked_downloads: ["Downloads are in the Individual plan", "Reports, picture ZIPs and CSVs of every question come with Individual. Your lessons are still kept and viewable here."],
+    locked_video: ["Drop a Video is a premium add-on", "Students send a short clip — a stop-motion, a performance, an experiment — straight to the classroom screen, kept for 30 days with every clip in one ZIP. The Video add-on is being switched on account by account; ask us to turn it on for yours."],
   }[reason] || ["Subscribe to Eyes Up", ""];
   const locked = false; // nothing locks a teacher out any more: the Free plan is always there
   $("subSheet").innerHTML = `
@@ -2646,6 +2669,7 @@ function stepDetail(st) {
   if (st.trace) bits.push(`✍️ Trace <b>${esc(st.trace)}</b>${st.traceCase === "upper" ? " · capitals" : st.traceCase === "both" ? " · Aa both" : ""}${st.traceGuide === "dots" ? " · dots only" : ""}`);
   if (st.url) bits.push(`🔗 ${esc(st.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 70))}`);
   if (st.sprintSeconds) bits.push(`⏱ ${st.sprintSeconds / 60} min`);
+  if (st.maxSeconds) bits.push(`🎬 up to ${st.maxSeconds} s`);
   return bits.join(" &nbsp; ");
 }
 
@@ -3104,6 +3128,7 @@ function fillComposer(st) {
   }
   if (m.tableUI && $("rowsSel") && st.tableRows) $("rowsSel").value = String(st.tableRows);
   if (m.sprintUI && $("durSel") && st.sprintSeconds) $("durSel").value = String(st.sprintSeconds);
+  if (m.videoUI && $("vidSel") && st.maxSeconds) $("vidSel").value = String(st.maxSeconds);
   if (m.tuneUI) { if ($("sigSel") && st.sig) $("sigSel").value = st.sig; if ($("barsSel") && st.bars) $("barsSel").value = String(st.bars); if ($("staffSel") && st.staff) $("staffSel").value = st.staff; if ($("keysSel")) $("keysSel").value = st.keys === false ? "0" : "1"; if ($("chordsSel")) $("chordsSel").value = st.chords === false ? "0" : "1"; if ($("keySel")) $("keySel").value = String(st.key || 0); }
   if (m.postits && $("modSel")) $("modSel").value = st.moderated ? "1" : "0";
   if (m.multiOpt && $("multiSel")) $("multiSel").value = st.multi === false ? "0" : "1";

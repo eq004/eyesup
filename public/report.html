@@ -366,7 +366,7 @@ function renderReport(s, recovered) {
       const noun = it.mode === "maths_board" || it.mode === "counters_draw" ? ["board", "boards"] : ["image_drop", "image_caption", "image_long"].includes(it.mode) ? ["image", "images"] : ["sketch", "sketches"];
       body = it.images && it.images.length
         ? `${window._imgLinks ? `<a class="dl-btn" href="${window._imgLinks.per(it)}">⬇ Download these ${it.images.length} image${it.images.length === 1 ? "" : "s"} (ZIP)</a>` : ""}<div class="img-gallery">${it.images
-            .map((im) => `<figure><img src="${im.image}" alt="student ${noun[0]}" />${im.text ? `<p class="img-text">${esc(im.text)}</p>` : ""}${im.name && !it.anonymous ? `<figcaption>${esc(im.name)}</figcaption>` : ""}</figure>`)
+            .map((im) => `<figure><img src="${im.image}" alt="student ${noun[0]}" />${im.text ? `<p class="img-text">${esc(im.text)}</p>` : ""}${im.name && !it.anonymous ? `<figcaption>${esc(im.name)}</figcaption>` : ""}${it.mode === "video_drop" ? (() => { const v = (it.videos || []).find((x) => x.name === im.name); return v ? `<p class="img-text">${v.ready && v.iframe ? `<a href="${v.iframe}" target="_blank" rel="noopener">▶ Play clip${v.duration ? ` (${v.duration} s)` : ""}</a>` : v.status === "expired" ? "🎬 clip expired" : "🎬 clip not ready"}</p>` : ""; })() : ""}</figure>`)
             .join("")}</div>`
         : `<p style="color:var(--ink-soft);margin-top:0.4rem">${it.sketchCount} ${it.sketchCount === 1 ? noun[0] : noun[1]} submitted — no stored pictures for this activity.</p>`;
     } else if (it.topWords && it.topWords.length) {

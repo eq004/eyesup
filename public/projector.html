@@ -243,6 +243,10 @@
     box-shadow: 0 12px 32px rgba(0,0,0,0.35);
   }
   .sketch-card img { display: block; width: clamp(160px, 18vw, 240px); border-radius: 10px; }
+  /* Drop a Video: a play mark over the poster frame, and the player when a clip is spotlighted */
+  .sketch-card { position: relative; }
+  .play-badge { position: absolute; left: 50%; top: clamp(60px, 7vw, 90px); transform: translate(-50%, -50%); width: 56px; height: 56px; border-radius: 50%; background: rgba(7, 23, 47, 0.78); color: #fff; font-size: 1.5rem; display: grid; place-items: center; pointer-events: none; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4); }
+  .spot-video iframe { display: block; width: min(92vw, 1100px); aspect-ratio: 16 / 9; border: 0; border-radius: 14px; background: #000; margin: 0 auto; }
   .sketch-cap { max-width: clamp(160px, 18vw, 240px); margin-top: 0.5rem; font-size: 0.85rem; line-height: 1.35; color: #0f1c30; text-align: left; overflow-wrap: anywhere;
     display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .sketch-more { display: flex; gap: 4px; margin-top: 4px; max-width: clamp(160px, 18vw, 240px); flex-wrap: wrap; }

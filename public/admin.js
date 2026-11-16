@@ -94,6 +94,7 @@ function render() {
     [data.google, "Sign in with Google", data.google ? "On — teachers can use their Google account." : "Not connected yet (needs a Google client ID). Name and password work as always."],
     [data.separateSecret, "Separate sign-in secret", data.separateSecret ? "Set." : "Not set yet. Recommended now that anyone can sign up."],
     [data.ai, "AI summaries", data.ai ? "On." : "Off — needs an Anthropic API key."],
+    [data.videoReady, "Video storage (Cloudflare Stream)", data.videoReady ? "Connected — Drop a Video works for accounts with the Video add-on." : "Not connected yet (needs CF_ACCOUNT_ID and CF_STREAM_TOKEN on the host). Drop a Video stays locked for everyone until then."],
   ];
 
   wrap.innerHTML = `
@@ -136,7 +137,7 @@ function render() {
         <thead><tr><th>Teacher</th><th>Plan</th><th class="num">Lessons</th><th class="num">Last 30 days</th><th class="num">Students</th><th>Last lesson</th><th>Joined</th><th></th></tr></thead>
         <tbody>${shown
           .map((t) => `<tr class="${t.status === "disabled" ? "off" : ""}">
-            <td class="who"><b>${esc(t.name)}</b><small>${esc(t.username)}${t.email ? ` · ${esc(t.email)}` : ""}${t.google ? " · Google sign-in" : ""}</small>${t.school || t.grades ? `<small>🏫 ${esc([t.school, gradesLabel(t.grades)].filter(Boolean).join(" · "))}</small>` : ""}${t.note ? `<small>📝 ${esc(t.note)}</small>` : ""}</td>
+            <td class="who"><b>${esc(t.name)}</b><small>${esc(t.username)}${t.email ? ` · ${esc(t.email)}` : ""}${t.google ? " · Google sign-in" : ""}${t.video ? " · 🎬 Video add-on" : ""}</small>${t.school || t.grades ? `<small>🏫 ${esc([t.school, gradesLabel(t.grades)].filter(Boolean).join(" · "))}</small>` : ""}${t.note ? `<small>📝 ${esc(t.note)}</small>` : ""}</td>
             <td>${badge(t)}</td>
             <td class="num">${t.lessons}</td>
             <td class="num">${t.lessons30}</td>
@@ -215,6 +216,11 @@ function openManage(id) {
     <div class="actions"><button class="btn-s primary" id="mSavePlan" ${t.admin ? "disabled" : ""}>Save plan</button></div>
 
     <hr />
+    <div class="row"><label for="mVideo" style="display:flex;align-items:center;gap:0.5rem"><input type="checkbox" id="mVideo" ${t.video ? "checked" : ""} /> 🎬 Video add-on (Drop a Video)</label></div>
+    <p class="muted" style="font-size:0.8rem;margin-top:0.4rem">Premium only: off for every account unless you switch it on here. Clips are kept 30 days.${data.videoReady ? "" : " Video storage isn't connected yet, so clips can't be sent even when this is on."}</p>
+    <div class="actions"><button class="btn-s primary" id="mSaveVideo">Save video add-on</button></div>
+
+    <hr />
     <div class="actions">
       <button class="btn-s" id="mReset">🔑 Give a new password</button>
       ${self ? "" : `<button class="btn-s ${t.status === "disabled" ? "" : "danger"}" id="mToggle">${t.status === "disabled" ? "✓ Switch account back on" : "⛔ Switch account off"}</button>`}
@@ -244,6 +250,7 @@ function openManage(id) {
   sheet.querySelector("#mClose").onclick = closeSheet;
   sheet.querySelector("#mSaveDetails").onclick = () =>
     done(() => act(id, { action: "set_details", email: sheet.querySelector("#mEmail").value, note: sheet.querySelector("#mNote").value, school: sheet.querySelector("#mSchool").value, grades: sheet.querySelector("#mGrades").value }), "Saved ✓");
+  sheet.querySelector("#mSaveVideo").onclick = () => done(() => act(id, { action: "set_video", video: sheet.querySelector("#mVideo").checked }), "Saved ✓");
   sheet.querySelector("#mSavePlan").onclick = async () => {
     const plan = planSel.value;
     const until = plan === "free" ? null : `${sheet.querySelector("#mUntil").value}T23:59:59`;

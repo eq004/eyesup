@@ -138,7 +138,8 @@
         if (x.ok === true) row.right += 1;
         if (x.ok === false) row.wrong += 1;
         const pics = (it.images || []).filter((im) => canonical(im.name) === k).map((im) => im.image);
-        row.answers.push({ index: i, item: it, response: x.response, ok: x.ok, score: x.score, images: pics });
+        const vids = (it.videos || []).filter((v) => canonical(v.name) === k);
+        row.answers.push({ index: i, item: it, response: x.response, ok: x.ok, score: x.score, images: pics, videos: vids });
       });
     });
     const markable = counted.filter(({ it }) => it.markable).length;

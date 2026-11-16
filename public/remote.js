@@ -83,6 +83,7 @@ const MODES = {
   image_drop:    { icon: "📥", name: "Drop an Image", ph: "What should they show? e.g. “A photo of your model”" },
   image_caption: { icon: "📸", name: "Image + Writing", ph: "e.g. “Photograph your experiment and explain it”" },
   image_long:    { icon: "📓", name: "Image + Long Answer", ph: "e.g. “Photograph each stage and write it up”" },
+  video_drop:    { icon: "🎬", name: "Drop a Video", ph: "e.g. “Your finished stop-motion”" },
 };
 
 const CATEGORIES = [
@@ -92,7 +93,7 @@ const CATEGORIES = [
   { label: "Reflect", modes: ["three_two_one", "notice_wonder", "before_after", "plus_minus", "muddiest_point", "ask_question"] },
   { label: "Arrange & match", modes: ["ranking", "put_in_order", "match_up", "venn"] },
   { label: "Practise & test", modes: ["spelling", "cloze", "working", "counters", "tens_ones", "maths_board", "counters_draw"] },
-  { label: "Draw & images", modes: ["sketch", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long"] },
+  { label: "Draw & images", modes: ["sketch", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "video_drop"] },
   { label: "Music", modes: ["compose_beginner", "compose", "compose_advanced"] },
 ];
 
@@ -100,7 +101,7 @@ const TEXT_MODES = new Set(["short_answer", "predict", "ask_question", "exit_tic
 const STRUCTURED = new Set(["three_two_one", "notice_wonder", "before_after"]);
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 const revealMode = (m) =>
-  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["question_set", "sketch", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "dot_points", "plus_minus", "compose"].includes(m);
+  TEXT_MODES.has(m) || STRUCTURED.has(m) || ["question_set", "sketch", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "video_drop", "maths_board", "counters_draw", "example_nonexample", "post_its", "phonics", "working", "counters", "table", "dot_points", "plus_minus", "compose"].includes(m);
 
 // No autocorrect, auto-capitals or spell-check on anything typed here (covers boxes drawn later too).
 function noAutocorrect(root) {
@@ -256,7 +257,7 @@ function bindActions() {
     const [sid, i] = b.dataset.note.split("|");
     send({ type: "reveal", studentId: sid, noteIndex: +i });
   }));
-  main.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => (b.dataset.locked ? toast("This activity is in the Individual plan — subscribe from My account on the computer") : openComposer(b.dataset.open))));
+  main.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => (b.dataset.locked ? toast(b.dataset.open === "video_drop" ? "Drop a Video is a premium add-on — ask to have it switched on for your account" : "This activity is in the Individual plan — subscribe from My account on the computer") : openComposer(b.dataset.open))));
   main.querySelectorAll("[data-jump]").forEach((b) => (b.onclick = () => send({ type: "jump_to_step", index: +b.dataset.jump })));
   main.querySelectorAll("[data-point]").forEach((b) => (b.onclick = () => send({ type: "seq_point", index: +b.dataset.point })));
 }
@@ -418,14 +419,15 @@ function renderLiveResponses(itx) {
   const agg = itx.aggregate;
   let out = "";
 
-  if (["sketch", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode) && itx.responses.length) {
+  if (["sketch", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "video_drop"].includes(itx.mode) && itx.responses.length) {
+    const clips = itx.mode === "video_drop";
     const pics = itx.responses.flatMap((r) => (r.payload.images && r.payload.images.length ? r.payload.images : [r.payload.image])
       .map((src, k) => ({ src, id: k ? `${r.studentId}|${k}` : r.studentId })));
-    out += `<h3 class="sec">Tap ${["sketch", "trace", "annotate", "annotate_caption"].includes(itx.mode) ? "a drawing" : "an image"} → big on the classroom screen</h3>
+    out += `<h3 class="sec">Tap ${clips ? "a clip → play it" : `${["sketch", "trace", "annotate", "annotate_caption"].includes(itx.mode) ? "a drawing" : "an image"} → big`} on the classroom screen</h3>
       <div class="thumb-grid">${pics
         .map((p) => `<img class="thumb ${itx.spotlightId === p.id ? "spot" : ""}" data-spot="${p.id}" src="${p.src}" alt="student image" />`)
         .join("")}</div>
-      <a class="rbtn" style="text-decoration:none;display:block;text-align:center;margin-top:0.6rem" href="/api/images/${esc(state.code)}/${itx.id}?${authQuery()}">⬇ Download all ${pics.length} image${pics.length === 1 ? "" : "s"} as ZIP</a>`;
+      <a class="rbtn" style="text-decoration:none;display:block;text-align:center;margin-top:0.6rem" href="/api/${clips ? "videos" : "images"}/${esc(state.code)}/${itx.id}?${authQuery()}">⬇ Download all ${pics.length} ${clips ? "clip" : "image"}${pics.length === 1 ? "" : "s"} as ZIP</a>`;
     return out;
   }
 
@@ -508,7 +510,7 @@ function renderLaunch() {
   const q = launchQuery.trim().toLowerCase();
   const matches = (m) => !q || `${MODES[m].name} ${m.replace(/_/g, " ")} ${SEARCH_WORDS[m] || ""}`.toLowerCase().includes(q);
   const FREE_MODES = new Set(["short_answer", "word_cloud", "mindmap", "post_its", "agree_disagree"]);
-  const locked = (m) => state?.tier === "free" && !/^tool_/.test(m) && !FREE_MODES.has(MODES[m].launchAs || m);
+  const locked = (m) => (m === "video_drop" && !state?.video) || (state?.tier === "free" && !/^tool_/.test(m) && !FREE_MODES.has(MODES[m].launchAs || m));
   const tile = (m) => `<button class="rbtn ${q && matches(m) ? "hit" : ""}" data-open="${m}" ${locked(m) ? 'data-locked="1" style="opacity:0.6"' : ""}><span class="ic">${locked(m) ? "🔒" : MODES[m].icon}</span>${esc(MODES[m].name)}</button>`;
   const group = (label, modes) => {
     const shown = modes.filter(matches);

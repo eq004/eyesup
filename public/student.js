@@ -17,6 +17,7 @@ let dropImages = []; // pictures this student has added (Drop an Image and frien
 let dropSent = 0; // how many of them have reached the teacher
 let dropTexts = []; // the writing that goes with each of them (Image + Writing, Image + Long Answer)
 let sentTexts = []; // the writing as it was at the last send, to notice edits
+let videoUploadWaiter = null; // Drop a Video: waiting for the server to say where the clip goes
 let padSent = []; // drawings this student has sent in this activity (Send another adds to the set)
 let padAnother = false; // the child tapped Send another: show a fresh pad instead of "Response received"
 const PAD_MODES = ["sketch", "annotate", "annotate_caption", "trace", "maths_board", "counters_draw"];
@@ -31,7 +32,7 @@ const MODE_NAMES = {
   one_word: "🗣️ One Word", ask_question: "❓ Ask a Question",
   true_false: "✅ True or False", mindmap: "🕸️ Mindmap", exit_ticket: "🎟️ Exit Ticket",
   muddiest_point: "🌫️ Muddiest Point", retrieval_sprint: "🧠 Retrieval Sprint",
-  sketch: "🎨 Sketch It", trace: "✍️ Letter Formation", maths_board: "🧮 Maths Board", counters_draw: "🟠 Counters + Drawing", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", image_long: "📓 Image + Long Answer", spot_mistake: "🔎 Spot the Mistake",
+  sketch: "🎨 Sketch It", trace: "✍️ Letter Formation", maths_board: "🧮 Maths Board", counters_draw: "🟠 Counters + Drawing", video_drop: "🎬 Drop a Video", image_drop: "📥 Drop an Image", image_caption: "📸 Image + Writing", image_long: "📓 Image + Long Answer", spot_mistake: "🔎 Spot the Mistake",
   example_nonexample: "↔️ Example / Non-example", teach_back: "🧑‍🏫 Teach It Back",
   match_up: "🧩 Match Up", put_in_order: "🪜 Put in Order", give_example: "💡 Give an Example",
   make_connection: "🔗 Make a Connection", finish_sentence: "📝 Finish the Sentence",
@@ -196,11 +197,18 @@ function connect() {
       });
       return;
     }
+    if (msg.type === "video_upload_url") {
+      const w = videoUploadWaiter; videoUploadWaiter = null;
+      if (w) w(msg);
+      return;
+    }
     if (msg.type === "error") {
+      if (msg.error === "video_unavailable" && videoUploadWaiter) { const w = videoUploadWaiter; videoUploadWaiter = null; w(null); return; }
       if (joined && !["no_session", "session_ended", "slow_down", "subscription_required"].includes(msg.error)) {
         const why = msg.error === "room_full_of_images"
           ? "The class has sent lots of photos and the room is full. Try again with just one photo."
           : msg.error === "bad_link" ? "That link couldn't be sent. Check it and try again."
+          : msg.error === "video_unavailable" ? "Video isn't switched on for this class right now."
           : "That didn't go through. Try again.";
         document.getElementById("liveNotice")?.remove();
         const n = document.createElement("p");
@@ -1724,6 +1732,100 @@ function renderInteraction(itx) {
         submit(withText ? { images: [...images], texts: sentTexts.slice() } : { images: [...images] });
       };
       paint();
+    });
+    return;
+  }
+
+  /* --- Drop a Video: one short clip, sent straight to video storage, with a poster frame for the cards --- */
+  if (itx.mode === "video_drop") {
+    const maxS = itx.maxSeconds || 30;
+    show(`${h}
+      <input type="file" id="vidFile" accept="video/*" style="display:none" />
+      <button class="img-add empty" id="vidPick" type="button"><span style="font-size:2rem">🎬</span><b>Choose a video</b><span class="hint" style="margin:0">From your camera roll, or record one now. Up to ${maxS} seconds.</span></button>
+      <div id="vidPreview" hidden style="margin-top:0.6rem">
+        <video id="vidEl" playsinline muted controls preload="metadata" style="width:100%;max-height:38vh;border-radius:12px;background:#000;display:block"></video>
+        <p class="hint" id="vidInfo" style="margin:0.4rem 0 0"></p>
+      </div>
+      <div class="vid-bar" id="vidBar" hidden><div class="vid-fill" id="vidFill"></div></div>
+      <p class="hint" id="vidMsg" style="margin:0.4rem 0 0"></p>
+      <button class="btn send" id="sendBtn" style="margin-top:0.8rem" disabled>Send my video</button>`, () => {
+      const file = $("vidFile"), pick = $("vidPick"), vid = $("vidEl"), btn = $("sendBtn");
+      let chosen = null, poster = null, seconds = 0;
+      const say = (t, bad) => { const m = $("vidMsg"); m.textContent = t; m.style.color = bad ? "var(--red)" : ""; };
+      const posterFrom = () => {
+        try {
+          const w = Math.min(640, vid.videoWidth || 640), hgt = Math.round(w * ((vid.videoHeight || 360) / (vid.videoWidth || 640)));
+          const c = document.createElement("canvas"); c.width = w; c.height = hgt || 360;
+          const cx = c.getContext("2d"); cx.fillStyle = "#000"; cx.fillRect(0, 0, c.width, c.height);
+          cx.drawImage(vid, 0, 0, c.width, c.height);
+          return c.toDataURL("image/jpeg", 0.7);
+        } catch { return null; }
+      };
+      const plainPoster = () => {
+        const c = document.createElement("canvas"); c.width = 640; c.height = 360;
+        const cx = c.getContext("2d"); cx.fillStyle = "#0e2445"; cx.fillRect(0, 0, 640, 360);
+        cx.fillStyle = "#fff"; cx.font = "bold 120px sans-serif"; cx.textAlign = "center"; cx.fillText("▶", 320, 220);
+        return c.toDataURL("image/jpeg", 0.7);
+      };
+      const ready = () => { btn.disabled = !(chosen && seconds && seconds <= maxS + 0.6); };
+      pick.onclick = () => file.click();
+      file.onchange = () => {
+        const f = file.files && file.files[0];
+        file.value = "";
+        if (!f) return;
+        if (!f.type.startsWith("video/")) { say("That isn't a video. Choose a video from your camera roll.", true); return; }
+        if (f.size > 250 * 1024 * 1024) { say("That video is too big to send from here. Try a shorter one.", true); return; }
+        chosen = f; poster = null; seconds = 0;
+        say(""); $("vidPreview").hidden = false; $("vidInfo").textContent = "Checking the video…";
+        btn.disabled = true;
+        if (vid.src) URL.revokeObjectURL(vid.src);
+        vid.src = URL.createObjectURL(f);
+        vid.onloadedmetadata = () => {
+          seconds = isFinite(vid.duration) ? vid.duration : 0;
+          const mb = (f.size / 1048576).toFixed(1);
+          if (seconds && seconds > maxS + 0.6) {
+            $("vidInfo").textContent = `${Math.round(seconds)} seconds · ${mb} MB`;
+            say(`That video is ${Math.round(seconds)} seconds — the limit is ${maxS}. Trim it in Photos and choose it again.`, true);
+            return;
+          }
+          $("vidInfo").textContent = `${seconds ? Math.round(seconds) + " seconds" : "ready"} · ${mb} MB`;
+          try { vid.currentTime = Math.min(0.5, (seconds || 1) / 2); } catch { /* some players refuse */ }
+          ready();
+        };
+        vid.onseeked = () => { if (!poster) poster = posterFrom(); };
+        vid.onerror = () => { say("That video can't be read here. Try another one.", true); chosen = null; btn.disabled = true; };
+      };
+      btn.onclick = () => {
+        if (!chosen || btn.disabled) return;
+        btn.disabled = true; pick.disabled = true;
+        btn.textContent = "Asking where to send it…";
+        say("");
+        const giveUp = (why) => { say(why, true); btn.disabled = false; pick.disabled = false; btn.textContent = "Send again"; $("vidBar").hidden = true; };
+        videoUploadWaiter = (reply) => {
+          clearTimeout(waitTimer);
+          if (!reply || !reply.uploadURL) return giveUp("Video isn't switched on for this class right now.");
+          const fd = new FormData();
+          fd.append("file", chosen, chosen.name || "clip.mp4");
+          const xhr = new XMLHttpRequest();
+          $("vidBar").hidden = false; $("vidFill").style.width = "0";
+          btn.textContent = "Sending…";
+          xhr.upload.onprogress = (e) => { if (e.lengthComputable) { const pc = Math.round((e.loaded / e.total) * 100); $("vidFill").style.width = pc + "%"; btn.textContent = pc < 100 ? `Sending… ${pc}%` : "Nearly there…"; } };
+          xhr.onerror = () => giveUp("The video didn't get through. Check the Wi-Fi and try again.");
+          xhr.ontimeout = () => giveUp("Sending took too long. Try again on better Wi-Fi.");
+          xhr.onload = () => {
+            if (xhr.status < 200 || xhr.status >= 300) return giveUp("The video was refused. Try again, or choose a shorter one.");
+            $("vidFill").style.width = "100%";
+            btn.textContent = "Sent — finishing…";
+            watchSend(btn, () => { btn.disabled = false; pick.disabled = false; btn.textContent = "Send again"; });
+            submit({ video: { uid: reply.uid }, image: poster || posterFrom() || plainPoster() });
+          };
+          xhr.timeout = 10 * 60 * 1000;
+          xhr.open("POST", reply.uploadURL);
+          xhr.send(fd);
+        };
+        const waitTimer = setTimeout(() => { if (videoUploadWaiter) { videoUploadWaiter = null; giveUp("No answer from the class. Try again."); } }, 20000);
+        send({ type: "video_upload", interactionId: lastInteractionId });
+      };
     });
     return;
   }

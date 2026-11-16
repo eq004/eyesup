@@ -293,6 +293,9 @@
   .img-row.sent textarea { border-color: var(--green); }
   .img-add.row { aspect-ratio: auto; flex-direction: row; justify-content: center; gap: 0.5rem; padding: 0.7rem 1rem; width: 100%; font-size: 0.95rem; }
   @media (max-width: 520px) { .img-row { flex-direction: column; } .img-row .img-tile { width: 100%; aspect-ratio: 16 / 9; } }
+  /* Drop a Video: the upload bar */
+  .vid-bar { height: 10px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 0.6rem; }
+  .vid-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }
   /* maths board: counters + drawing on one surface */
   .mb-tools { display: flex; gap: 0.4rem; justify-content: center; margin-bottom: 0.5rem; }
   .mb-tools button { font: inherit; font-weight: 800; font-size: 0.85rem; padding: 0.45rem 0.8rem; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); }

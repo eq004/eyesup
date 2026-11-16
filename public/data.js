@@ -202,6 +202,10 @@ function renderDetail() {
   const s = x.summary;
   const when = new Date(x.meta.created_at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
   const hasPics = (s.items || []).some((it) => it.images?.length);
+  const hasClips = (s.items || []).some((it) => it.videos?.some((v) => v.ready));
+  const keepLine = s.videoCount
+    ? `<div class="muted" style="font-size:0.82rem;margin-top:0.4rem">🎬 ${s.videoCount} video clip${s.videoCount === 1 ? "" : "s"} ${s.videoExpired ? "— some have expired and will be deleted a week after their keep date" : `kept until <b>${esc(new Date(s.videoKeepUntil).toLocaleDateString(undefined, { dateStyle: "medium" }))}</b>, then deleted for good`}. Download the ZIP to keep them.${s.videoCanKeep ? ` <button class="xbtn" id="keepClips" style="margin-left:0.4rem">${s.videoExpired ? "Restore and keep for another 30 days" : "Keep for another 30 days"}</button>` : ""}</div>`
+    : "";
 
   return `
     <div class="card detail-card">
@@ -219,9 +223,11 @@ function renderDetail() {
         <a class="xbtn" href="/report?lesson=${x.meta.id}&${authQ}" target="_blank" rel="noopener" title="Every answer with names, laid out for printing or saving as PDF">🖨 Print / PDF</a>
         <button class="xbtn" id="csvBtn" title="One row per student, one column per activity — opens in Excel or Google Sheets">📊 Spreadsheet</button>
         ${hasPics ? `<a class="xbtn" href="/api/lessons/${x.meta.id}/images?${authQ}" title="Every picture students sent, as a ZIP">🖼 Pictures</a>` : ""}
+        ${hasClips ? `<a class="xbtn" href="/api/lessons/${x.meta.id}/videos?${authQ}" title="Every video clip students sent, as a ZIP of MP4s (may take a moment to start)">🎬 Video clips</a>` : ""}
         <button class="xbtn" id="shareBtn" title="A view-only link for anyone; student names are hidden on it">🔗 ${shareLink ? "Copy share link again" : "Share link"}</button>
         ${shareLink ? `<span class="share-link">${esc(shareLink)}</span><span class="muted" style="font-size:0.76rem">Copied — names are hidden on the shared page.</span>` : ""}
       </div>
+      ${keepLine}
       ${detailTab === "snap" ? renderSnapshotTab(x) : detailTab === "stu" ? renderStudents(x) : renderActivities(x)}
     </div>`;
 }
@@ -289,10 +295,11 @@ function studentPanel(x, r, total) {
           const head = `<span class="sq">${modeIcon(it.mode)} ${esc(it.prompt || modeName(it.mode, it.counterKind))}</span>`;
           if (!a) return `<li class="miss">${head}<span class="sa muted">— no answer</span></li>`;
           const pics = a.images.length ? `<div class="spics">${a.images.map((src) => `<a href="${src}" target="_blank" rel="noopener"><img src="${src}" alt="" loading="lazy" /></a>`).join("")}</div>` : "";
+          const clips = a.videos?.length ? `<div style="margin-top:0.3rem">${a.videos.map((v) => v.ready && v.iframe ? `<a class="xbtn" href="${v.iframe}" target="_blank" rel="noopener">▶ Play clip${v.duration ? ` (${v.duration} s)` : ""}</a>` : `<span class="muted">🎬 clip ${v.status === "expired" ? "expired" : v.status === "failed" ? "couldn't be processed" : "not ready yet"}</span>`).join(" ")}</div>` : "";
           const txt = it.mode === "question_set" && it.questions?.length
             ? `<table class="sqs">${it.questions.map((q, k) => `<tr><td>${esc(q)}</td><td>${esc(LV.parts(a.response)[k] || "—")}</td></tr>`).join("")}</table>`
             : esc(a.response || "—");
-          return `<li>${head}<span class="sa">${LV.keyKind(it) ? LV.markButtons(i, r.name, a, LV.byHand(it, r.name)) : LV.mark(a)}${txt}${a.score && a.ok !== true ? ` <small class="muted">(${esc(a.score)})</small>` : ""}</span>${pics}</li>`;
+          return `<li>${head}<span class="sa">${LV.keyKind(it) ? LV.markButtons(i, r.name, a, LV.byHand(it, r.name)) : LV.mark(a)}${txt}${a.score && a.ok !== true ? ` <small class="muted">(${esc(a.score)})</small>` : ""}</span>${pics}${clips}</li>`;
         })
         .join("")}</ol>
     </div>`;
@@ -773,6 +780,17 @@ function bindDetail() {
   bindMarking(x);
   const sb = document.getElementById("shareBtn");
   if (sb) sb.onclick = () => shareLesson(x);
+  const kb = document.getElementById("keepClips");
+  if (kb) kb.onclick = async () => {
+    kb.disabled = true;
+    try {
+      const r = await fetch(`/api/lessons/${x.meta.id}/videos/keep?${authQ}`, { method: "POST" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "failed");
+      kb.textContent = `Kept until ${new Date(j.keepUntil).toLocaleDateString(undefined, { dateStyle: "medium" })} ✓`;
+      setTimeout(() => location.reload(), 900);
+    } catch { kb.textContent = "That didn't work — try again"; kb.disabled = false; }
+  };
   const rb = document.getElementById("renameBtn");
   if (rb) rb.onclick = () => renameLesson(x);
   const cb = document.getElementById("csvBtn");

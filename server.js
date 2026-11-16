@@ -15,6 +15,8 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const { WebSocketServer } = require("ws");
 const Marks = require("./lib/marks"); // marking, shared with the results pages
+const Stream = require("./lib/stream"); // Cloudflare Stream: where Drop a Video clips live
+const { writeZip } = require("./lib/zipstream"); // a ZIP written to the response as it goes (video clips are big)
 
 // The address other devices in the room (iPads, phones) can reach us on.
 function lanAddress() {
@@ -147,6 +149,24 @@ if (process.env.DATABASE_URL) {
     // its owner knows (false for accounts made, or reclaimed, through Google).
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS google_sub text`,
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS pass_set boolean NOT NULL DEFAULT true`,
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS video_on boolean NOT NULL DEFAULT false`, // the Video add-on (Drop a Video)
+    // Drop a Video: the clip itself lives at Cloudflare Stream; this is who sent what, and until when it is kept.
+    `CREATE TABLE IF NOT EXISTS lesson_videos (
+      id serial PRIMARY KEY,
+      lesson_code text NOT NULL,
+      lesson_created_at timestamptz NOT NULL,
+      itx_id int NOT NULL,
+      student_id text NOT NULL,
+      student_name text,
+      uid text NOT NULL UNIQUE,
+      duration int,
+      status text NOT NULL DEFAULT 'uploaded',
+      preview text,
+      thumbnail text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      keep_until timestamptz NOT NULL DEFAULT now() + interval '30 days'
+    )`,
+    `CREATE INDEX IF NOT EXISTS lesson_videos_lesson ON lesson_videos (lesson_code, lesson_created_at)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS teachers_google_sub ON teachers (google_sub) WHERE google_sub IS NOT NULL`,
     // Everyone who joined before plans existed keeps full access.
     `UPDATE teachers SET plan = 'free' WHERE plan IS NULL`,
@@ -206,6 +226,21 @@ if (process.env.DATABASE_URL) {
     db.query(`DELETE FROM lesson_images WHERE created_at < now() - ($1 || ' days')::interval`, [String(IMAGE_KEEP_DAYS)])
       .then((r) => r.rowCount && console.log(`Pruned ${r.rowCount} student image(s) older than ${IMAGE_KEEP_DAYS} days`))
       .catch((e) => console.error("image prune failed:", e.message));
+  // Video clips are kept 30 days (VIDEO_KEEP_DAYS), then hidden for a week's grace in which a teacher can
+  // still restore them, then deleted at Cloudflare for good. Expiry follows keep_until, which "Keep for
+  // another 30 days" moves (never beyond VIDEO_MAX_KEEP_DAYS from the lesson).
+  const pruneVideos = async () => {
+    try {
+      const hid = await db.query(`UPDATE lesson_videos SET status = 'expired' WHERE keep_until < now() AND status IN ('ready', 'uploaded')`);
+      if (hid.rowCount) console.log(`${hid.rowCount} video clip(s) past their keep date — hidden, deleted after ${VIDEO_GRACE_DAYS} days`);
+      const gone = await db.query(`SELECT id, uid FROM lesson_videos WHERE keep_until < now() - ($1 || ' days')::interval ORDER BY id LIMIT 60`, [String(VIDEO_GRACE_DAYS)]);
+      for (const r of gone.rows) {
+        try { if (Stream.ready()) await Stream.remove(r.uid); } catch (e) { console.error(`video delete failed (${r.uid}):`, e.message); continue; }
+        await db.query(`DELETE FROM lesson_videos WHERE id = $1`, [r.id]);
+      }
+      if (gone.rows.length) console.log(`Deleted ${gone.rows.length} video clip(s) past their grace week`);
+    } catch (e) { console.error("video prune failed:", e.message); }
+  };
   // A database that is unreachable at boot (cold start, pooler restart)
   // must not demote the whole process to "no storage" for its lifetime —
   // keep trying; the app stays in account mode and requests simply error
@@ -217,6 +252,8 @@ if (process.env.DATABASE_URL) {
       console.log("Storage connected — lessons persist to Postgres");
       pruneImages();
       setInterval(pruneImages, 12 * 3600 * 1000);
+      pruneVideos();
+      setInterval(pruneVideos, 6 * 3600 * 1000);
     } catch (e) {
       const wait = Math.min(60000, 5000 * 2 ** attempt);
       console.error(`Storage init failed (${e.code || e.message}) — retrying in ${wait / 1000}s`);
@@ -233,7 +270,7 @@ if (process.env.DATABASE_URL) {
 // AUTH_SECRET signs sign-ins. Set it separately on the host so the invite
 // code (TEACHER_PASSWORD) can be shared without also being the signing key.
 const AUTH_SECRET = process.env.AUTH_SECRET || TEACHER_PASSWORD || "eyesup-local-secret";
-const TEACHER_COLS = `id, username, display_name, pass_hash, favs, email, is_admin, status, plan, trial_ends_at, paid_until, stripe_customer, stripe_sub, school, grades, google_sub, pass_set`;
+const TEACHER_COLS = `id, username, display_name, pass_hash, favs, email, is_admin, status, plan, trial_ends_at, paid_until, stripe_customer, stripe_sub, school, grades, google_sub, pass_set, video_on`;
 
 // Can this account start a class right now? Past lessons and data stay
 // readable whatever the answer — a lapsed teacher never loses their work.
@@ -372,6 +409,58 @@ async function persistNow(session) {
 // Image + Long Answer (texts[k]); otherwise the answer's one text sits with the first picture.
 const textOfPicture = (p, k) => (Array.isArray(p.texts) ? p.texts[k] || null : k === 0 ? p.text || null : null);
 
+// Drop a Video: who sent which clip, kept with the lesson. A child who sends again replaces their
+// earlier clip, which is deleted at Cloudflare.
+async function persistVideo(session, itx, student, record) {
+  if (!db || student.name === "👁 Preview") return;
+  const v = record.payload.video;
+  if (!v?.uid) return;
+  const at = new Date(session.createdAt);
+  try {
+    await db.query(
+      `INSERT INTO lesson_videos (lesson_code, lesson_created_at, itx_id, student_id, student_name, uid, status, keep_until)
+       VALUES ($1, $2, $3, $4, $5, $6, 'uploaded', now() + ($7 || ' days')::interval)
+       ON CONFLICT (uid) DO UPDATE SET student_name = $5`,
+      [session.code, at, itx.id, student.id, student.name, v.uid, String(VIDEO_KEEP_DAYS)]
+    );
+    const old = await db.query(
+      `DELETE FROM lesson_videos WHERE lesson_code = $1 AND lesson_created_at = $2 AND itx_id = $3 AND student_id = $4 AND uid <> $5 RETURNING uid`,
+      [session.code, at, itx.id, student.id, v.uid]
+    );
+    for (const r of old.rows) Stream.remove(r.uid).catch((e) => console.error("old clip delete failed:", e.message));
+  } catch (e) {
+    console.error("video persist failed:", e.message);
+  }
+}
+
+// Cloudflare takes a little while to make a clip playable. Look in every few seconds (for up to about
+// eight minutes) and, once it plays, tell every screen and ask for the MP4 so the teacher's ZIP is quick.
+function watchVideo(session, itx, sid, record) {
+  const v = record.payload.video;
+  let tries = 0;
+  const look = async () => {
+    if (itx.responses.get(sid) !== record) return; // replaced by a newer clip
+    try {
+      const d = await Stream.details(v.uid);
+      if (d.ready) {
+        Object.assign(v, { ready: true, iframe: d.iframe, preview: d.preview, thumbnail: d.thumbnail, duration: d.duration });
+        if (db) db.query(`UPDATE lesson_videos SET status = 'ready', duration = $2, preview = $3, thumbnail = $4 WHERE uid = $1`, [v.uid, d.duration, d.preview, d.thumbnail]).catch(() => {});
+        Stream.download(v.uid).catch(() => {});
+        broadcast(session);
+        return;
+      }
+      if (d.state === "error") {
+        v.failed = true;
+        if (db) db.query(`UPDATE lesson_videos SET status = 'failed' WHERE uid = $1`, [v.uid]).catch(() => {});
+        broadcast(session);
+        return;
+      }
+    } catch (e) { /* look again */ }
+    if (++tries < 70) setTimeout(look, tries < 8 ? 3000 : 8000);
+  };
+  setTimeout(look, 2000);
+}
+
 // A student's picture goes straight to the archive (upsert: a changed
 // answer replaces the earlier one).
 async function persistImage(session, itx, student, record) {
@@ -403,6 +492,9 @@ async function persistImage(session, itx, student, record) {
   }
 }
 const IMAGE_KEEP_DAYS_PUBLIC = Math.max(7, parseInt(process.env.IMAGE_KEEP_DAYS || "60", 10) || 60);
+const VIDEO_KEEP_DAYS = Math.max(7, parseInt(process.env.VIDEO_KEEP_DAYS || "30", 10) || 30);
+const VIDEO_GRACE_DAYS = 7; // hidden but restorable, before the clip is deleted for good
+const VIDEO_MAX_KEEP_DAYS = Math.max(VIDEO_KEEP_DAYS, parseInt(process.env.VIDEO_MAX_KEEP_DAYS || "90", 10) || 90);
 
 // Debounced variant — every response nudges it, at most one write per few
 // seconds per session.
@@ -764,13 +856,14 @@ app.get("/api/my-session", async (req, res) => {
 
 // What the sign-up screen needs to know before anyone is signed in.
 app.get("/api/config", (_req, res) => {
-  res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS, contactEmail: process.env.CONTACT_EMAIL || "", gradeOptions: GRADE_OPTIONS, googleClientId: db ? GOOGLE_CLIENT_ID : "" });
+  res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS, contactEmail: process.env.CONTACT_EMAIL || "", gradeOptions: GRADE_OPTIONS, googleClientId: db ? GOOGLE_CLIENT_ID : "", video: Stream.ready() });
 });
 
 const mePayload = (t) => ({
   id: t.id, name: t.display_name, username: t.username, email: t.email || "", admin: !!t.is_admin,
   school: t.school || "", grades: t.grades || "", gradeOptions: GRADE_OPTIONS,
   google: !!t.google_sub, hasPassword: t.pass_set !== false,
+  video: !!t.video_on, videoReady: Stream.ready(), // the Video add-on (Drop a Video)
   billing: BILLING_ON, trialDays: TRIAL_DAYS, hasSubscription: !!t.stripe_sub, canManageBilling: !!t.stripe_customer,
   access: accessOf(t),
   tier: tierOf(t),
@@ -825,7 +918,7 @@ app.get("/api/admin/overview", async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT t.id, t.username, t.display_name, t.email, t.is_admin, t.status, t.plan, t.trial_ends_at, t.paid_until,
-              t.created_at, t.last_seen_at, t.note, t.stripe_sub, t.stripe_customer, t.school, t.grades, t.google_sub,
+              t.created_at, t.last_seen_at, t.note, t.stripe_sub, t.stripe_customer, t.school, t.grades, t.google_sub, t.video_on,
               count(l.id)::int AS lessons,
               count(l.id) FILTER (WHERE l.saved_at > now() - interval '30 days')::int AS lessons_30d,
               max(l.saved_at) AS last_lesson,
@@ -841,6 +934,7 @@ app.get("/api/admin/overview", async (req, res) => {
       gradeOptions: GRADE_OPTIONS,
       google: !!GOOGLE_CLIENT_ID,
       ai: !!AI_KEY,
+      videoReady: Stream.ready(),
       separateSecret: !!process.env.AUTH_SECRET,
       live: { classes: live.length, students: live.reduce((a, s) => a + s.students.size, 0) },
       teachers: rows.map((r) => ({
@@ -848,7 +942,7 @@ app.get("/api/admin/overview", async (req, res) => {
         plan: r.plan || "free", trialEndsAt: r.trial_ends_at, paidUntil: r.paid_until, joined: r.created_at,
         lastSeen: r.last_seen_at, lastLesson: r.last_lesson, lessons: r.lessons, lessons30: r.lessons_30d,
         students: r.students, plans: r.plans, note: r.note || "", hasSubscription: !!r.stripe_sub,
-        school: r.school || "", grades: r.grades || "", google: !!r.google_sub,
+        school: r.school || "", grades: r.grades || "", google: !!r.google_sub, video: !!r.video_on,
         access: accessOf(r),
       })),
     });
@@ -899,6 +993,12 @@ app.post("/api/admin/teacher/:id", async (req, res) => {
     if (action === "set_admin") {
       if (self) return res.status(400).json({ error: "not_yourself" });
       await db.query(`UPDATE teachers SET is_admin = $1 WHERE id = $2`, [!!req.body?.admin, id]);
+      return res.json({ ok: true });
+    }
+    if (action === "set_video") {
+      // The Video add-on (Drop a Video): on or off for this account. A live room picks it up next time it opens.
+      await db.query(`UPDATE teachers SET video_on = $1 WHERE id = $2`, [!!req.body?.video, id]);
+      for (const s of sessions.values()) if (s.teacherId === id) s.video = !!req.body?.video;
       return res.json({ ok: true });
     }
     if (action === "set_details") {
@@ -1108,7 +1208,9 @@ app.get("/api/lessons", async (req, res) => {
               summary->>'joinedCount' AS joined,
               summary->>'interactionCount' AS interactions,
               (SELECT count(*)::int FROM lesson_images li
-                WHERE li.lesson_code = lessons.code AND li.lesson_created_at = lessons.created_at) AS pictures,
+                WHERE li.lesson_code = lessons.code AND li.lesson_created_at = lessons.created_at AND coalesce(li.mode, '') <> 'video_drop') AS pictures,
+              (SELECT count(*)::int FROM lesson_videos lv
+                WHERE lv.lesson_code = lessons.code AND lv.lesson_created_at = lessons.created_at AND lv.status IN ('ready', 'uploaded')) AS clips,
               (SELECT e->>'prompt' FROM jsonb_array_elements(summary->'items') e
                 WHERE coalesce(e->>'prompt', '') <> '' AND e->>'mode' NOT IN ('link', 'slide', 'deck') LIMIT 1) AS first_prompt
        FROM lessons
@@ -1146,7 +1248,23 @@ app.get("/api/lessons/:id", async (req, res) => {
         if (mine.length) it.images = mine.map((x) => ({ name: x.student_name, text: x.text || undefined, image: `/api/lesson-image/${x.id}${tq}` }));
       }
     }
-    res.json({ ...summary, code: r.code, title: r.title, createdAt: new Date(r.created_at).getTime(), imageKeepDays: IMAGE_KEEP_DAYS_PUBLIC, lessonId: r.id });
+    // Drop a Video clips: who sent one, whether it plays, and until when it is kept.
+    const vids = await db.query(
+      `SELECT itx_id, student_name, uid, status, duration, preview, thumbnail, keep_until FROM lesson_videos WHERE lesson_code = $1 AND lesson_created_at = $2 ORDER BY student_name, id`,
+      [r.code, r.created_at]
+    );
+    if (vids.rows.length) {
+      for (const it of summary.items || []) {
+        const mine = vids.rows.filter((x) => x.itx_id === it.id);
+        if (mine.length) it.videos = mine.map((x) => ({ name: x.student_name, uid: x.uid, status: x.status, ready: x.status === "ready", duration: x.duration, iframe: x.preview ? x.preview.replace(/\/watch\/?$/, "/iframe") : "", thumbnail: x.thumbnail || "" }));
+      }
+      const kept = vids.rows.filter((x) => x.status !== "gone");
+      summary.videoKeepUntil = kept.length ? new Date(Math.min(...kept.map((x) => +new Date(x.keep_until)))).toISOString() : null;
+      summary.videoCount = kept.length;
+      summary.videoExpired = kept.some((x) => x.status === "expired");
+      summary.videoCanKeep = kept.some((x) => +new Date(x.keep_until) < +new Date(r.created_at) + VIDEO_MAX_KEEP_DAYS * 86400000);
+    }
+    res.json({ ...summary, code: r.code, title: r.title, createdAt: new Date(r.created_at).getTime(), imageKeepDays: IMAGE_KEEP_DAYS_PUBLIC, videoKeepDays: VIDEO_KEEP_DAYS, lessonId: r.id });
   } catch (e) {
     res.status(500).json({ error: "db_error" });
   }
@@ -1189,7 +1307,7 @@ app.get("/api/lessons/:id/images/:itx?", async (req, res) => {
     if (req.params.itx) params.push(req.params.itx);
     const imgs = await db.query(
       `SELECT itx_id, student_id, student_name, img_index, mime, data, text FROM lesson_images
-       WHERE lesson_code = $1 AND lesson_created_at = $2 ${req.params.itx ? "AND itx_id = $3" : ""} ORDER BY itx_id, student_name, student_id, img_index, id`,
+       WHERE lesson_code = $1 AND lesson_created_at = $2 AND coalesce(mode, '') <> 'video_drop' ${req.params.itx ? "AND itx_id = $3" : ""} ORDER BY itx_id, student_name, student_id, img_index, id`,
       params
     );
     if (!imgs.rows.length) return res.status(404).send("No stored images for this lesson.");
@@ -1234,7 +1352,7 @@ const STEP_MODES = new Set([
   "make_connection", "teach_back", "spot_mistake", "quick_challenge", "predict", "three_two_one", "notice_wonder",
   "before_after", "plus_minus", "muddiest_point", "ask_question", "ranking", "put_in_order", "match_up", "venn",
   "spelling", "cloze", "working", "counters", "maths_board", "counters_draw", "sketch", "trace", "annotate", "annotate_caption", "image_drop",
-  "image_caption", "image_long", "slide", "deck",
+  "image_caption", "image_long", "video_drop", "slide", "deck",
   "tool_timer", "tool_pick", "tool_groups", "tool_dice", // room tools as lesson steps
 ]);
 const TOOL_MODES = new Set(["tool_timer", "tool_pick", "tool_groups", "tool_dice"]);
@@ -1334,6 +1452,7 @@ function sanitizeStep(it) {
     chords: typeof it.chords === "boolean" ? it.chords : undefined,
     key: Number.isInteger(it.key) && Math.abs(it.key) <= 3 ? it.key : undefined,
     sprintSeconds: Number.isInteger(it.sprintSeconds) ? it.sprintSeconds : undefined,
+    maxSeconds: it.mode === "video_drop" && VIDEO_MAX_SECONDS.includes(it.maxSeconds) ? it.maxSeconds : undefined,
     url: it.mode === "link" ? cleanUrl(it.url) || undefined : undefined,
     linkLabel: it.mode === "link" && typeof it.linkLabel === "string" ? it.linkLabel.trim().slice(0, 60) || undefined : undefined,
     image:
@@ -1787,6 +1906,7 @@ const safeName = (s) => String(s || "").replace(/[\\/:*?"<>|]+/g, "-").replace(/
 
 function imageFilesFor(session, itx, folder) {
   const files = [];
+  if (itx.mode === "video_drop") return files; // clips have their own ZIP; poster frames are not the work
   const captions = [];
   const seen = new Map();
   for (const [sid, r] of itx.responses) {
@@ -1808,6 +1928,108 @@ function imageFilesFor(session, itx, folder) {
   if (captions.length) files.push({ name: `${folder}captions.txt`, data: Buffer.from(captions.join("\n\n") + "\n", "utf8") });
   return files;
 }
+
+// Drop a Video: every clip as one ZIP, streamed straight from Cloudflare through to the teacher so the server
+// never holds a class's video in memory. Clips still being converted are listed in a note instead.
+async function sendClipsZip(res, zipName, clips) {
+  res.set("Content-Type", "application/zip");
+  res.set("Content-Disposition", `attachment; filename="${zipName.replace(/"/g, "")}"`);
+  async function* entries() {
+    const seen = new Map(), missing = [];
+    for (const c of clips) {
+      let base = safeName(c.name || "student");
+      const n = (seen.get(base) || 0) + 1;
+      seen.set(base, n);
+      if (n > 1) base += ` (${n})`;
+      let d = null;
+      for (let i = 0; i < 15; i++) {
+        try { d = await Stream.download(c.uid); } catch (e) { d = null; break; }
+        if (d.ready && d.url) break;
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      if (!d?.ready || !d.url) { missing.push(`${base}: not ready yet — download again in a minute`); continue; }
+      let r;
+      try { r = await fetch(d.url, { signal: AbortSignal.timeout(10 * 60 * 1000) }); } catch { r = null; }
+      if (!r || !r.ok || !r.body) { missing.push(`${base}: could not be fetched`); continue; }
+      yield { name: `${base}.mp4`, body: r.body };
+    }
+    if (missing.length) yield { name: "not included.txt", body: Buffer.from(missing.join("\n") + "\n", "utf8") };
+  }
+  try { await writeZip(res, entries()); }
+  catch (e) { console.error("clips zip failed:", e.message); if (!res.headersSent) res.status(500).end(); else res.destroy(); }
+}
+
+app.get("/api/videos/:code/:itx?", async (req, res) => {
+  const session = await ownedSession(req, res);
+  if (!session) return;
+  if (session.tier === "free") return res.status(402).json({ error: "locked_downloads" });
+  if (!Stream.ready()) return res.status(503).json({ error: "video_unavailable" });
+  const all = [...session.history, ...(session.interaction ? [session.interaction] : [])];
+  const wanted = (req.params.itx ? all.filter((i) => String(i.id) === String(req.params.itx)) : all).filter((i) => i.mode === "video_drop");
+  const clips = wanted.flatMap((itx) => [...itx.responses.values()]
+    .filter((r) => r.name !== "👁 Preview" && r.payload.video?.uid && !r.payload.video.failed)
+    .map((r) => ({ name: wanted.length > 1 ? `${String(all.indexOf(itx) + 1).padStart(2, "0")} ${safeName(itx.prompt || "video")} - ${r.name}` : r.name, uid: r.payload.video.uid })));
+  if (!clips.length) return res.status(404).send("No video clips in this lesson yet.");
+  const lessonName = safeName(session.title || `Lesson ${session.code}`);
+  sendClipsZip(res, `${lessonName} - video clips.zip`, clips);
+});
+
+app.get("/api/lessons/:id/videos/:itx?", async (req, res) => {
+  if (!db) return res.status(404).end();
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  if (tierOf(t) === "free") return res.status(402).json({ error: "locked_downloads" });
+  if (!Stream.ready()) return res.status(503).json({ error: "video_unavailable" });
+  try {
+    const { rows } = await db.query(`SELECT * FROM lessons WHERE id = $1 AND teacher_id = $2`, [req.params.id, t.id]);
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const lesson = rows[0];
+    const params = [lesson.code, lesson.created_at];
+    if (req.params.itx) params.push(req.params.itx);
+    const vids = await db.query(
+      `SELECT itx_id, student_name, uid FROM lesson_videos WHERE lesson_code = $1 AND lesson_created_at = $2 AND status = 'ready' ${req.params.itx ? "AND itx_id = $3" : ""} ORDER BY itx_id, student_name, id`,
+      params
+    );
+    if (!vids.rows.length) return res.status(404).send("No video clips kept for this lesson.");
+    const items = lesson.summary?.items || [];
+    const acts = new Set(vids.rows.map((x) => x.itx_id));
+    const label = (x) => {
+      if (acts.size < 2) return x.student_name;
+      const idx = items.findIndex((it) => it.id === x.itx_id);
+      return `${String(idx + 1).padStart(2, "0")} ${safeName(items[idx]?.prompt || "video")} - ${x.student_name}`;
+    };
+    const lessonName = safeName(lesson.title || `Lesson ${lesson.code}`);
+    sendClipsZip(res, `${lessonName} - video clips.zip`, vids.rows.map((x) => ({ name: label(x), uid: x.uid })));
+  } catch (e) {
+    console.error("clips zip failed:", e.message);
+    if (!res.headersSent) res.status(500).json({ error: "db_error" });
+  }
+});
+
+// Keep a lesson's clips for another 30 days (and bring back any that expired within the grace week).
+app.post("/api/lessons/:id/videos/keep", async (req, res) => {
+  if (!db) return res.status(404).end();
+  const t = await authHttp(res, req.query.t);
+  if (!t) return;
+  try {
+    const { rows } = await db.query(`SELECT code, created_at FROM lessons WHERE id = $1 AND teacher_id = $2`, [req.params.id, t.id]);
+    if (!rows[0]) return res.status(404).json({ error: "not_found" });
+    const r = await db.query(
+      `UPDATE lesson_videos SET keep_until = LEAST(now() + ($3 || ' days')::interval, lesson_created_at + ($4 || ' days')::interval),
+              status = CASE WHEN status = 'expired' THEN 'ready' ELSE status END
+        WHERE lesson_code = $1 AND lesson_created_at = $2 AND status IN ('ready', 'uploaded', 'expired')
+        RETURNING keep_until`,
+      [rows[0].code, rows[0].created_at, String(VIDEO_KEEP_DAYS), String(VIDEO_MAX_KEEP_DAYS)]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: "no_clips" });
+    const until = new Date(Math.min(...r.rows.map((x) => +new Date(x.keep_until)))).toISOString();
+    const max = new Date(+new Date(rows[0].created_at) + VIDEO_MAX_KEEP_DAYS * 86400000).toISOString();
+    res.json({ ok: true, keepUntil: until, atMost: max, clips: r.rows.length });
+  } catch (e) {
+    console.error("keep clips failed:", e.message);
+    res.status(500).json({ error: "db_error" });
+  }
+});
 
 app.get("/api/images/:code/:itx?", async (req, res) => {
   const session = await ownedSession(req, res);
@@ -1964,7 +2186,9 @@ const ORDER_MODES = new Set(["ranking", "put_in_order"]);
 // Responses in these modes never carry a name anywhere.
 const ANON_MODES = new Set(["ask_question", "muddiest_point"]);
 // Modes whose answer is a picture (drawn, marked up, or uploaded).
-const IMAGE_MODES = new Set(["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
+const IMAGE_MODES = new Set(["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "video_drop"]);
+// Drop a Video: the answer is a clip at Cloudflare Stream plus a poster frame (the "image" the cards show).
+const VIDEO_MAX_SECONDS = [15, 30, 60, 90];
 // Drawing pads: a child can Send another — the whole set so far comes each time, newest last.
 const PAD_MODES = new Set(["sketch", "trace", "annotate", "annotate_caption", "maths_board", "counters_draw"]);
 // Uploaded (not drawn) pictures — stored server-side, sent to screens by URL.
@@ -2027,7 +2251,7 @@ function isRevealMode(mode) {
 // Modes where the teacher chooses "one response each" vs "multiple".
 const MULTI_MODES = new Set(["word_cloud", "mindmap", "post_its", "venn", "plus_minus"]);
 
-function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, trace, traceCase, traceGuide, optionImages, pairImages }) {
+function newInteraction(session, { mode, prompt, options, correct, moderated, multi, image, passage, wordBank, expected, counterKind, tableRows, sprintSeconds, url, linkLabel, sig, bars, level, staff, keys, chords, key, trace, traceCase, traceGuide, optionImages, pairImages, maxSeconds }) {
   session.counter += 1;
   // Picture answers: each option's picture is parked in the room and sent as a link.
   const picUrls = (list, tag) => {
@@ -2152,6 +2376,8 @@ function newInteraction(session, { mode, prompt, options, correct, moderated, mu
     spotlightId: null, // sketch/annotate: one response blown up big on the projector
     // Post-its: teacher chooses at launch — screen notes first, or straight up.
     moderated: mode === "post_its" ? moderated !== false : null,
+    // Drop a Video: the longest clip a student may send, in seconds.
+    maxSeconds: mode === "video_drop" ? (VIDEO_MAX_SECONDS.includes(maxSeconds) ? maxSeconds : 30) : null,
     // One contribution each, or several (the default).
     multi: MULTI_MODES.has(mode) ? maxEach > 1 : null,
     maxEach,
@@ -2188,6 +2414,7 @@ function buildSpotlight(itx, id = itx.spotlightId, peek = false) {
     const k = Math.min(Math.max(0, parseInt(noteIdx, 10) || 0), Math.max(0, list.length - 1));
     // Letter Formation carries the stroke record too, so the board can play the tracing back as a little movie.
     const strokesFor = Number.isInteger(r.payload.strokesFor) ? r.payload.strokesFor : 0;
+    if (m === "video_drop") return { kind: "video", image: list[0], video: r.payload.video, name, sid: key };
     return { kind: "image", image: list[k], text: textOfPicture(r.payload, k) || undefined, name, sid: key, strokes: m === "trace" && k === strokesFor && Array.isArray(r.payload.strokes) ? r.payload.strokes : undefined };
   }
   if (m === "post_its") {
@@ -2380,6 +2607,7 @@ function aggregate(session, itx) {
       return list.map((image, k) => ({
         sid: k ? `${sid}|${k}` : sid, group: sid, k, of: list.length,
         image, text: textOfPicture(r.payload, k) || undefined, name: nm(r),
+        video: itx.mode === "video_drop" ? r.payload.video : undefined, // Drop a Video: the clip behind the poster
       }));
     });
     return { ...base, sketches: revealed, revealedCount: shown.length };
@@ -2526,6 +2754,8 @@ function teacherState(session) {
     storage: !!db, // lessons persist to Postgres
     teacherName: session.teacherName || null,
     tier: session.tier || "full", // "free" = the Free plan: five activities + room tools, no plans, no downloads
+    video: !!session.video, // the Video add-on is on for this teacher
+    videoReady: Stream.ready(), // and the site has somewhere to keep clips
     favs: session.favs || [],
     phase: session.phase,
     slide: session.phase === "slide" ? session.slide : null,
@@ -2695,6 +2925,7 @@ function studentState(session, student) {
             chords: itx.chords,
             key: itx.key,
             timeLimit: itx.timeLimit,
+            maxSeconds: itx.maxSeconds, // Drop a Video
             secondsLeft: itx.timeLimit
               ? Math.max(0, Math.round(itx.timeLimit - (Date.now() - itx.startedAt) / 1000))
               : null,
@@ -2781,6 +3012,7 @@ function describePayload(itx, p) {
   }
   if (itx.mode === "maths_board") return p.text ? `(board) ${p.text}` : "(board submitted, no answer typed)";
   if (itx.mode === "counters_draw") return "(board submitted)";
+  if (itx.mode === "video_drop") return p.video?.failed ? "(video could not be processed)" : "(video submitted)";
   if (itx.mode === "image_drop") {
     const n = imgsOf({ payload: p }).length;
     return n > 1 ? `(${n} images submitted)` : "(image submitted)";
@@ -2830,7 +3062,7 @@ function describePayload(itx, p) {
 // they live in memory and are gone with the old process).
 function liveSpec(itx) {
   const keep = ["mode", "prompt", "options", "correct", "moderated", "multi", "passage", "wordBank", "expected", "counterKind", "tableRows",
-    "url", "linkLabel", "sig", "bars", "level", "staff", "keys", "chords", "key", "trace", "traceCase", "traceGuide"];
+    "url", "linkLabel", "sig", "bars", "level", "staff", "keys", "chords", "key", "trace", "traceCase", "traceGuide", "maxSeconds"];
   const o = {};
   for (const k of keep) if (itx[k] !== undefined && itx[k] !== null) o[k] = itx[k];
   if (itx.timeLimit) o.sprintSeconds = itx.timeLimit;
@@ -2903,6 +3135,10 @@ function buildSummary(session, { withImages = false } = {}) {
       item.sketchCount = itx.responses.size;
       // Only for the live report (never stored): the pictures themselves,
       // at full size so a teacher can print them.
+      if (withImages && itx.mode === "video_drop")
+        item.videos = [...itx.responses.values()]
+          .filter((r) => r.name !== "👁 Preview" && r.payload.video?.uid)
+          .map((r) => ({ name: r.name, uid: r.payload.video.uid, ready: !!r.payload.video.ready, failed: !!r.payload.video.failed, iframe: r.payload.video.iframe, thumbnail: r.payload.video.thumbnail, duration: r.payload.video.duration }));
       if (withImages)
         item.images = [...itx.responses.values()]
           .filter((r) => r.name !== "👁 Preview")
@@ -3103,6 +3339,7 @@ async function handle(ws, msg) {
       try { session.favs = JSON.parse(auth.teacher.favs || "[]"); } catch { session.favs = []; }
     }
     session.tier = tierOf(auth.teacher);
+    session.video = !!auth.teacher?.video_on;
     if (session.tier === "free" && !session.favs?.length) session.favs = [...FREE_MODES]; // the five Free activities start as favourites
     ws.meta = { role: "teacher", code: session.code };
     broadcast(session);
@@ -3122,6 +3359,7 @@ async function handle(ws, msg) {
       try { session.favs = JSON.parse(auth.teacher.favs || "[]"); } catch { /* keep */ }
     }
     session.tier = tierOf(auth.teacher);
+    session.video = !!auth.teacher?.video_on;
     if (session.tier === "free" && !session.favs?.length) session.favs = [...FREE_MODES];
     session.teachers.add(ws);
     ws.meta = { role: "teacher", code: session.code };
@@ -3188,6 +3426,22 @@ async function handle(ws, msg) {
 
   /* ---- student actions ---- */
 
+  if (type === "video_upload" && ws.meta.role === "student") {
+    // Drop a Video: hand the device a one-time address at Cloudflare Stream to send its clip to.
+    const itx = session.interaction;
+    const student = session.students.get(ws.meta.studentId);
+    if (!itx || !itx.open || !student || session.phase !== "interaction" || itx.mode !== "video_drop" || msg.interactionId !== itx.id) return;
+    if (!session.video || !Stream.ready()) return safeSend(ws, { type: "error", error: "video_unavailable" });
+    if (!session.videoUploads) session.videoUploads = new Map();
+    Stream.directUpload({ maxSeconds: itx.maxSeconds || 30, meta: { room: session.code, activity: String(itx.id), student: String(student.name || "").slice(0, 40) } })
+      .then(({ uploadURL, uid }) => {
+        session.videoUploads.set(uid, { sid: student.id, itx: itx.id, at: Date.now() });
+        safeSend(ws, { type: "video_upload_url", interactionId: itx.id, uploadURL, uid });
+      })
+      .catch((e) => { console.error("video upload address failed:", e.message); safeSend(ws, { type: "error", error: "video_unavailable" }); });
+    return;
+  }
+
   if (type === "respond" && ws.meta.role === "student") {
     const itx = session.interaction;
     const student = session.students.get(ws.meta.studentId);
@@ -3199,6 +3453,12 @@ async function handle(ws, msg) {
     if (!session.allowChange && itx.responses.has(student.id) && !["venn", "post_its", "plus_minus", "link", "image_drop", "image_caption", "image_long"].includes(itx.mode) && !PAD_MODES.has(itx.mode)) return;
     const payload = sanitizePayload(itx, msg.payload);
     if (!payload) return;
+    if (itx.mode === "video_drop") {
+      // Only a clip this very student was handed an upload address for, in this activity.
+      const issued = session.videoUploads?.get(payload.video.uid);
+      if (!issued || issued.sid !== student.id || issued.itx !== itx.id) return;
+      session.videoUploads.delete(payload.video.uid);
+    }
     if (UPLOAD_MODES.has(itx.mode) || (payload.images && payload.images.length > 1)) {
       // Full-size photos (and a pad's second, third… drawing) would multiply across every
       // broadcast to every screen; park the bytes here and send everyone links instead.
@@ -3240,6 +3500,7 @@ async function handle(ws, msg) {
     }
     itx.responses.set(student.id, record);
     if (IMAGE_MODES.has(itx.mode)) persistImage(session, itx, student, record);
+    if (itx.mode === "video_drop") { persistVideo(session, itx, student, record); watchVideo(session, itx, student.id, record); }
     broadcast(session);
     return;
   }
@@ -3282,6 +3543,8 @@ async function handle(ws, msg) {
       }
       if (TOOL_MODES.has(msg.mode)) { const st = sanitizeStep(msg); if (st) runTool(session, st); break; }
       if (session.tier === "free" && !FREE_MODES.has(msg.mode)) return safeSend(ws, { type: "error", error: "locked_activity" });
+      if (msg.mode === "video_drop" && !session.video) return safeSend(ws, { type: "error", error: "locked_video" });
+      if (msg.mode === "video_drop" && !Stream.ready()) return safeSend(ws, { type: "error", error: "video_unavailable" });
       startInteraction(session, msg);
       break;
     }
@@ -3416,7 +3679,7 @@ async function handle(ws, msg) {
     }
     case "set_sequence": {
       if (session.tier === "free" && (msg.items || []).length) return safeSend(ws, { type: "error", error: "locked_plans" });
-      session.sequence = (msg.items || []).slice(0, MAX_STEPS).map(sanitizeStep).filter(Boolean);
+      session.sequence = (msg.items || []).slice(0, MAX_STEPS).map(sanitizeStep).filter(Boolean).filter((st) => st.mode !== "video_drop" || session.video);
       // Loading a saved lesson starts it from the top.
       if (msg.reset) {
         session.seqIndex = -1;
@@ -3760,6 +4023,7 @@ function runStep(session, step) {
     session.phase = "deck";
     return;
   }
+  if (step.mode === "video_drop" && (!session.video || !Stream.ready())) return; // the Video add-on is not on for this room
   if (step.mode !== "slide") return startInteraction(session, step);
   if (session.interaction) {
     session.interaction.open = false;
@@ -4005,6 +4269,15 @@ function sanitizePayload(itx, payload) {
       .slice(0, 12);
     const answer = String(payload.answer || "").trim().slice(0, 30);
     return answer || lines.length ? { lines, answer } : null;
+  }
+
+  if (itx.mode === "video_drop") {
+    // The clip went straight to Cloudflare; the answer is its id plus a small poster frame from the device.
+    const uid = payload.video && payload.video.uid;
+    if (!Stream.isUid(uid)) return null;
+    const image = String(payload.image || "");
+    if (!/^data:image\/jpeg;base64,/.test(image) || image.length > 400000) return null;
+    return { image, video: { uid, ready: false } };
   }
 
   if (UPLOAD_MODES.has(itx.mode)) {

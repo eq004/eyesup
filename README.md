@@ -140,6 +140,7 @@ Pictures students submit (Drop an Image, Image + Writing, Sketch, Annotate) are 
 | `TRIAL_DAYS` | *(optional)* free-trial length for new accounts, default 30 |
 | `OPEN_SIGNUP` | *(optional)* sign-up is open by default; `0` makes it invite-only again |
 | `GOOGLE_CLIENT_ID` | *(optional)* a Google OAuth client ID (`….apps.googleusercontent.com`) — switches on Sign in with Google |
+| `CF_ACCOUNT_ID`, `CF_STREAM_TOKEN` | *(optional)* Cloudflare account id and an API token with Stream edit rights — switches on Drop a Video for accounts with the Video add-on; `VIDEO_KEEP_DAYS` (30) and `VIDEO_MAX_KEEP_DAYS` (90) tune how long clips are kept |
 | `AUTH_SECRET` | *(recommended before selling)* a long random string that signs sign-ins, so the invite code is no longer also the signing key. Setting it signs everyone out once. |
 | `PUBLIC_URL` | *(optional)* site address used for Stripe return links |
 
@@ -174,6 +175,20 @@ The classroom screen's top bar starts with **← Back to main dashboard**, a lin
 On Sketch It, Annotate, Annotate + Writing, Letter Formation, Maths Board and Counters + Drawing, “Response received” now carries a **➕ Send another** button (up to six pictures per student): a fresh pad appears, and each send carries the whole set so far, newest last, replacing the earlier answer — the teacher's card grows (“2 drawings”), the classroom screen shows every picture, and the line reads “2 sent ✓”. The server accepts these re-sends without “Change answers” (`PAD_MODES`), and a set of two or more drawings is parked in the room's image store and sent to screens as links, like photos, so broadcasts stay light; the Letter Formation stroke record belongs to the newest picture (`strokesFor`) for the replay and the board movie.
 
 **💬 Annotate + Writing** (🎨 Draw & images) is Annotate with a writing box: the teacher uploads a picture, each student draws on it and must also write an explanation (up to 1,500 characters; Send is refused with a red box until they do). The card on the dashboard and the classroom screen show the drawing with the writing underneath; the summary line reads “(drawing) …”.
+
+## Drop a Video (the Video add-on)
+
+**🎬 Drop a Video** (🎨 Draw & images) takes one short clip from each student — a stop-motion, a performance, an experiment — and puts the class's clips on the classroom screen with one ZIP afterwards. It is **premium only**: locked (🔒) for every account, including trials and the existing accounts, until the owner switches the **Video add-on** on for that account in Owner admin → Manage (`teachers.video_on`; `set_video`). A locked tile explains the add-on; the server refuses a launch (`locked_video`) and drops video steps from a plan for a room without it.
+
+How it works, and why it cannot blow out the server or the bill:
+
+- **Clips never pass through Eyes Up's server.** The device asks the room for an upload address (`video_upload` → `video_upload_url`), the server gets a one-time direct-upload URL from **Cloudflare Stream** (`lib/stream.js`), and the clip goes from the iPad straight to Cloudflare. The answer is the clip's id plus a small poster frame the device captures (`{ video: { uid }, image }`), which is what the cards and the archive show. The server checks the id was issued to that student for that activity.
+- **Limits on the device.** The teacher picks the longest clip at launch (15, 30, 60 or 90 seconds, `maxSeconds`; the direct-upload address carries the same limit); the device refuses a longer or oversized file before anything is sent; one clip per student (a re-send replaces the earlier clip, which is deleted at Cloudflare).
+- **Playback is on demand.** Cards show the poster with ▶; the classroom screen plays a clip (Stream's player in a frame) only when the teacher taps it. Cloudflare converts the clip so it plays on every device; the server looks in every few seconds (`watchVideo`) and tells the screens when it is ready (`⏳ converting…` → `▶ ready`).
+- **Kept 30 days, then deleted.** `lesson_videos` records who sent which clip and `keep_until` (30 days, `VIDEO_KEEP_DAYS`). A job hides clips past their keep date and deletes them at Cloudflare a week later (`VIDEO_GRACE_DAYS`); in that week the lesson's **Restore** button brings them back. **Keep for another 30 days** on Lesson results moves the date, never beyond 90 days from the lesson (`VIDEO_MAX_KEEP_DAYS`). Lesson results says the keep date; the lesson record keeps the poster and name after the clip is gone.
+- **One ZIP of MP4s.** 🎬 Video clips on Lesson results (`/api/lessons/:id/videos`), the card's ⬇ Download link and the classroom screen's download button (`/api/videos/:code/:itx`) stream a ZIP straight from Cloudflare through to the teacher (`lib/zipstream.js`), one clip at a time, so a class's gigabyte of video never sits in the server's memory. Clips still converting are listed in `not included.txt`.
+
+Set-up (the owner, once): a Cloudflare account with Stream, an API token with Stream edit rights, then on the host `CF_ACCOUNT_ID` and `CF_STREAM_TOKEN`. Until both are set the add-on stays locked for everyone and the admin page says so. Local testing: `scratchpad/localdb/fake-stream.js` stands in for Cloudflare (`CF_STREAM_API=http://127.0.0.1:5546/client/v4 CF_ACCOUNT_ID=testacct CF_STREAM_TOKEN=testtoken`).
 
 ## Shared iPads: the name box is empty for a different class
 

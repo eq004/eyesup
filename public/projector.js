@@ -10,7 +10,7 @@ let state = null;
 let code = (new URLSearchParams(location.search).get("code") || "").toUpperCase();
 let retryUntil = 0; // after a class has been live, a vanished room is retried quietly for a while (server restart)
 let retryTimer = null;
-const DL_IMAGE_MODES = new Set(["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"]);
+const DL_IMAGE_MODES = new Set(["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "video_drop"]);
 
 const MODE_TAGS = {
   tool_timer: "Timer", tool_pick: "Random student", tool_groups: "Random groups", tool_dice: "Question dice",
@@ -20,7 +20,7 @@ const MODE_TAGS = {
   one_word: "One Word", ask_question: "Your Questions",
   true_false: "True or False", mindmap: "Mindmap", exit_ticket: "Exit Ticket",
   muddiest_point: "Muddiest Point", retrieval_sprint: "Retrieval Sprint — 60 seconds",
-  phonics_cloze: "Picture Phonics", sketch: "Sketch It", trace: "Letter Formation", image_drop: "Drop an Image", image_caption: "Image + Writing", image_long: "Image + Long Answer", maths_board: "Maths Board", counters_draw: "Counters + Drawing", spot_mistake: "Spot the Mistake",
+  phonics_cloze: "Picture Phonics", sketch: "Sketch It", trace: "Letter Formation", image_drop: "Drop an Image", image_caption: "Image + Writing", image_long: "Image + Long Answer", video_drop: "Drop a Video", maths_board: "Maths Board", counters_draw: "Counters + Drawing", spot_mistake: "Spot the Mistake",
   example_nonexample: "Example or Non-example?", teach_back: "Teach It Back",
   match_up: "Match Up", put_in_order: "Put in Order", give_example: "Give an Example",
   make_connection: "Make a Connection", finish_sentence: "Finish the Sentence",
@@ -150,8 +150,9 @@ function renderInner() {
   if (dl) {
     if (itx && state.dl) {
       const pics = DL_IMAGE_MODES.has(itx.mode);
-      dl.href = pics ? `/api/images/${state.code}/${itx.id}?pt=${state.dl}` : `/api/question/${state.code}/${itx.id}.csv?pt=${state.dl}`;
-      dl.textContent = pics ? "⬇ download pictures (ZIP)" : "⬇ download this question";
+      const clips = itx.mode === "video_drop";
+      dl.href = clips ? `/api/videos/${state.code}/${itx.id}?pt=${state.dl}` : pics ? `/api/images/${state.code}/${itx.id}?pt=${state.dl}` : `/api/question/${state.code}/${itx.id}.csv?pt=${state.dl}`;
+      dl.textContent = clips ? "⬇ download clips (ZIP)" : pics ? "⬇ download pictures (ZIP)" : "⬇ download this question";
       dl.hidden = false;
     } else dl.hidden = true;
   }
@@ -661,7 +662,7 @@ function renderInteraction(itx) {
           .join("")}</div>`
       : `<p class="waiting-note">Tables appear here as they're filled…</p>`;
   } else if (agg.sketches) {
-    body = renderSketches(agg, ["image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode));
+    body = renderSketches(agg, ["image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "video_drop"].includes(itx.mode), itx.mode === "video_drop");
   } else if (itx.mode === "question_set") {
     body = renderQuestionSet(agg);
   } else if (agg.fields) {
@@ -672,7 +673,7 @@ function renderInteraction(itx) {
 
   // A spotlighted response (any type, except sketch which has its own stage)
   // replaces the body until tapped away.
-  if (agg?.spotlight && !["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw"].includes(itx.mode)) {
+  if (agg?.spotlight && !["sketch", "trace", "annotate", "annotate_caption", "image_drop", "image_caption", "image_long", "maths_board", "counters_draw", "video_drop"].includes(itx.mode)) {
     body = renderGenericSpotlight(agg.spotlight);
   }
 
@@ -1212,17 +1213,23 @@ function startSpotMovie(spot) {
 }
 
 /* Sketch gallery — with a teacher-driven spotlight for discussing one big. */
-function renderSketches(agg, isImage) {
+function renderSketches(agg, isImage, isVideo = false) {
   if (!agg.sketches.length) {
-    const noun = isImage ? ["image", "images"] : ["sketch", "sketches"];
-    return `<p class="waiting-note">${agg.total ? `${agg.total} ${agg.total === 1 ? noun[0] : noun[1]} in…` : `${isImage ? "Images" : "Sketches"} will appear here…`}</p>`;
+    const noun = isVideo ? ["clip", "clips"] : isImage ? ["image", "images"] : ["sketch", "sketches"];
+    return `<p class="waiting-note">${agg.total ? `${agg.total} ${agg.total === 1 ? noun[0] : noun[1]} in…` : `${isVideo ? "Video clips" : isImage ? "Images" : "Sketches"} will appear here…`}</p>`;
   }
   if (agg.spotlight) {
     const rest = agg.sketches.filter((s) => s.sid !== agg.spotlight.sid);
     const movie = agg.spotlight.strokes?.length;
+    const clip = agg.spotlight.kind === "video" ? agg.spotlight.video : null;
     return `
       <div class="spot-stage">
-        ${movie
+        ${clip
+          ? `<div class="spot-video">${clip.ready && clip.iframe
+               ? `<iframe src="${clip.iframe}?autoplay=true" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="student video"></iframe>`
+               : `<img class="spot-img" src="${agg.spotlight.image}" alt="poster frame" /><div class="sketch-cap big">${clip.failed ? "✗ This clip couldn't be processed" : "⏳ Converting the clip — a moment…"}</div>`}</div>
+             <div><button class="spot-back" data-spot="${agg.spotlight.sid}">✕ Back to all the clips</button></div>`
+          : movie
           ? `<div class="spot-movie" id="spotMovie" data-sid="${agg.spotlight.sid}" title="Tap to watch it again">
                <img id="spotMovieImg" src="${agg.spotlight.image}" alt="spotlighted letter" />
                <canvas id="spotMovieInk"></canvas>
@@ -1249,14 +1256,14 @@ function renderSketches(agg, isImage) {
     .map((list, i) => {
       const [first, ...more] = list;
       return `<div class="sketch-card tappable" data-spot="${first.sid}" style="animation-delay:${(i % 8) * 0.06}s">
-        <img src="${first.image}" alt="student image"/>
+        <img src="${first.image}" alt="student image"/>${first.video ? `<span class="play-badge">${first.video.failed ? "✗" : first.video.ready ? "▶" : "⏳"}</span>` : ""}
         ${more.length ? `<div class="sketch-more">${more.map((m) => `<img class="tappable" data-spot="${m.sid}" src="${m.image}" alt="another image from this student" />`).join("")}</div>` : ""}
         ${first.text ? `<div class="sketch-cap">${esc(first.text)}</div>` : ""}
         ${first.name ? `<div class="sketch-name">${esc(first.name)}${list.length > 1 ? ` · ${list.length} images` : ""}</div>` : list.length > 1 ? `<div class="sketch-name">${list.length} images</div>` : ""}
       </div>`;
     })
     .join("")}</div>
-    <p class="tap-hint">👆 tap ${isImage ? "an image" : "a drawing"} to make it big</p>`;
+    <p class="tap-hint">👆 tap ${isVideo ? "a clip to play it" : `${isImage ? "an image" : "a drawing"} to make it big`}</p>`;
 }
 
 /* A real packed word cloud: biggest word at the centre, the rest spiral
