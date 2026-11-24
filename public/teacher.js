@@ -900,10 +900,12 @@ function render() {
   $("lessonsBtn").style.display = state.storage ? "" : "none";
   $("dataBtn").style.display = state.storage ? "" : "none";
   const za = $("zipAll");
-  if (onFreePlan()) { za.style.display = "none"; return; }
-  za.style.display = state.pictureCount ? "" : "none";
-  za.textContent = `🖼 Pictures ZIP (${state.pictureCount || 0})`;
-  za.href = `/api/images/${state.code}?${authQuery()}`;
+  if (onFreePlan()) za.style.display = "none"; // no downloads on the Free plan — but the rest of the page still has to draw
+  else {
+    za.style.display = state.pictureCount ? "" : "none";
+    za.textContent = `🖼 Pictures ZIP (${state.pictureCount || 0})`;
+    za.href = `/api/images/${state.code}?${authQuery()}`;
+  }
   $("whoAmI").textContent = teacherToken() ? localStorage.getItem("eyesup_teacher_name") || "" : "";
   $("signOutBtn").style.display = teacherToken() ? "" : "none";
   const nb = $("namesBtn");
