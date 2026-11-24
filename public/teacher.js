@@ -1,5 +1,14 @@
 /* Eyes Up — teacher dashboard */
 
+// Two dashboards, one engine: the classic page (/teacher) and the step-by-step page (/teach, body.ui-steps).
+// A teacher who chose the new look is taken to it from /teacher; ?classic=1 always means the classic page.
+const STEPS_UI = document.body.classList.contains("ui-steps");
+try {
+  if (STEPS_UI) localStorage.setItem("eyesup_ui", "steps");
+  else if (/[?&]classic\b/.test(location.search)) localStorage.setItem("eyesup_ui", "classic");
+  else if (localStorage.getItem("eyesup_ui") === "steps") location.replace("/teach");
+} catch { /* private window: stay where we are */ }
+
 const MODES = {
   slide:         { icon: "📽", name: "Slide", hint: "A slide from your PowerPoint or Google Slides", opts: null },
   deck:          { icon: "🎞", name: "Live slides", hint: "Your real Google Slides / PowerPoint / Canva deck, animations and all", opts: null },
@@ -393,7 +402,7 @@ function buildModeGrid() {
 const folds = (() => { try { return JSON.parse(localStorage.getItem("eyesup_folds") || "{}") || {}; } catch { return {}; } })();
 delete folds.tools; // 🧰 Room tools start folded on every visit, however they were left last time
 // Activity categories and Room tools start folded; ⭐ Favourites, Live now and the lesson strip start open.
-const foldDefault = (key) => (key.startsWith("cat:") && key !== "cat:favs") || key === "tools";
+const foldDefault = (key) => (key.startsWith("cat:") && key !== "cat:favs") || key === "tools" || (STEPS_UI && key === "strip"); // the new look keeps the plan to one line until asked
 const foldOn = (key) => (key in folds ? !!folds[key] : foldDefault(key));
 const setFold = (key, on) => { folds[key] = !!on; try { localStorage.setItem("eyesup_folds", JSON.stringify(folds)); } catch { /* private window */ } };
 
@@ -757,12 +766,14 @@ function openComposer(key, keepImage) {
   if (composerTarget.kind !== "launch") showActivityForm();
   else if (launcherOpen === false) { launcherOpen = true; renderLauncher(); }
   prompt.focus();
+  if (window.stepsUI) window.stepsUI.sync();
 }
 
 function closeComposer() {
   $("composer").classList.remove("show");
   composerModeKey = null;
   if (composerTarget.kind !== "launch") closeActivityPicker();
+  if (window.stepsUI) window.stepsUI.sync();
 }
 
 function readComposer() {
@@ -941,6 +952,7 @@ function render() {
   renderLauncher();
   renderTools();
   if (view === "plans" && !plansLoaded && teacherToken()) loadPlans();
+  if (window.stepsUI) window.stepsUI.render(); // the step-by-step page draws its own parts from the same state
 }
 
 /* ---------------- room tools ---------------- */
@@ -2218,6 +2230,8 @@ async function loadMe() {
     me = await res.json();
     $("accountBtn").style.display = "";
     $("adminLink").style.display = me.admin ? "" : "none";
+    if ($("newUiLink")) $("newUiLink").style.display = me.newUi ? "" : "none";
+    if (window.stepsUI) window.stepsUI.sync();
     renderPlanBanner();
     // Accounts made before email was asked for: one quiet reminder per device.
     if (!me.email && !localStorage.getItem("eyesup_email_nudge")) {

@@ -9,6 +9,7 @@
 
 const os = require("os");
 const path = require("path");
+const fs = require("fs");
 const http = require("http");
 const crypto = require("crypto");
 const express = require("express");
@@ -150,6 +151,7 @@ if (process.env.DATABASE_URL) {
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS google_sub text`,
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS pass_set boolean NOT NULL DEFAULT true`,
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS video_on boolean NOT NULL DEFAULT false`, // the Video add-on (Drop a Video)
+    `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS new_ui boolean NOT NULL DEFAULT false`, // may use the step-by-step Teach page (/teach)
     // Drop a Video: the clip itself lives at Cloudflare Stream; this is who sent what, and until when it is kept.
     `CREATE TABLE IF NOT EXISTS lesson_videos (
       id serial PRIMARY KEY,
@@ -270,7 +272,7 @@ if (process.env.DATABASE_URL) {
 // AUTH_SECRET signs sign-ins. Set it separately on the host so the invite
 // code (TEACHER_PASSWORD) can be shared without also being the signing key.
 const AUTH_SECRET = process.env.AUTH_SECRET || TEACHER_PASSWORD || "eyesup-local-secret";
-const TEACHER_COLS = `id, username, display_name, pass_hash, favs, email, is_admin, status, plan, trial_ends_at, paid_until, stripe_customer, stripe_sub, school, grades, google_sub, pass_set, video_on`;
+const TEACHER_COLS = `id, username, display_name, pass_hash, favs, email, is_admin, status, plan, trial_ends_at, paid_until, stripe_customer, stripe_sub, school, grades, google_sub, pass_set, video_on, new_ui`;
 
 // Can this account start a class right now? Past lessons and data stay
 // readable whatever the answer — a lapsed teacher never loses their work.
@@ -530,6 +532,30 @@ app.use(express.static(path.join(__dirname, "public")));
 
 // Friendly routes
 app.get("/teacher", (_req, res) => res.sendFile(path.join(__dirname, "public/teacher.html")));
+// The step-by-step Teach page lives beside the classic one. It is the classic page with its main area
+// (between the MAIN:START and MAIN:END comments) swapped for views/teach-main.html, plus one stylesheet and
+// one script — so the sign-in, the sheets, the styles and the engine (teacher.js) are shared, never copied.
+let teachPageCache = { key: "", html: "" };
+function teachPage() {
+  const classicFile = path.join(__dirname, "public/teacher.html"), mainFile = path.join(__dirname, "views/teach-main.html");
+  const key = `${fs.statSync(classicFile).mtimeMs}:${fs.statSync(mainFile).mtimeMs}`;
+  if (teachPageCache.key === key) return teachPageCache.html;
+  const classic = fs.readFileSync(classicFile, "utf8"), main = fs.readFileSync(mainFile, "utf8");
+  const START = "<!-- MAIN:START -->", END = "<!-- MAIN:END -->";
+  const s = classic.indexOf(START), e = classic.indexOf(END);
+  if (s < 0 || e < s) throw new Error("teacher.html has lost its MAIN markers");
+  const html = (classic.slice(0, s) + main + classic.slice(e + END.length))
+    .replace("<body>", '<body class="ui-steps">')
+    .replace("</head>", '  <link rel="stylesheet" href="/teach-steps.css" />\n</head>')
+    .replace('<script src="/footer.js"></script>', '<script src="/teach-steps.js"></script>\n  <script src="/footer.js"></script>');
+  if (!html.includes('class="ui-steps"') || !html.includes("/teach-steps.js")) throw new Error("teach page could not be put together");
+  teachPageCache = { key, html };
+  return html;
+}
+app.get("/teach", (_req, res) => {
+  try { res.type("html").send(teachPage()); }
+  catch (e) { console.error("teach page failed:", e.message); res.redirect("/teacher?classic=1"); }
+});
 app.get("/join", (_req, res) => res.sendFile(path.join(__dirname, "public/student.html")));
 app.get("/projector", (_req, res) => res.sendFile(path.join(__dirname, "public/projector.html")));
 app.get("/report", (_req, res) => res.sendFile(path.join(__dirname, "public/report.html")));
@@ -864,6 +890,7 @@ const mePayload = (t) => ({
   school: t.school || "", grades: t.grades || "", gradeOptions: GRADE_OPTIONS,
   google: !!t.google_sub, hasPassword: t.pass_set !== false,
   video: !!t.video_on, videoReady: Stream.ready(), // the Video add-on (Drop a Video)
+  newUi: !!(t.new_ui || t.is_admin), // the step-by-step Teach page (/teach): the owner, and accounts the owner switches on
   billing: BILLING_ON, trialDays: TRIAL_DAYS, hasSubscription: !!t.stripe_sub, canManageBilling: !!t.stripe_customer,
   access: accessOf(t),
   tier: tierOf(t),
@@ -918,7 +945,7 @@ app.get("/api/admin/overview", async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT t.id, t.username, t.display_name, t.email, t.is_admin, t.status, t.plan, t.trial_ends_at, t.paid_until,
-              t.created_at, t.last_seen_at, t.note, t.stripe_sub, t.stripe_customer, t.school, t.grades, t.google_sub, t.video_on,
+              t.created_at, t.last_seen_at, t.note, t.stripe_sub, t.stripe_customer, t.school, t.grades, t.google_sub, t.video_on, t.new_ui,
               count(l.id)::int AS lessons,
               count(l.id) FILTER (WHERE l.saved_at > now() - interval '30 days')::int AS lessons_30d,
               max(l.saved_at) AS last_lesson,
@@ -942,7 +969,7 @@ app.get("/api/admin/overview", async (req, res) => {
         plan: r.plan || "free", trialEndsAt: r.trial_ends_at, paidUntil: r.paid_until, joined: r.created_at,
         lastSeen: r.last_seen_at, lastLesson: r.last_lesson, lessons: r.lessons, lessons30: r.lessons_30d,
         students: r.students, plans: r.plans, note: r.note || "", hasSubscription: !!r.stripe_sub,
-        school: r.school || "", grades: r.grades || "", google: !!r.google_sub, video: !!r.video_on,
+        school: r.school || "", grades: r.grades || "", google: !!r.google_sub, video: !!r.video_on, newUi: !!r.new_ui,
         access: accessOf(r),
       })),
     });
@@ -993,6 +1020,11 @@ app.post("/api/admin/teacher/:id", async (req, res) => {
     if (action === "set_admin") {
       if (self) return res.status(400).json({ error: "not_yourself" });
       await db.query(`UPDATE teachers SET is_admin = $1 WHERE id = $2`, [!!req.body?.admin, id]);
+      return res.json({ ok: true });
+    }
+    if (action === "set_new_ui") {
+      // The step-by-step Teach page: on or off for this account (the classic dashboard is always there).
+      await db.query(`UPDATE teachers SET new_ui = $1 WHERE id = $2`, [!!req.body?.newUi, id]);
       return res.json({ ok: true });
     }
     if (action === "set_video") {

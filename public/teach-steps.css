@@ -1,0 +1,318 @@
+/* Eyes Up — the step-by-step Teach page (/teach).
+   Loaded after the classic page's own styles; every rule is scoped to body.ui-steps, so the classic
+   dashboard never sees it. The rule for this page: one main button per screen, at most three other
+   choices showing, everything else behind a plainly named "More". */
+
+body.ui-steps {
+  --paper: #eef5ff;
+  --surface: #ffffff;
+  --ink: #0e2445;
+  --ink-soft: #3d4f6e;
+  --muted: #56678a;
+  --line: #d5e2f5;
+  --navy: #0e2445;
+  --accent: #0e2445;
+  --accent-ink: #0e2445;
+  --accent-soft: #e3eeff;
+  --green: #157f45;
+  --green-soft: #cdefd9;
+  --radius: 16px;
+  --radius-lg: 24px;
+  --sun: #ffc93c;
+  --sun-edge: #e0a100;
+  --navy-edge: #050f22;
+  --font-display: "Fredoka", "Plus Jakarta Sans", "Manrope", -apple-system, "Segoe UI", sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+body.ui-steps h1, body.ui-steps h2 { font-family: var(--font-display); font-weight: 600; margin: 0; }
+.sx-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+/* ---------- top bar: the same things in the same place on every step ---------- */
+body.ui-steps header.sx-top {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem;
+  padding: 0.6rem 1.25rem;
+  background: var(--surface); color: var(--ink);
+  border-bottom: 2px solid var(--line);
+}
+.sx-logo { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--ink); text-decoration: none; margin-right: 0.3rem; }
+.sx-logo svg { width: 52px; height: 26px; }
+.sx-logo span { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; line-height: 1; }
+.sx-classpick select {
+  min-height: 44px; border: 2px solid var(--line); border-radius: 999px; background: var(--paper);
+  padding: 0 0.9rem; font: inherit; font-weight: 800; color: var(--ink); max-width: 190px;
+}
+.sx-code {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px;
+  background: var(--ink); color: #fff; border-radius: 999px; padding: 0 1rem;
+  font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; letter-spacing: 0.16em; cursor: pointer;
+}
+.sx-code small { font-family: var(--font-ui); letter-spacing: 0; font-weight: 600; font-size: 0.8rem; opacity: 0.75; }
+.sx-here { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 800; color: var(--green); white-space: nowrap; }
+.sx-here .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
+.sx-nav-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px;
+  border: 2px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink);
+  padding: 0 0.95rem; font: inherit; font-weight: 800; font-size: 0.95rem; cursor: pointer; white-space: nowrap;
+  list-style: none; user-select: none;
+}
+.sx-nav-btn::-webkit-details-marker { display: none; }
+.sx-nav-btn:hover, .sx-pop[open] > .sx-nav-btn { border-color: var(--ink); }
+.sx-nav-btn.sx-square { padding: 0; width: 44px; justify-content: center; }
+body.ui-steps .sx-views { margin: 0; gap: 0.25rem; background: var(--paper); border-radius: 999px; padding: 3px; }
+body.ui-steps .sx-views .view-tab { min-height: 38px; padding: 0 0.95rem; border: 0; border-radius: 999px; color: var(--ink-soft); font-weight: 800; }
+body.ui-steps .sx-views .view-tab:hover { background: #fff; color: var(--ink); }
+body.ui-steps .sx-views .view-tab.on { background: var(--ink); color: #fff; }
+.sx-eyes {
+  display: inline-flex; align-items: center; gap: 0.55rem; min-height: 48px;
+  background: var(--ink); color: #fff; border-radius: 999px; padding: 0 1.3rem;
+  font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; letter-spacing: 0.04em;
+  box-shadow: 0 4px 0 var(--navy-edge); cursor: pointer; white-space: nowrap;
+}
+.sx-eyes svg { width: 34px; height: 17px; color: var(--sun); }
+.sx-eyes:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--navy-edge); }
+.sx-whoami { padding: 0.5rem 0.8rem 0.4rem; font-weight: 800; color: var(--ink-soft) !important; border-bottom: 1px solid var(--line); margin-bottom: 0.3rem; }
+.sx-whoami:empty { display: none; }
+
+/* drop-downs for Screens and Tools */
+.sx-pop { position: relative; }
+.sx-pop-body {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 45;
+  width: min(340px, calc(100vw - 2rem));
+  background: var(--surface); border: 2px solid var(--line); border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(14, 36, 69, 0.18); padding: 0.5rem;
+  display: flex; flex-direction: column; gap: 0.25rem;
+}
+.sx-pop-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; text-align: left;
+  min-height: 44px; padding: 0.6rem 0.8rem; border-radius: 12px; color: var(--ink); text-decoration: none; font: inherit; cursor: pointer;
+}
+.sx-pop-item:hover { background: var(--paper); }
+.sx-pop-item b { font-weight: 800; }
+.sx-pop-item small { color: var(--ink-soft); font-size: 0.86rem; font-weight: 600; }
+.sx-tools-body { width: min(420px, calc(100vw - 2rem)); max-height: min(76vh, 720px); overflow-y: auto; padding: 0.9rem; }
+body.ui-steps #roomTools { padding: 0; }
+body.ui-steps #roomTools .tools, body.ui-steps #roomTools.folded .tools { display: flex; flex-direction: column; padding: 0; gap: 0.9rem; }
+body.ui-steps #roomTools .tool-block { flex: none; border: 2px solid var(--line); border-radius: 14px; background: var(--paper); padding: 0.75rem 0.85rem; }
+
+/* ---------- the three steps ---------- */
+.sx-steps { max-width: 1240px; margin: 0 auto; padding: 1rem 1.25rem 0; }
+.sx-steplist { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.8rem; }
+.sx-steplist li { flex: 1 1 230px; }
+.sx-stepbtn {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%; text-align: left;
+  padding: 0.7rem 1rem; border-radius: 18px; background: var(--surface); border: 2px solid var(--line);
+  color: var(--ink); font: inherit; cursor: pointer;
+}
+.sx-stepbtn:hover { border-color: var(--ink); }
+.sx-num {
+  width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  background: var(--paper); border: 2px solid var(--line); box-sizing: border-box;
+  font-family: var(--font-display); font-weight: 600; font-size: 1.25rem;
+}
+.sx-steptext b { display: block; font-family: var(--font-display); font-weight: 600; font-size: 1.22rem; line-height: 1.2; }
+.sx-steptext small { font-size: 0.88rem; font-weight: 700; color: var(--ink-soft); }
+.sx-stepbtn.done .sx-num { background: var(--green-soft); border-color: var(--green-soft); color: var(--green); }
+.sx-stepbtn.on { background: var(--sun); border-color: var(--sun); box-shadow: 0 4px 0 var(--sun-edge); }
+.sx-stepbtn.on .sx-num { background: var(--ink); border-color: var(--ink); color: #fff; }
+.sx-stepbtn.on .sx-steptext small { color: var(--ink); font-weight: 800; }
+
+/* ---------- page furniture ---------- */
+.sx-wrap { max-width: 1240px; margin: 0 auto; padding: 1rem 1.25rem 3rem; display: flex; flex-direction: column; gap: 1rem; }
+.sx-pane { display: flex; flex-direction: column; gap: 1rem; }
+.sx-cols { display: flex; flex-wrap: wrap; gap: 1rem; align-items: stretch; }
+.sx-cols.sx-start { align-items: flex-start; }
+.sx-col { display: flex; flex-direction: column; gap: 0.9rem; }
+.sx-grow { flex: 999 1 520px; min-width: 0; }
+.sx-side { flex: 1 1 340px; min-width: 0; }
+.sx-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.sx-card { background: var(--surface); border: 2px solid var(--line); border-radius: var(--radius-lg); padding: 1.4rem; box-sizing: border-box; }
+.sx-label { font-size: 0.82rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.sx-lead { margin: 0; font-size: 1.08rem; line-height: 1.45; }
+.sx-cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; }
+.sx-cardhead h2 { font-size: 1.55rem; }
+.sx-count { font-family: var(--font-display); font-weight: 600; font-size: 1.3rem; color: var(--green); }
+
+/* buttons: the yellow one is the main move on a screen */
+.sx-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 50px;
+  border-radius: 16px; padding: 0 1.15rem; font: inherit; font-weight: 800; font-size: 1rem;
+  cursor: pointer; text-decoration: none; white-space: nowrap; box-sizing: border-box;
+}
+.sx-btn.navy { background: var(--ink); color: #fff; box-shadow: 0 4px 0 var(--navy-edge); }
+.sx-btn.line { background: var(--surface); color: var(--ink); border: 2px solid var(--ink); }
+.sx-btn.soft { background: var(--surface); color: var(--ink); border: 2px solid var(--line); }
+.sx-btn.line:hover, .sx-btn.soft:hover { background: var(--paper); }
+.sx-btn:active { transform: translateY(2px); }
+#qrToggle .act-text { display: inline-flex; align-items: baseline; gap: 0.45rem; }
+#qrToggle .act-text small { font-weight: 700; color: var(--ink-soft); font-size: 0.86rem; }
+body.ui-steps #qrToggle.on { background: var(--green-soft); border-color: var(--green); }
+.sx-links { display: flex; flex-wrap: wrap; gap: 0 1.4rem; }
+.sx-link { min-height: 44px; font: inherit; font-weight: 800; font-size: 0.95rem; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.sx-big {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem; text-align: left;
+  background: var(--sun); color: var(--ink); border-radius: var(--radius-lg); padding: 1.2rem 1.6rem;
+  box-shadow: 0 6px 0 var(--sun-edge); font: inherit; cursor: pointer;
+}
+.sx-big b { display: block; font-family: var(--font-display); font-weight: 600; font-size: 1.7rem; line-height: 1.15; }
+.sx-big small { font-size: 1rem; font-weight: 800; }
+.sx-big .sx-chev { font-size: 2.6rem; font-weight: 800; line-height: 1; }
+.sx-big:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--sun-edge); }
+.sx-planbox { display: flex; align-items: center; justify-content: space-between; gap: 0.9rem; flex-wrap: wrap; padding: 1rem 1.3rem; }
+.sx-planline { font-weight: 700; color: var(--ink-soft); margin-top: 0.15rem; }
+.sx-planline b { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; color: var(--ink); }
+
+/* step 1: the code a child can read from the back of the room */
+.sx-codeblocks { display: flex; flex-wrap: wrap; gap: 0.7rem; }
+.sx-codeblocks span {
+  width: 104px; height: 120px; border-radius: 22px; display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 600; font-size: 5rem; line-height: 1;
+}
+.sx-codeblocks span:nth-child(6n + 1) { background: #ffe8a3; }
+.sx-codeblocks span:nth-child(6n + 2) { background: #cfe3ff; }
+.sx-codeblocks span:nth-child(6n + 3) { background: #cdefd9; }
+.sx-codeblocks span:nth-child(6n + 4) { background: #ffd6cc; }
+.sx-codeblocks span:nth-child(6n + 5) { background: #e2d9ff; }
+.sx-bar { height: 14px; border-radius: 999px; background: var(--paper); overflow: hidden; }
+.sx-bar > div { height: 100%; width: 0; border-radius: 999px; background: var(--green); transition: width 0.4s ease; }
+.sx-who { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 0.45rem; max-height: 250px; overflow-y: auto; }
+.sx-who span { padding: 0.4rem 0.6rem; border-radius: 12px; font-weight: 800; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-who .in { background: var(--green-soft); }
+.sx-who .in::before { content: "✓ "; color: var(--green); }
+.sx-who .out { border: 2px dashed #9fb4d4; color: var(--ink-soft); padding: 0.28rem 0.5rem; }
+.sx-who .none { grid-column: 1 / -1; color: var(--ink-soft); font-weight: 700; white-space: normal; padding: 0; }
+.sx-field { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 800; font-size: 0.92rem; margin-top: auto; }
+.sx-optional { font-weight: 700; color: var(--ink-soft); }
+body.ui-steps #titleInput { width: 100%; box-sizing: border-box; min-height: 44px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface); padding: 0 0.8rem; font-weight: 700; }
+body.ui-steps .link-pop { border: 2px solid var(--line); border-radius: 16px; }
+
+/* step 2: favourites first, everything else one button away */
+.sx-askhead { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; }
+.sx-askhead h1 { font-size: 2rem; line-height: 1.15; flex: 1 1 260px; }
+#sxSearch { flex: 0 1 240px; min-width: 0; min-height: 48px; border: 2px solid var(--line); border-radius: 16px; background: var(--surface); padding: 0 0.9rem; font: inherit; font-weight: 700; color: var(--ink); }
+#sxSearch:focus { outline: none; border-color: var(--ink); }
+.sx-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0.8rem; }
+.sx-tile {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; text-align: left;
+  min-height: 128px; padding: 0.85rem; border-radius: 22px; border: 4px solid transparent;
+  color: var(--ink); font: inherit; cursor: pointer;
+}
+.sx-tile .ic { width: 46px; height: 46px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 1.45rem; line-height: 1; }
+.sx-tile b { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; line-height: 1.2; }
+.sx-tile small { font-size: 0.88rem; font-weight: 700; line-height: 1.3; }
+.sx-tile.c0 { background: #ffe8a3; box-shadow: 0 4px 0 #ecc963; }
+.sx-tile.c1 { background: #cfe3ff; box-shadow: 0 4px 0 #a9c8f5; }
+.sx-tile.c2 { background: #c5eef0; box-shadow: 0 4px 0 #9cd8db; }
+.sx-tile.c3 { background: #ffd6cc; box-shadow: 0 4px 0 #f2b3a5; }
+.sx-tile.c4 { background: #e2d9ff; box-shadow: 0 4px 0 #c3b5f2; }
+.sx-tile.c5 { background: #cdefd9; box-shadow: 0 4px 0 #a3ddb8; }
+.sx-tile.on { border-color: var(--ink); box-shadow: none; }
+.sx-tile.locked { opacity: 0.7; }
+.sx-tile .lock { position: absolute; top: 0.7rem; right: 0.8rem; }
+.sx-tile:active { transform: translateY(2px); }
+.sx-browse { align-self: flex-start; }
+.sx-all { background: var(--surface); border: 2px solid var(--line); border-radius: var(--radius-lg); }
+.sx-allhint { margin: 0; padding: 0.9rem 1rem 0; font-weight: 700; color: var(--ink-soft); }
+body.ui-steps .sx-all .modes { padding: 0.8rem 1rem 1rem; }
+body.ui-steps .mode-cat { background: var(--paper); border: 0; border-radius: 14px; font-family: var(--font-display); font-weight: 600; }
+body.ui-steps .mode-cat.folded { background: var(--paper); }
+body.ui-steps .mode-tile { background: var(--surface); border: 2px solid var(--line); }
+.sx-empty { text-align: center; padding: 1.6rem 0.6rem; color: var(--ink-soft); }
+.sx-empty b { display: block; font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; color: var(--ink); }
+.sx-empty p { margin: 0.4rem 0 0; font-weight: 600; }
+body.ui-steps #launchPanel { margin: 0; }
+body.ui-steps #launchPanel.collapsed #launchBody { display: block; }
+body.ui-steps #launchPanel .composer { margin: 0; border: 0; padding: 0; background: transparent; }
+body.ui-steps .composer .mode-label { font-family: var(--font-display); font-weight: 600; font-size: 1.45rem; }
+body.ui-steps .composer input[type="text"], body.ui-steps .composer textarea { border: 2px solid #9fb4d4; border-radius: 14px; }
+body.ui-steps .composer .row { margin-top: 1rem; }
+body.ui-steps .composer #launchBtn, body.ui-steps .composer #saveStepBtn {
+  flex: 1 1 100%; min-height: 58px; background: var(--sun); border: 0; color: var(--ink); border-radius: 18px;
+  box-shadow: 0 5px 0 var(--sun-edge); font-family: var(--font-display); font-weight: 600; font-size: 1.3rem;
+}
+body.ui-steps .composer #launchBtn:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--sun-edge); }
+.sx-opts { padding: 1rem 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; }
+body.ui-steps .btn { border-width: 2px; border-radius: 14px; font-weight: 800; }
+body.ui-steps .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+.sx-more > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.5rem; min-height: 44px; font-weight: 800; cursor: pointer; list-style: none; }
+.sx-more > summary::-webkit-details-marker { display: none; }
+.sx-more > summary::before { content: "▸"; display: inline-block; transition: transform 0.15s ease; }
+.sx-more[open] > summary::before { transform: rotate(90deg); }
+.sx-more > summary small { font-weight: 700; color: var(--ink-soft); font-size: 0.88rem; }
+.sx-more-body { gap: 0.5rem; padding: 0.3rem 0 0.2rem; align-items: stretch; }
+.sx-more-body .btn { justify-content: flex-start; white-space: normal; text-align: left; }
+body.ui-steps .limit-wrap { white-space: normal; flex-wrap: wrap; }
+
+/* step 3: answers on the left, one clear next move on the right */
+body.ui-steps #livePanel, body.ui-steps #livePanel.unpinned { position: static; max-height: none; display: block; border: 2px solid var(--line); box-shadow: none; }
+body.ui-steps #livePanel #liveArea, body.ui-steps #livePanel.folded #liveArea { display: block; overflow: visible; }
+body.ui-steps #livePanel .panel-head { display: none; }
+body.ui-steps .live { padding: 1.3rem 1.4rem 1.4rem; }
+body.ui-steps .live-q h2 { font-size: 1.9rem; line-height: 1.15; font-weight: 600; }
+body.ui-steps .live-q .mode-tag { background: #ffe8a3; color: var(--ink); border-radius: 999px; padding: 0.25rem 0.75rem; text-transform: none; letter-spacing: 0; }
+body.ui-steps .resp-meter .n { font-family: var(--font-display); font-weight: 600; }
+body.ui-steps .live .controls { display: none; } /* replaced by "What next?" */
+body.ui-steps .responses { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0.7rem; }
+body.ui-steps .resp-card { flex-direction: column; align-items: flex-start; gap: 0.45rem; border: 0; border-radius: 6px 20px 20px 20px; padding: 0.85rem 1rem; background: #ffe8a3; }
+body.ui-steps .resp-card:nth-child(6n + 2) { background: #cfe3ff; }
+body.ui-steps .resp-card:nth-child(6n + 3) { background: #cdefd9; }
+body.ui-steps .resp-card:nth-child(6n + 4) { background: #ffd6cc; }
+body.ui-steps .resp-card:nth-child(6n + 5) { background: #e2d9ff; }
+body.ui-steps .resp-card:nth-child(6n) { background: #c5eef0; }
+body.ui-steps .resp-card .what { order: 1; font-weight: 800; font-size: 1.08rem; line-height: 1.3; overflow-wrap: anywhere; width: 100%; }
+body.ui-steps .resp-card .who { order: 2; min-width: 0; color: var(--ink-soft); font-weight: 800; }
+body.ui-steps .resp-card .reveal-btn { order: 3; min-height: 36px; border: 2px solid rgba(14, 36, 69, 0.25); background: rgba(255, 255, 255, 0.7); border-radius: 999px; font-weight: 800; }
+body.ui-steps .resp-card.revealed { outline: 3px solid var(--green); outline-offset: -3px; }
+body.ui-steps .live-empty { padding: 2rem 1.25rem; }
+body.ui-steps .live-empty .big { font-family: var(--font-display); font-weight: 600; font-size: 1.4rem; color: var(--ink); }
+#sxNext h2 { font-size: 1.5rem; }
+#sxNextMain { gap: 0.6rem; }
+.sx-next {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; text-align: left; width: 100%;
+  min-height: 58px; justify-content: center; padding: 0.6rem 1rem; border-radius: 18px;
+  background: var(--surface); border: 2px solid var(--line); color: var(--ink); font: inherit; cursor: pointer; text-decoration: none; box-sizing: border-box;
+}
+.sx-next b { font-weight: 800; font-size: 1.05rem; }
+.sx-next small { font-size: 0.88rem; font-weight: 700; color: var(--ink-soft); }
+.sx-next:hover { border-color: var(--ink); }
+.sx-next.main { background: var(--sun); border-color: var(--sun); box-shadow: 0 5px 0 var(--sun-edge); min-height: 68px; }
+.sx-next.main b { font-family: var(--font-display); font-weight: 600; font-size: 1.3rem; }
+.sx-next.main small { color: var(--ink); font-weight: 800; }
+.sx-next.main:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--sun-edge); }
+.sx-next.quiet { min-height: 44px; border: 0; padding: 0.3rem 0.2rem; text-decoration: underline; text-underline-offset: 3px; }
+#sxNextMore { gap: 0.2rem; }
+
+/* the lesson plan: one line until "Steps" is pressed */
+body.ui-steps .no-plan-bar { display: none; }
+body.ui-steps .lesson-strip { border: 2px solid var(--line); box-shadow: none; border-radius: var(--radius-lg); }
+body.ui-steps .lesson-strip .ls-head { padding: 0.6rem 1rem; }
+body.ui-steps .lesson-strip .ls-title { font-size: 1.15rem; }
+body.ui-steps .lesson-strip .ls-next { background: var(--surface); padding: 0.7rem 1rem; }
+body.ui-steps .lesson-strip .ls-next .btn.big { background: var(--surface); border: 2px solid var(--ink); color: var(--ink); font-weight: 800; }
+body.ui-steps .lesson-strip.folded .ls-head .ls-kicker,
+body.ui-steps .lesson-strip.folded .ls-nav,
+body.ui-steps .lesson-strip.folded [data-strip="edit"],
+body.ui-steps .lesson-strip.folded [data-strip="close"] { display: none; }
+body.ui-steps .lesson-strip.folded .ls-head { border-bottom: 0; padding-bottom: 0; }
+body.ui-steps .ls-chip.now { background: var(--ink); border-color: var(--ink); color: #fff; }
+body.ui-steps .ls-chip.now .ls-run { color: #fff; }
+
+/* the Lesson plans view keeps its classic layout on the new ground colour */
+body.ui-steps .plans-wrap { max-width: 1240px; }
+
+@media (max-width: 720px) {
+  .sx-codeblocks span { width: 68px; height: 80px; font-size: 3.2rem; border-radius: 16px; }
+  .sx-big b { font-size: 1.35rem; }
+  .sx-pop-body { right: auto; left: 0; }
+}
+
+/* small finishes */
+.sx-stepbtn.done .sx-num { font-size: 0; }
+.sx-stepbtn.done .sx-num::after { content: "✓"; font-size: 1.3rem; }
+body.ui-steps #lessonStrip:has(.no-plan-bar) { display: none; }
+#qrToggle .act-text small { display: none; }
+#qrToggle.on .act-text small { display: inline; }
+#qrToggle .act-text b::before { content: "🔳 "; }
+/* on step 3 "What next?" already carries the plan's next move, so the plan line does not repeat the button */
+body.ui-steps[data-step="3"] .lesson-strip.folded .ls-next .btn.big { display: none; }

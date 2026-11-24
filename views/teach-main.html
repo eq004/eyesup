@@ -1,0 +1,266 @@
+  <!-- The step-by-step Teach page (/teach). The server swaps this in for the classic page's main area, so every
+       id the engine (public/teacher.js) looks for must be here too: tools/check-teach-ids.js checks that. -->
+  <header class="sx-top">
+    <a class="sx-logo" href="/teach" title="Eyes Up">
+      <svg viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="#fff" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="#fff" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/><circle cx="35.5" cy="19" r="3.6" fill="#fff"/><circle cx="97.5" cy="19" r="3.6" fill="#fff"/></svg>
+      <span>eyes up</span>
+    </a>
+    <label class="sx-classpick" title="Which class is this? Their names become tap-to-join tiles on the join page">
+      <span class="sx-vh">Class</span>
+      <select id="classSel">
+        <option value="">None</option>
+        <option value="new">＋ New class…</option>
+      </select>
+    </label>
+    <button class="sx-nav-btn sx-square" id="classEdit" title="Edit this class's names, or print its QR sticker" style="display:none">✎</button>
+    <button class="sx-code" id="codeChip" title="Click to copy the join link"><small>CODE</small> <span id="codeText">····</span></button>
+    <span class="sx-here" title="Students who have joined"><span class="dot"></span><span id="studentCount">0</span>&nbsp;here</span>
+    <span class="spacer"></span>
+    <nav class="views sx-views" aria-label="Main">
+      <button class="view-tab on" data-view="teach">Teach</button>
+      <button class="view-tab" data-view="plans">Lesson plans</button>
+    </nav>
+    <details class="sx-pop" id="sxScreens">
+      <summary class="sx-nav-btn">🖥 Screens</summary>
+      <div class="sx-pop-body">
+        <a class="sx-pop-item" id="openProjector" target="_blank" rel="noopener" href="/projector" title="Open the classroom screen in a new window"><b>🖥 Classroom screen</b><small>Opens in a new window. Drag it onto the projector or TV.</small></a>
+        <button class="sx-pop-item" id="remoteBtn" title="Control the class from your phone"><b>📱 Phone remote</b><small>Run the lesson from your pocket while you walk the room.</small></button>
+        <button class="sx-pop-item" id="togglePreview" title="See exactly what students see"><b>👁 Student view</b><small>A live preview of exactly what students see.</small></button>
+      </div>
+    </details>
+    <details class="sx-pop" id="sxTools">
+      <summary class="sx-nav-btn">🧰 Tools</summary>
+      <div class="sx-pop-body sx-tools-body">
+        <div class="tools-cat" id="roomTools">
+          <button type="button" class="mode-cat" id="roomToolsHead" hidden><span class="cat-chev">▸</span><span class="cat-name">🧰 Room tools</span></button>
+            <div class="tools">
+                  <div class="tool-block">
+                    <div class="tool-title">⏱ Timer <span class="timer-display" id="timerDisplay"></span></div>
+                    <div class="tool-row">
+                      <button class="btn mini" data-timer="30">30s</button>
+                      <button class="btn mini" data-timer="60">1m</button>
+                      <button class="btn mini" data-timer="120">2m</button>
+                      <button class="btn mini" data-timer="300">5m</button>
+                      <input type="number" id="timerCustom" min="5" max="3600" placeholder="secs" />
+                      <button class="btn mini" id="timerGo">Go</button>
+                    </div>
+                    <label class="timer-big-opt"><input type="checkbox" id="timerBigPref" /> ⛶ Fill the classroom screen when it starts</label>
+                    <div class="tool-row" id="timerControls"></div>
+                  </div>
+                  <div class="tool-block">
+                    <div class="tool-title">🎲 Random student</div>
+                    <div class="tool-row">
+                      <button class="btn mini primary-mini" id="pickBtn">Pick someone</button>
+                      <span class="picked-name" id="pickedName"></span>
+                    </div>
+                    <p class="tool-hint">No repeats until everyone has had a turn.</p>
+                  </div>
+                  <div class="tool-block">
+                    <div class="tool-title">👥 Random groups</div>
+                    <div class="tool-row">
+                      <select id="groupBy">
+                        <option value="size">groups of</option>
+                        <option value="count">split into</option>
+                      </select>
+                      <input type="number" id="groupN" min="2" max="15" value="2" />
+                      <button class="btn mini primary-mini" id="groupsBtn">Make groups</button>
+                    </div>
+                    <div id="groupsList"></div>
+                  </div>
+                  <div class="tool-block">
+                    <div class="tool-title">🎲 Question dice</div>
+                    <div class="dice-faces" id="diceFaces">
+                      <label class="dice-row"><span class="dice-glyph">⚀</span><span class="dice-lbl">Face 1</span><input class="dice-in" data-face="0" maxlength="200" placeholder="Question when it lands on 1" /></label>
+                      <label class="dice-row"><span class="dice-glyph">⚁</span><span class="dice-lbl">Face 2</span><input class="dice-in" data-face="1" maxlength="200" placeholder="Question when it lands on 2" /></label>
+                      <label class="dice-row"><span class="dice-glyph">⚂</span><span class="dice-lbl">Face 3</span><input class="dice-in" data-face="2" maxlength="200" placeholder="Question when it lands on 3" /></label>
+                      <label class="dice-row"><span class="dice-glyph">⚃</span><span class="dice-lbl">Face 4</span><input class="dice-in" data-face="3" maxlength="200" placeholder="Question when it lands on 4" /></label>
+                      <label class="dice-row"><span class="dice-glyph">⚄</span><span class="dice-lbl">Face 5</span><input class="dice-in" data-face="4" maxlength="200" placeholder="Question when it lands on 5" /></label>
+                      <label class="dice-row"><span class="dice-glyph">⚅</span><span class="dice-lbl">Face 6</span><input class="dice-in" data-face="5" maxlength="200" placeholder="Question when it lands on 6" /></label>
+                    </div>
+                    <div class="tool-row">
+                      <button class="btn mini primary-mini" id="diceRoll">🎲 Roll the dice</button>
+                      <span class="picked-name" id="diceResult"></span>
+                    </div>
+                    <p class="tool-hint">One question per face. Tip: paste six lines into Face 1 and they fill all six. The dice rolls on the classroom screen and reveals the question it lands on; questions are remembered for next lesson.</p>
+                  </div>
+                  <div class="tool-row" id="focusClearRow"></div>
+          </div>
+        </div>
+      </div>
+    </details>
+    <div class="menu-wrap">
+      <button class="sx-nav-btn" id="menuBtn" aria-haspopup="true">☰ Menu</button>
+      <div class="menu" id="menu">
+        <div class="sx-whoami" id="whoAmI"></div>
+        <button id="lessonsBtn" style="display:none" title="Reports from classes you've already taught">📚 Past lessons</button>
+        <a id="dataBtn" href="/data" style="display:none" title="Interactive charts over everything you've captured">📈 Data</a>
+        <button id="accountBtn" style="display:none">👤 My account</button>
+        <a id="adminLink" href="/admin" style="display:none">🛠 Owner admin</a>
+        <button id="inviteBtn">➕ Invite a colleague</button>
+        <a id="classicLink" href="/teacher?classic=1" title="The dashboard as it was. Your class carries on with the same code.">↩ Back to the classic dashboard</a>
+        <button id="signOutBtn" style="display:none">↪ Sign out</button>
+        <div style="padding:0.5rem 0.8rem 0.2rem;border-top:1px solid var(--line);margin-top:0.3rem;font-size:0.9rem">Eyes Up <a class="by-peakyou" href="https://peakyou.com.au" target="_blank" rel="noopener">by <b>PeakYou</b></a></div>
+      </div>
+    </div>
+    <button class="sx-eyes" id="sxEyesUp" title="Clears every student screen so the class looks at you">
+      <svg viewBox="0 0 124 62" aria-hidden="true" focusable="false"><circle cx="31" cy="31" r="26" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="93" cy="31" r="26" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="39" cy="23" r="11.5" fill="currentColor"/><circle cx="101" cy="23" r="11.5" fill="currentColor"/></svg>
+      EYES UP
+    </button>
+  </header>
+
+  <!-- The three steps of a lesson. (The engine calls this bar "classBar": it hides it on the Lesson plans view.) -->
+  <section class="sx-steps" id="classBar">
+    <button id="teachFold" hidden></button>
+    <button id="teachPin" hidden></button>
+    <ol class="sx-steplist">
+      <li><button class="sx-stepbtn" data-step="1"><span class="sx-num">1</span><span class="sx-steptext"><b>Get the class in</b><small id="sxSub1">Share the code</small></span></button></li>
+      <li><button class="sx-stepbtn" data-step="2"><span class="sx-num">2</span><span class="sx-steptext"><b>Ask</b><small id="sxSub2">Pick an activity and launch</small></span></button></li>
+      <li><button class="sx-stepbtn" data-step="3"><span class="sx-num">3</span><span class="sx-steptext"><b>See answers</b><small id="sxSub3">Reveal, spotlight, discuss</small></span></button></li>
+    </ol>
+  </section>
+
+  <!-- ============ LESSON PLANS ============ -->
+  <div class="view" id="viewPlans" hidden>
+    <div class="plans-wrap" id="planLibrary"></div>
+    <div class="plans-wrap" id="planEditor" hidden></div>
+  </div>
+
+  <!-- ============ TEACH ============ -->
+  <div class="view" id="viewTeach">
+  <div class="sx-wrap">
+
+    <!-- The lesson plan being taught: one line until it is opened -->
+    <div id="lessonStrip"></div>
+
+    <!-- 1 · Get the class in -->
+    <section class="sx-pane" id="sxPane1">
+      <div class="sx-cols">
+        <div class="sx-card sx-grow sx-col">
+          <div class="sx-label">Class code</div>
+          <div class="sx-codeblocks" id="sxCodeBlocks" aria-label="Class code"></div>
+          <p class="sx-lead">Students go to <b id="joinUrl"></b> and type this code, or scan the QR code.</p>
+          <div class="sx-row">
+            <a class="sx-btn navy" id="sxOpenScreen" target="_blank" rel="noopener" href="/projector" title="Opens in a new window. Drag it onto the projector or TV.">🖥 Open the classroom screen</a>
+            <button class="sx-btn line" id="qrToggle" title="Put the big student QR / join screen on the classroom screen"><span class="act-text"><b>Student QR</b></span></button>
+            <span class="link-wrap">
+              <button class="sx-btn soft" id="copyLink" title="Show and copy the student join link — paste it into Google Classroom, Teams, email…">🔗 Copy the join link</button>
+              <div class="link-pop" id="linkPop" hidden>
+                <div class="link-pop-head">Student link copied ✓</div>
+                <input type="text" id="linkPopUrl" readonly title="The link students open — click to select it" />
+                <div class="link-pop-foot">Or they go to <b id="linkPopHost"></b> and type the code <b id="linkPopCode"></b></div>
+              </div>
+            </span>
+          </div>
+          <div class="sx-links">
+            <button class="sx-link" id="sxRemote">📱 Use my phone as a remote</button>
+            <button class="sx-link" id="sxPreview">👁 Preview what students see</button>
+          </div>
+        </div>
+        <div class="sx-card sx-side sx-col">
+          <div class="sx-cardhead"><h2>Who's here</h2><span class="sx-count" id="sxHereCount"></span></div>
+          <div class="sx-bar" id="sxHereBarWrap" hidden><div id="sxHereBar"></div></div>
+          <div class="sx-who" id="sxWho"></div>
+          <label class="sx-field">Lesson name <span class="sx-optional">optional</span>
+            <input id="titleInput" placeholder="e.g. Phonics week 4" maxlength="80" title="Names this lesson — shows on the results and PDF export" />
+          </label>
+        </div>
+      </div>
+      <div class="sx-cols">
+        <button class="sx-big sx-grow" id="sxGoAsk"><span><b>Everyone's in. Ask a question</b><small>You can start before the last few arrive</small></span><span class="sx-chev" aria-hidden="true">›</span></button>
+        <div class="sx-card sx-side sx-planbox">
+          <div><div class="sx-label">Or teach a plan</div><div class="sx-planline" id="sxPlanLine">Step through a lesson you planned earlier.</div></div>
+          <button class="sx-btn line" id="sxPlans">📘 Choose a lesson plan</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 · Ask -->
+    <section class="sx-pane" id="sxPane2" hidden>
+      <div class="sx-cols sx-start">
+        <div class="sx-grow sx-col">
+          <div class="sx-askhead">
+            <h1>What do you want to ask?</h1>
+            <input type="search" id="sxSearch" placeholder="🔍 Search activities" aria-label="Search activities" autocomplete="off" />
+            <button class="sx-btn soft" id="pasteQuizBtn">📋 Paste a quiz</button>
+          </div>
+          <div class="sx-label" id="sxFavLabel">Your favourites</div>
+          <div class="sx-tiles" id="sxFavs"></div>
+          <button class="sx-btn line sx-browse" id="sxBrowse" aria-expanded="false" aria-controls="sxAll">Browse all activities</button>
+          <div class="sx-all" id="sxAll" hidden>
+            <p class="sx-allhint">Tap an activity to use it now. Tap its ☆ to keep it in your favourites.</p>
+            <div class="modes" id="modeGrid"></div>
+          </div>
+          <button id="launchToggle" hidden></button>
+        </div>
+        <div class="sx-side sx-col">
+          <section class="sx-card" id="launchPanel">
+            <div id="launchBody">
+              <div class="sx-empty" id="sxComposerEmpty"><b>Pick an activity</b><p>Tap one on the left. Then type your question, or leave it blank and ask it out loud.</p></div>
+          <div class="composer" id="composer">
+            <div class="mode-label" id="composerMode"></div>
+            <input type="text" id="composerPrompt" placeholder="Type the question — or leave blank and just ask it aloud" maxlength="300" />
+            <div class="opts" id="composerOpts"></div>
+            <div class="row">
+              <button class="btn primary big" id="launchBtn">▶ Launch now</button>
+              <button class="btn primary big" id="saveStepBtn" hidden>＋ Add to lesson plan</button>
+              <button class="btn" id="addStepBtn">＋ Add to lesson instead</button>
+              <button class="btn" id="cancelComposer">Cancel</button>
+              <span class="tip" id="composerTip"></span>
+            </div>
+          </div>
+            </div>
+          </section>
+          <div class="sx-card sx-opts">
+            <div class="sx-row">
+              <button class="btn" id="holdBtn" title="Keep every activity's answers off the classroom screen until you press Reveal">🙈 Hold answers: off</button>
+              <button class="btn" id="namesBtn" title="Show student names on the classroom screen, for every activity (anonymous ones excepted)">🏷 Names: off</button>
+            </div>
+            <details class="sx-more">
+              <summary>More options <small>changing answers, answers each</small></summary>
+              <div class="sx-col sx-more-body">
+                <button class="btn" id="chgBtn" title="Off: one answer each, a sent answer is final. On: students see 'Change my answer' after sending.">🔁 Change answers: off</button>
+                <label class="limit-wrap" title="How many answers each student may send in Word Cloud, Mind Map, Post-its, Venn and Plus &amp; Minus">✋ Answers each
+                  <select id="limitSel"><option value="">Unlimited</option><option value="1">One response</option><option value="custom">Choose a number…</option></select>
+                  <input type="number" id="limitN" min="2" max="12" value="3" hidden />
+                </label>
+                <p class="settings-note">Answers each applies to activities that take several answers: Word Cloud, Mind Map, Post-its, Venn, Plus &amp; Minus.</p>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 · See answers -->
+    <section class="sx-pane" id="sxPane3" hidden>
+      <div class="sx-cols sx-start">
+        <section class="panel sx-grow" id="livePanel">
+          <div class="panel-head">Live now <span class="sub" id="liveSub"></span>
+            <span class="spacer"></span>
+            <button class="head-btn close-q" id="liveClose" hidden>✕ Close question</button>
+            <button id="livePin" hidden></button>
+            <button id="liveFold" hidden></button>
+          </div>
+          <div id="liveArea">
+            <div class="live-empty"><p class="big">Nothing live — the room is yours. 🎤</p></div>
+          </div>
+        </section>
+        <aside class="sx-card sx-side sx-col" id="sxNext">
+          <h2>What next?</h2>
+          <div class="sx-col" id="sxNextMain"></div>
+          <details class="sx-more" id="sxNextMoreBox">
+            <summary>More <small>downloads, names, finish</small></summary>
+            <div class="sx-col sx-more-body">
+              <div class="sx-col" id="sxNextMore"></div>
+              <a class="btn" id="zipAll" style="display:none;text-decoration:none" title="Every picture students have sent in this class so far, as one ZIP (a folder per activity, a file per student)">🖼 Pictures ZIP</a>
+              <button class="btn" id="newLessonBtn" title="Save this class and start the next one — new code, same lesson plan">🆕 Next class</button>
+              <button class="btn" id="endBtn">✅ Finish the lesson</button>
+            </div>
+          </details>
+        </aside>
+      </div>
+    </section>
+
+  </div>
+  <div id="siteFooter" class="slim"></div>
+  </div>
