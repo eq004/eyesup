@@ -520,7 +520,9 @@ app.use((req, res, next) => {
   res.set("X-Content-Type-Options", "nosniff");
   res.set("X-Frame-Options", "SAMEORIGIN");
   res.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.set("Permissions-Policy", "camera=(self), microphone=(), geolocation=(), payment=()");
+  // The microphone stays switched off everywhere except the classroom screen, where the noise meter listens (loudness only, on the device).
+  const mic = req.path === "/projector" || req.path === "/projector.html" ? "(self)" : "()";
+  res.set("Permissions-Policy", `camera=(self), microphone=${mic}, geolocation=(), payment=()`);
   if (req.secure || req.headers["x-forwarded-proto"] === "https") res.set("Strict-Transport-Security", "max-age=15552000");
   next();
 });
@@ -2215,6 +2217,7 @@ function createSession(teacherWs, opts = {}) {
     allowChange: false, // one answer each; the teacher switches "students may change answers" on when wanted
     answerLimit: null, // answers each in Word Cloud, Mind Map, Post-its, Venn, Plus & Minus: null = unlimited (12), 1 = one, or a chosen number
     timer: null, // {seconds, endsAt, paused, remaining}
+    noise: null, // noise meter on the classroom screen: {limit: "silent" | "quiet" | "group"}; the listening happens on that device, no sound reaches the server
     focus: null, // {type:'spotlight', name} | {type:'groups', groups:[[names]]}
     picked: new Set(), // student ids already randomly selected (no repeats till all picked)
     dice: { faces: ["", "", "", "", "", ""], result: null, rollId: 0 }, // question dice
@@ -2809,6 +2812,7 @@ function teacherState(session) {
     slide: session.phase === "slide" ? session.slide : null,
     deck: session.phase === "deck" ? session.deck : null,
     timer: session.timer,
+    noise: session.noise,
     focus: session.focus,
     showJoin: session.showJoin,
     showNames: session.showNames,
@@ -2896,6 +2900,7 @@ function projectorState(session) {
     // slides (a live deck or a slide step) are waiting behind the current activity, so the board offers a way back
     slidesBehind: session.phase !== "slide" && session.phase !== "deck" && (!!session.deck || (session.sequence || []).slice(0, Math.max(0, session.seqIndex) + 1).some((st) => st.mode === "slide" || st.mode === "deck")),
     timer: session.timer,
+    noise: session.noise,
     focus: session.focus,
     showJoin: session.showJoin,
     showNames: session.showNames,
@@ -3556,7 +3561,7 @@ async function handle(ws, msg) {
   /* ---- teacher actions ---- */
 
   // Room tools a teacher can also drive from the board's corner dock.
-  const BOARD_ACTIONS = new Set(["pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "set_answer_limit", "show_results", "hide_results", "reveal_random", "clear_peek", "next", "seq_prev", "back_to_slides"]);
+  const BOARD_ACTIONS = new Set(["noise_start", "noise_stop", "pick_student", "clear_focus", "timer_start", "timer_pause", "timer_resume", "timer_clear", "toggle_hold", "set_answer_limit", "show_results", "hide_results", "reveal_random", "clear_peek", "next", "seq_prev", "back_to_slides"]);
   if (ws.meta.role !== "teacher" && !(ws.meta.role === "projector" && BOARD_ACTIONS.has(type))) {
     // The projector often runs on an interactive whiteboard: allow
     // tap-to-spotlight and the corner tools straight from the board — and only those.
@@ -3916,6 +3921,16 @@ async function handle(ws, msg) {
     }
     case "timer_clear": {
       session.timer = null;
+      break;
+    }
+    case "noise_start": {
+      // Noise meter: the classroom screen listens with its own microphone and draws the level there.
+      // The server only remembers that it is on and how loud is too loud; it never receives sound or levels.
+      session.noise = { limit: ["silent", "quiet", "group"].includes(msg.limit) ? msg.limit : "quiet" };
+      break;
+    }
+    case "noise_stop": {
+      session.noise = null;
       break;
     }
     case "pick_student": {

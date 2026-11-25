@@ -176,6 +176,16 @@ On Sketch It, Annotate, Annotate + Writing, Letter Formation, Maths Board and Co
 
 **💬 Annotate + Writing** (🎨 Draw & images) is Annotate with a writing box: the teacher uploads a picture, each student draws on it and must also write an explanation (up to 1,500 characters; Send is refused with a red box until they do). The card on the dashboard and the classroom screen show the drawing with the writing underneath; the summary line reads “(drawing) …”.
 
+## Noise meter (room tool)
+
+🧰 Tools → 🔊 Noise meter on either dashboard, or the Tools tab on the classroom screen: three choices of how loud is OK (🤫 Silent work, 🗣 Quiet talk, 👥 Group work) and ✕ Stop.
+
+- **Where the listening happens.** On the classroom screen (`public/projector.js`, "noise meter"), with that computer's microphone (`getUserMedia`, the browser's echo cancelling, noise suppression and auto gain switched off). A Web Audio analyser works out the loudness of the last moment about eleven times a second (RMS → dB → a 0 to 1 level, eased: quick to rise, slow to fall) and draws a pill at the bottom of the screen: green "Good noise level", amber "Getting loud" (from 80% of the limit), red "Too loud". Red needs a full second above the limit and then stays 1.5 s, so a cough is not a noisy class. The white mark on the bar is the limit.
+- **Nothing is recorded.** The sound never leaves the browser: it is not played back, stored or sent. The server only holds `session.noise = {limit}` (`noise_start` / `noise_stop`, also allowed from the classroom screen) and never receives sound or levels. Stopping the meter, ending the lesson or closing the page stops the microphone track.
+- **Microphone permission.** `Permissions-Policy` allows `microphone=(self)` on `/projector` only; every other page keeps `microphone=()`. The browser asks once per computer. The pill says what to do when the microphone is blocked, missing, or the browser wants one tap first.
+- **Limits are starting points.** `NOISE_LIMITS` (0.36 / 0.5 / 0.64 on the 0 to 1 scale, about −41 / −35 / −29 dBFS) were set by reasoning and checked with a generated tone, not yet with a real classroom microphone. Microphones differ: if it is red too easily, the next choice up is the fix; change the numbers if a pattern shows.
+- Not yet a lesson-plan step and not on the phone remote.
+
 ## Two dashboards, one engine: the step-by-step Teach page (`/teach`)
 
 The classic dashboard (`/teacher`) stays exactly as it is. Beside it lives a calmer page built for teaching one moment at a time: **1 Get the class in → 2 Ask → 3 See answers**. Same room, same code, same students, same plans: a teacher can move between the two mid-lesson (☰ Menu → ✨ Try the new look, and ☰ Menu → ↩ Back to the classic dashboard) and the class carries on.

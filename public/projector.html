@@ -416,6 +416,30 @@
   .sprint-clock.urgent .sc-fill { background: linear-gradient(90deg, #d05f5f, #e79191); }
   .sprint-clock.done .sc-digits { font-size: clamp(1.6rem, 4vw, 3rem); color: #8fd6a9; }
 
+  /* noise meter: a pill at the bottom of the screen, between the Join and Tools tabs. Green, amber, red. */
+  .noise-meter {
+    position: fixed; left: 50%; bottom: 0.8rem; transform: translateX(-50%); z-index: 27;
+    display: none; align-items: center; gap: 0.9rem;
+    width: min(560px, 46vw); box-sizing: border-box; padding: 0.6rem 1.2rem 0.6rem 0.9rem;
+    background: rgba(20, 23, 45, 0.94); border: 3px solid #3fae6b; border-radius: 999px;
+    color: var(--chalk); box-shadow: 0 16px 48px rgba(0,0,0,0.5); transition: border-color 0.3s, background 0.3s;
+  }
+  .noise-meter.show { display: flex; }
+  .noise-meter .nm-face { font-size: clamp(1.8rem, 3.2vw, 2.6rem); line-height: 1; }
+  .noise-meter .nm-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+  .noise-meter .nm-label { font-weight: 800; font-size: clamp(1rem, 1.7vw, 1.35rem); line-height: 1.1; }
+  .noise-meter .nm-label small { font-weight: 600; font-size: 0.72em; color: var(--chalk-dim); margin-left: 0.5em; }
+  .noise-meter .nm-bar { position: relative; height: 14px; border-radius: 999px; background: rgba(255,255,255,0.12); overflow: hidden; }
+  .noise-meter .nm-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 999px; background: #3fae6b; transition: width 0.12s linear, background 0.3s; }
+  .noise-meter .nm-mark { position: absolute; top: -3px; bottom: -3px; width: 4px; border-radius: 2px; background: #fff; opacity: 0.85; }
+  .noise-meter.warn { border-color: #f0b23c; }
+  .noise-meter.warn .nm-fill { background: #f0b23c; }
+  .noise-meter.loud { border-color: #e2574c; background: rgba(86, 22, 22, 0.96); }
+  .noise-meter.loud .nm-fill { background: #e2574c; }
+  .noise-meter.ask { border-color: var(--night-line); }
+  .noise-meter .nm-msg { flex: 1; font-weight: 700; font-size: clamp(0.9rem, 1.4vw, 1.1rem); line-height: 1.3; }
+  .noise-meter .nm-btn { font: inherit; font-weight: 800; cursor: pointer; color: #14172d; background: #ffc93c; border: 0; border-radius: 999px; padding: 0.6rem 1.1rem; white-space: nowrap; }
+
   /* timer overlay */
   .timer-overlay {
     position: fixed;
@@ -781,6 +805,7 @@
   <button class="deck-next corner-next" id="slideNext" hidden title="On to the next slide, or the Eyes Up question when one is due (→ does this too)"></button>
   <main><div class="stage" id="stage"></div></main>
   <div class="timer-overlay" id="timerOverlay"></div>
+  <div class="noise-meter" id="noiseMeter" aria-live="off"></div>
   <div class="timer-full" id="timerFull" title="Tap to make the timer small"></div>
   <div class="tools-dock" id="toolsDock">
     <div class="tools-panel" id="toolsPanel"></div>

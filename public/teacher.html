@@ -705,6 +705,7 @@
   .tool-title { font-weight: 800; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
   .tool-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
   .tool-hint { color: var(--muted); font-size: 0.9rem; }
+  .noise-state { font-weight: 700; font-size: 0.8rem; color: var(--green); }
   .timer-big-opt { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; color: var(--ink-soft); font-weight: 700; cursor: pointer; }
   .timer-big-opt input { width: 16px; height: 16px; accent-color: var(--accent); }
   .dice-faces { display: flex; flex-direction: column; gap: 0.3rem; }
@@ -1124,6 +1125,11 @@
                       <button class="btn mini primary-mini" id="groupsBtn">Make groups</button>
                     </div>
                     <div id="groupsList"></div>
+                  </div>
+                  <div class="tool-block">
+                    <div class="tool-title">🔊 Noise meter <span class="noise-state" id="noiseState"></span></div>
+                    <div class="tool-row" id="noiseControls"></div>
+                    <p class="tool-hint">Shows on the classroom screen and listens through that computer's microphone. It measures loudness only: nothing is recorded or kept.</p>
                   </div>
                   <div class="tool-block">
                     <div class="tool-title">🎲 Question dice</div>

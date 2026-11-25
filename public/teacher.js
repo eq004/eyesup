@@ -969,6 +969,9 @@ function fmtTime(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// Noise meter (room tool): how loud is OK. The classroom screen does the listening.
+const NOISE_NAMES = { silent: "🤫 Silent work", quiet: "🗣 Quiet talk", group: "👥 Group work" };
+const NOISE_TIPS = { silent: "Turns red at a low murmur", quiet: "Turns red when partner talk gets loud", group: "Turns red only when the whole room is noisy" };
 function renderTools() {
   const t = state.timer;
   const controls = $("timerControls");
@@ -984,6 +987,16 @@ function renderTools() {
   }
   controls.querySelectorAll("[data-tact]").forEach((b) => (b.onclick = () => send({ type: b.dataset.tact })));
   updateTimerDisplay();
+
+  // Noise meter: three "how loud is OK" choices; the chosen one is lit, and Stop appears while it is on.
+  const nz = $("noiseControls");
+  if (nz) {
+    const on = state.noise ? state.noise.limit : "";
+    nz.innerHTML = Object.keys(NOISE_NAMES).map((k) => `<button class="btn mini ${on === k ? "primary-mini" : ""}" data-noise="${k}" title="${NOISE_TIPS[k]}">${NOISE_NAMES[k]}</button>`).join("")
+      + (on ? `<button class="btn mini" data-noise="">✕ Stop</button>` : "");
+    nz.querySelectorAll("[data-noise]").forEach((b) => (b.onclick = () => send(b.dataset.noise ? { type: "noise_start", limit: b.dataset.noise } : { type: "noise_stop" })));
+    $("noiseState").textContent = on ? "on the classroom screen" : "";
+  }
 
   const focus = state.focus;
   $("pickedName").textContent = focus?.type === "spotlight" ? `→ ${focus.name}` : "";

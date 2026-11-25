@@ -176,6 +176,7 @@ function renderInner() {
 
   updateJoinBadge();
   updateToolsDock();
+  updateNoise();
   syncDecks();
 
   if (state.phase === "ended") {
@@ -331,6 +332,11 @@ function updateToolsDock() {
       <button class="tbtn primary wide" data-tool="pick_student">🎲 ${picked ? "Pick another" : "Pick a student"}</button>
       ${picked ? `<button class="tbtn" data-tool="clear_focus" title="Take the name off the screen">✕ Back</button>` : ""}
     </div>
+    <h4>Noise meter</h4>
+    <div class="tools-row">
+      ${Object.keys(NOISE_NAMES).map((k) => `<button class="tbtn ${state.noise?.limit === k ? "primary" : ""}" data-tool="noise_start" data-limit="${k}">${NOISE_NAMES[k]}</button>`).join("")}
+      ${state.noise ? `<button class="tbtn" data-tool="noise_stop">✕ Stop</button>` : ""}
+    </div>
     <h4>Timer</h4>
     <div class="tools-row">
       ${t
@@ -348,6 +354,7 @@ function updateToolsDock() {
     e.stopPropagation();
     const msg = { type: b.dataset.tool };
     if (b.dataset.secs) msg.seconds = +b.dataset.secs;
+    if (b.dataset.limit) msg.limit = b.dataset.limit;
     send(msg);
   }));
   paintToolsClock();
@@ -484,6 +491,112 @@ function animateDice(n, rollId) {
     if (scene && scene.dataset.roll === String(rollId)) document.getElementById("diceQ").classList.add("show");
   }, T - 250);
 }
+
+/* ---------------- noise meter ----------------
+   Switched on from the dashboard's Tools (or the Tools tab here). This screen listens with its own
+   microphone and shows how loud the room is: green, amber, red. Only the loudness is worked out, here
+   in the browser, many times a second and then forgotten. No sound is recorded, kept or sent anywhere,
+   and the microphone is let go the moment the meter is stopped. */
+const NOISE_NAMES = { silent: "🤫 Silent work", quiet: "🗣 Quiet talk", group: "👥 Group work" };
+// Where "too loud" starts on the 0 to 1 scale below. Microphones differ, so these are sensible starting points, not decibels.
+const NOISE_LIMITS = { silent: 0.36, quiet: 0.5, group: 0.64 };
+const noise = { status: "off", stream: null, ctx: null, analyser: null, buf: null, level: 0, zone: "ok", since: 0, html: "" };
+
+async function noiseStart() {
+  if (noise.status === "starting" || noise.status === "on" || noise.status === "tap") return;
+  noise.status = "starting";
+  paintNoise();
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error("no microphone access"), { name: "NotFoundError" });
+    // Raw sound, so a quiet room reads quiet: the browser's own levelling would turn the volume up on silence.
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false });
+    if (!noiseWanted()) { stream.getTracks().forEach((t) => t.stop()); noise.status = "off"; return paintNoise(); } // stopped while the browser was asking
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    ctx.createMediaStreamSource(stream).connect(analyser); // into the meter only: never to the speakers
+    // Fine-grained samples where the browser has them (all current ones); the coarse kind cannot tell a silent room from a murmur.
+    const fine = typeof analyser.getFloatTimeDomainData === "function";
+    Object.assign(noise, { stream, ctx, analyser, fine, buf: fine ? new Float32Array(analyser.fftSize) : new Uint8Array(analyser.fftSize), level: 0, zone: "ok", since: 0 });
+    if (ctx.state === "suspended") { try { await ctx.resume(); } catch { /* needs a tap */ } }
+    noise.status = ctx.state === "running" ? "on" : "tap"; // some browsers want one tap before any sound work
+  } catch (e) {
+    noise.status = e && (e.name === "NotAllowedError" || e.name === "SecurityError") ? "blocked" : e && (e.name === "NotFoundError" || e.name === "OverconstrainedError") ? "nomic" : "failed";
+  }
+  paintNoise();
+}
+function noiseStop() {
+  if (noise.stream) noise.stream.getTracks().forEach((t) => t.stop()); // the browser's microphone light goes out
+  if (noise.ctx) noise.ctx.close().catch(() => {});
+  Object.assign(noise, { status: "off", stream: null, ctx: null, analyser: null, buf: null, level: 0, zone: "ok", since: 0 });
+}
+const noiseWanted = () => !!state && !!state.noise && state.phase !== "ended";
+function updateNoise() {
+  if (noiseWanted()) { if (noise.status === "off") noiseStart(); }
+  else if (noise.status !== "off") noiseStop();
+  paintNoise();
+}
+function paintNoise() {
+  const el = document.getElementById("noiseMeter");
+  const on = noiseWanted() && noise.status !== "off";
+  el.classList.toggle("show", on);
+  if (!on) { noise.html = ""; return; }
+  const live = noise.status === "on";
+  el.classList.toggle("ask", !live);
+  if (!live) el.classList.remove("warn", "loud");
+  const html = live
+    ? `<div class="nm-face" id="nmFace">🙂</div>
+       <div class="nm-body">
+         <div class="nm-label"><span id="nmText">Good noise level</span><small>${NOISE_NAMES[state.noise.limit] || ""}</small></div>
+         <div class="nm-bar"><div class="nm-fill" id="nmFill"></div><div class="nm-mark" style="left:calc(${(NOISE_LIMITS[state.noise.limit] || 0.5) * 100}% - 2px)" title="Too loud starts here"></div></div>
+       </div>`
+    : noise.status === "starting" ? `<div class="nm-face">🎤</div><div class="nm-msg">Noise meter: choose <b>Allow</b> when the browser asks to use the microphone.</div>`
+    : noise.status === "tap" ? `<div class="nm-face">🎤</div><div class="nm-msg">Noise meter is ready.</div><button class="nm-btn" data-nm="resume">Tap to start listening</button>`
+    : noise.status === "blocked" ? `<div class="nm-face">🎤</div><div class="nm-msg">The microphone is blocked for this page. Click the padlock beside the address at the top, allow the microphone, then try again.</div><button class="nm-btn" data-nm="retry">Try again</button>`
+    : noise.status === "nomic" ? `<div class="nm-face">🎤</div><div class="nm-msg">This screen has no microphone, so it cannot measure noise. Open the classroom screen on a laptop or tablet.</div><button class="nm-btn" data-nm="retry">Try again</button>`
+    : `<div class="nm-face">🎤</div><div class="nm-msg">The noise meter could not start.</div><button class="nm-btn" data-nm="retry">Try again</button>`;
+  if (html === noise.html) return;
+  noise.html = html;
+  el.innerHTML = html;
+  const btn = el.querySelector("[data-nm]");
+  if (btn) btn.onclick = async (e) => {
+    e.stopPropagation();
+    if (btn.dataset.nm === "resume" && noise.ctx) {
+      try { await noise.ctx.resume(); } catch { /* stays as it is */ }
+      noise.status = noise.ctx.state === "running" ? "on" : "tap";
+      paintNoise();
+    } else { noiseStop(); noiseStart(); }
+  };
+}
+// The reading: how loud the last moment was, eased so it rises quickly and settles slowly (readable from the back of the room).
+setInterval(() => {
+  if (noise.status !== "on" || !noise.analyser || !noiseWanted()) return;
+  let sum = 0;
+  if (noise.fine) { noise.analyser.getFloatTimeDomainData(noise.buf); for (let i = 0; i < noise.buf.length; i++) sum += noise.buf[i] * noise.buf[i]; }
+  else { noise.analyser.getByteTimeDomainData(noise.buf); for (let i = 0; i < noise.buf.length; i++) { const v = (noise.buf[i] - 128) / 128; sum += v * v; } }
+  const db = 20 * Math.log10(Math.sqrt(sum / noise.buf.length) || 1e-6); // about -60 (silence) up to 0 (as loud as the microphone goes)
+  const raw = Math.max(0, Math.min(1, (db + 58) / 46));
+  noise.level += (raw - noise.level) * (raw > noise.level ? 0.4 : 0.07);
+  const limit = NOISE_LIMITS[state.noise.limit] || 0.5;
+  const want = noise.level >= limit ? "loud" : noise.level >= limit * 0.8 ? "warn" : "ok";
+  // A single cough or a dropped book is not a noisy class: red needs a full second of it, and stays 1.5 s once shown.
+  const now = Date.now();
+  if (want !== noise.zone) {
+    if (!noise.since) noise.since = now;
+    const need = want === "loud" ? 1000 : noise.zone === "loud" ? 1500 : 400;
+    if (now - noise.since >= need) { noise.zone = want; noise.since = 0; }
+  } else noise.since = 0;
+  const el = document.getElementById("noiseMeter"), fill = document.getElementById("nmFill");
+  if (!fill) return;
+  fill.style.width = `${Math.round(noise.level * 100)}%`;
+  el.classList.toggle("warn", noise.zone === "warn");
+  el.classList.toggle("loud", noise.zone === "loud");
+  document.getElementById("nmFace").textContent = noise.zone === "loud" ? "🙉" : noise.zone === "warn" ? "😯" : "🙂";
+  document.getElementById("nmText").textContent = noise.zone === "loud" ? "Too loud" : noise.zone === "warn" ? "Getting loud" : "Good noise level";
+}, 90);
+// Leaving or closing the classroom screen lets the microphone go.
+window.addEventListener("pagehide", noiseStop);
 
 /* ---------------- timer overlay ---------------- */
 
