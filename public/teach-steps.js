@@ -147,6 +147,57 @@
   }
 
   /* ---------- everything that follows the room ---------- */
+  /* ---------- step 2: the mini student preview ---------- */
+  // A small phone beside the Launch button holding the student page itself (/join?draft=1). While a question
+  // is being written it shows that question as students will get it, before anything is launched; with no
+  // activity picked it shows what students see right now. The server builds the screen the way a launch
+  // would ("draft" message) and nothing is launched or stored. Pictures never leave this device for it.
+  let draftN = 0, draftSig = "", draftTimer = null, draftSpec = null, draftView = null, draftReady = false;
+  const phoneShown = () => step === 2 && el("sxPhone").offsetParent !== null; // off on small screens (CSS) and on other steps
+  const sizes = (list) => (Array.isArray(list) ? list.map((x) => (x ? x.length : 0)) : 0);
+  function draftSoon(ms) { clearTimeout(draftTimer); draftTimer = setTimeout(askDraft, ms || 250); }
+  function askDraft() {
+    if (!state || !phoneShown()) return;
+    const frame = el("sxPhoneFrame");
+    if (!frame.getAttribute("src")) frame.src = "/join?draft=1"; // loaded the first time step 2 is opened
+    let spec = null;
+    if (composerModeKey && composerTarget.kind === "launch") { try { spec = readComposer(true); } catch { spec = null; } }
+    const { image, optionImages, pairImages, ...text } = spec || {};
+    const itx = state.interaction;
+    const sig = JSON.stringify([spec ? text : null, image ? image.length : 0, sizes(optionImages), sizes(pairImages), state.phase, itx ? itx.id : 0, itx ? itx.open : 0, state.answerLimit, state.allowChange]);
+    if (sig === draftSig) return;
+    if (!ws || ws.readyState !== 1) return draftSoon(1200); // between connections: try again shortly
+    draftSig = sig;
+    draftSpec = spec;
+    draftN += 1;
+    send({ type: "draft", n: draftN, spec: spec ? text : null });
+  }
+  function showDraft() {
+    if (draftReady && draftView) el("sxPhoneFrame").contentWindow.postMessage({ type: "eyesup_draft", state: draftView }, location.origin);
+  }
+  function draft(msg) {
+    if (msg.n !== draftN || !msg.state) return; // an answer to an older draft
+    const view = msg.state, spec = draftSpec;
+    if (msg.drafted && view.interaction && spec) {
+      if (spec.image) view.interaction.imageUrl = spec.image;
+      if (Array.isArray(spec.optionImages) && spec.optionImages.some(Boolean)) view.interaction.optionImages = spec.optionImages.slice(0, 10);
+      if (Array.isArray(spec.pairImages) && spec.pairImages.some(Boolean)) view.interaction.pairImages = spec.pairImages.slice(0, 10);
+    }
+    draftView = view;
+    el("sxPhoneLabel").textContent = msg.drafted ? "What students will see" : "What students see now";
+    el("sxPhoneNote").hidden = !msg.tool;
+    el("sxPhoneNote").textContent = msg.tool ? "This one shows on the classroom screen. Student screens stay as they are." : "";
+    showDraft();
+  }
+  window.addEventListener("message", (e) => {
+    if (e.origin !== location.origin || e.source !== el("sxPhoneFrame").contentWindow || !e.data || e.data.type !== "eyesup_draft_ready") return;
+    draftReady = true;
+    showDraft();
+  });
+  // Anything typed, chosen or dropped in the question box redraws the preview a moment later.
+  for (const ev of ["input", "change", "click"]) el("launchPanel").addEventListener(ev, () => draftSoon());
+  for (const ev of ["drop", "paste"]) el("launchPanel").addEventListener(ev, () => { draftSoon(700); setTimeout(draftSoon, 2000); }); // a picture takes a moment to read
+
   function paint() {
     if (!state) return;
     const itx = state.interaction;
@@ -168,6 +219,7 @@
     el("sxComposerEmpty").hidden = !!composing;
     el("pasteQuizBtn").hidden = false; // always one tap away here, whatever the classic launcher is doing
     el("sxBrowse").textContent = el("sxAll").hidden ? `Browse all ${activityKeys().length} activities` : "Hide the full list";
+    draftSoon(); // the mini student preview follows the room and the question box
   }
 
   function render() {
@@ -212,12 +264,14 @@
     if (open) el("sxAll").scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
   el("classicLink").onclick = () => { rememberUi("classic"); };
-  // Screens and Tools close like the menu does: a click anywhere else puts them away.
+  // Menu → New class: the two things "a new class" can mean, each said plainly.
+  el("sxMenuNextClass").onclick = () => el("newLessonBtn").click(); // asks first, then saves this lesson and gives a new code
+  el("sxMenuNewList").onclick = () => openClassEditor(null);
+  // Tools closes like the menu does: a click anywhere else puts it away.
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.sx-pop[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
   });
-  el("sxScreens").addEventListener("click", (e) => { if (e.target.closest(".sx-pop-item")) setTimeout(() => { el("sxScreens").open = false; }, 0); });
 
-  window.stepsUI = { render, sync: paint, go };
+  window.stepsUI = { render, sync: paint, go, draft };
   if (typeof state !== "undefined" && state) render();
 })();

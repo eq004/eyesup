@@ -31,8 +31,8 @@ body.ui-steps h1, body.ui-steps h2 { font-family: var(--font-display); font-weig
 /* ---------- top bar: the same things in the same place on every step ---------- */
 body.ui-steps header.sx-top {
   position: sticky; top: 0; z-index: 30;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem;
-  padding: 0.6rem 1.25rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem;
+  padding: 0.6rem 1.1rem;
   background: var(--surface); color: var(--ink);
   border-bottom: 2px solid var(--line);
 }
@@ -41,7 +41,7 @@ body.ui-steps header.sx-top {
 .sx-logo span { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; line-height: 1; }
 .sx-classpick select {
   min-height: 44px; border: 2px solid var(--line); border-radius: 999px; background: var(--paper);
-  padding: 0 0.9rem; font: inherit; font-weight: 800; color: var(--ink); max-width: 190px;
+  padding: 0 0.8rem; font: inherit; font-weight: 800; color: var(--ink); max-width: 150px;
 }
 .sx-code {
   display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px;
@@ -54,11 +54,12 @@ body.ui-steps header.sx-top {
 .sx-nav-btn {
   display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px;
   border: 2px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink);
-  padding: 0 0.95rem; font: inherit; font-weight: 800; font-size: 0.95rem; cursor: pointer; white-space: nowrap;
+  padding: 0 0.8rem; font: inherit; font-weight: 800; font-size: 0.95rem; cursor: pointer; white-space: nowrap;
   list-style: none; user-select: none;
 }
 .sx-nav-btn::-webkit-details-marker { display: none; }
 .sx-nav-btn:hover, .sx-pop[open] > .sx-nav-btn { border-color: var(--ink); }
+a.sx-nav-btn { text-decoration: none; }
 .sx-nav-btn.sx-square { padding: 0; width: 44px; justify-content: center; }
 body.ui-steps .sx-views { margin: 0; gap: 0.25rem; background: var(--paper); border-radius: 999px; padding: 3px; }
 body.ui-steps .sx-views .view-tab { min-height: 38px; padding: 0 0.95rem; border: 0; border-radius: 999px; color: var(--ink-soft); font-weight: 800; }
@@ -74,8 +75,12 @@ body.ui-steps .sx-views .view-tab.on { background: var(--ink); color: #fff; }
 .sx-eyes:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--navy-edge); }
 .sx-whoami { padding: 0.5rem 0.8rem 0.4rem; font-weight: 800; color: var(--ink-soft) !important; border-bottom: 1px solid var(--line); margin-bottom: 0.3rem; }
 .sx-whoami:empty { display: none; }
+.sx-menu-head { padding: 0.55rem 0.8rem 0.15rem; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+.sx-menu-head:not(:first-of-type) { border-top: 1px solid var(--line); margin-top: 0.3rem; }
+body.ui-steps .menu button small { display: block; font-weight: 600; font-size: 0.8rem; color: var(--ink-soft); }
+@media (max-width: 1340px) { .sx-logo span { display: none; } } /* a narrower laptop keeps the bar on one row: the eyes stay, the word goes */
 
-/* drop-downs for Screens and Tools */
+/* the Tools drop-down */
 .sx-pop { position: relative; }
 .sx-pop-body {
   position: absolute; right: 0; top: calc(100% + 8px); z-index: 45;
@@ -301,7 +306,24 @@ body.ui-steps .ls-chip.now .ls-run { color: #fff; }
 /* the Lesson plans view keeps its classic layout on the new ground colour */
 body.ui-steps .plans-wrap { max-width: 1240px; }
 
+/* step 2: the mini student preview beside the Launch button. The frame holds the real student page at
+   phone size (375 px wide), scaled down; it is there to look at, so it takes no taps. */
+.sx-askside { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.sx-askmain { flex: 1 1 300px; min-width: 0; }
+.sx-phone { flex: 0 0 224px; width: 224px; margin: 0 auto; }
+.sx-phone .sx-label { text-align: center; margin: 0.15rem 0 0.5rem; }
+.sx-phone-frame { width: 224px; height: 398px; box-sizing: border-box; border: 6px solid var(--ink); border-radius: 30px; overflow: hidden; background: #fff; box-shadow: 0 10px 24px rgba(14, 36, 69, 0.16); }
+.sx-phone-frame iframe { display: block; width: 375px; height: 683px; border: 0; transform: scale(0.5653); transform-origin: 0 0; pointer-events: none; }
+.sx-phone-note { margin: 0.55rem 0 0; text-align: center; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); }
+@media (min-width: 1180px) {
+  .sx-side.sx-askside { flex: 1 1 590px; flex-wrap: nowrap; }
+  .sx-askhead h1 { flex-basis: 100%; } /* the heading on its own line; search and Paste a quiz share the next */
+  body.ui-steps[data-step="2"] .sx-tiles { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); } /* three tiles a row beside the preview */
+  .sx-phone { position: sticky; top: 5.4rem; } /* clear of the top bar, in view while a long question is written */
+}
+
 @media (max-width: 720px) {
+  .sx-phone { display: none; } /* on a phone-sized dashboard the question box comes first; 👁 Student view, full size is in the Menu */
   .sx-codeblocks span { width: 68px; height: 80px; font-size: 3.2rem; border-radius: 16px; }
   .sx-big b { font-size: 1.35rem; }
   .sx-pop-body { right: auto; left: 0; }

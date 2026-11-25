@@ -3584,6 +3584,27 @@ async function handle(ws, msg) {
   }
 
   switch (type) {
+    case "draft": {
+      // The mini student preview beside the Launch button (step-by-step dashboard). Builds the question
+      // exactly as a launch would, on a stand-in room, and sends this teacher the screen a student would
+      // get. Nothing is launched, counted, stored or sent to anyone else. No spec (or a room tool, which
+      // never changes student screens) answers with what students see right now.
+      const spec = msg.spec && typeof msg.spec === "object" && typeof msg.spec.mode === "string" ? msg.spec : null;
+      const viewer = { id: "draft", name: "Student" };
+      let view = null, drafted = false;
+      if (spec && STEP_MODES.has(spec.mode) && !TOOL_MODES.has(spec.mode) && spec.mode !== "slide" && spec.mode !== "deck") {
+        try {
+          const stand = { code: session.code, className: session.className, counter: 0, images: new Map(), answerLimit: session.answerLimit, allowChange: session.allowChange, showNames: session.showNames, holdAnswers: session.holdAnswers, phase: "interaction" };
+          // Pictures stay on the teacher's device (the page puts them into the preview itself): no bytes travel for a preview.
+          stand.interaction = newInteraction(stand, { ...spec, image: undefined, optionImages: undefined, pairImages: undefined });
+          view = studentState(stand, viewer);
+          drafted = true;
+        } catch (e) { console.error("draft preview failed:", e.message); }
+      }
+      if (!view) { view = studentState(session, viewer); view.submitted = false; view.submittedAt = 0; }
+      safeSend(ws, { type: "draft", n: Number(msg.n) || 0, drafted, tool: !!(spec && TOOL_MODES.has(spec.mode)), state: view });
+      return; // nothing in the room changed: no broadcast
+    }
     case "launch": {
       if (msg.mode === "link" && !cleanUrl(msg.url)) {
         safeSend(ws, { type: "error", error: "bad_link" });

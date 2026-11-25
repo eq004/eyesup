@@ -292,6 +292,7 @@ function connect() {
       ws.send(JSON.stringify({ type: "teacher_create", token: teacherToken(), password: teacherPw() }));
       return;
     }
+    if (msg.type === "draft") { if (window.stepsUI && window.stepsUI.draft) window.stepsUI.draft(msg); return; } // the mini student preview
     if (msg.type === "summary") {
       archiveSummary(msg); // every summary is captured locally, asked-for or not
       if (userSummaryWanted) {
@@ -782,7 +783,10 @@ function closeComposer() {
   if (window.stepsUI) window.stepsUI.sync();
 }
 
-function readComposer() {
+// draft = true is the mini student preview reading the composer as it stands: nothing is refused, nothing
+// is said, and a half-written question comes back as far as it has got.
+function readComposer(draft) {
+  const stop = (text) => { if (draft) return false; toast(text); return true; };
   const m = MODES[composerModeKey];
   if (m.toolUI) {
     const out = { mode: composerModeKey, prompt: "" };
@@ -793,8 +797,7 @@ function readComposer() {
   }
   const prompt = $("composerPrompt").value.trim();
   if (m.needPrompt && !prompt) {
-    toast("This mode needs the text typed — students read it on their screen");
-    return null;
+    if (stop("This mode needs the text typed — students read it on their screen")) return null;
   }
   let options = null;
   let correct = null;
@@ -812,8 +815,7 @@ function readComposer() {
       });
     } else options = texts.filter(Boolean);
     if (options.length < m.opts.min) {
-      toast(m.picDrop ? "Drop in at least 2 pictures" : `Needs at least ${m.opts.min} options`);
-      return null;
+      if (stop(m.picDrop ? "Drop in at least 2 pictures" : `Needs at least ${m.opts.min} options`)) return null;
     }
     if (m.picDrop) correct = Number.isInteger(picCorrect) && picCorrect < options.length ? picCorrect : null;
     else if (m.hasCorrect) {
@@ -830,13 +832,11 @@ function readComposer() {
       })
       .filter(Boolean);
     if (options.length < m.pairs.min) {
-      toast(`Needs at least ${m.pairs.min} complete pairs`);
-      return null;
+      if (stop(`Needs at least ${m.pairs.min} complete pairs`)) return null;
     }
   }
   if (m.imageUpload && !composerImage) {
-    toast("Choose an image first — that's the thing they'll draw on");
-    return null;
+    if (stop("Choose an image first — that's the thing they'll draw on")) return null;
   }
   let url, linkLabel;
   if (m.linkUI) {
@@ -848,37 +848,33 @@ function readComposer() {
       ok = (u.protocol === "http:" || u.protocol === "https:") && u.hostname.includes(".");
     } catch { /* not an address */ }
     if (!ok) {
-      toast("Paste the website address students should open");
-      return null;
+      if (stop("Paste the website address students should open")) return null;
     }
   }
   let passage, wordBank;
   if (m.wordUI) {
     passage = $("wordFrame").value.trim();
     if (!/\[[^\]]+\]/.test(passage)) {
-      toast("Put [square brackets] round the sound(s) to build, e.g. sh[ee]p");
-      return null;
+      if (stop("Put [square brackets] round the sound(s) to build, e.g. sh[ee]p")) return null;
     }
   }
   if (m.clozeUI) {
     passage = $("clozeText").value;
     if (!/\[[^\]]+\]/.test(passage)) {
-      toast("Put [square brackets] around at least one hidden word");
-      return null;
+      if (stop("Put [square brackets] around at least one hidden word")) return null;
     }
     wordBank = $("clozeMode").value === "bank";
   }
   const expected = m.workingUI ? $("expectedAns").value.trim() || undefined : undefined;
   let trace = m.traceUI ? $("traceText").value.trim().slice(0, 8) || undefined : undefined;
   if (m.traceUI && !trace) {
-    toast("Type the letter(s) or number(s) to trace");
-    return null;
+    if (stop("Type the letter(s) or number(s) to trace")) return null;
   }
   const traceCase = m.traceUI ? $("traceCase")?.querySelector(".on")?.dataset.v || "lower" : undefined;
   const traceGuide = m.traceUI ? $("traceGuide")?.querySelector(".on")?.dataset.v || "arrows" : undefined;
-  if (m.traceUI && traceCase === "both" && trace.replace(/\s/g, "").length > 4) {
+  if (m.traceUI && trace && traceCase === "both" && trace.replace(/\s/g, "").length > 4) {
     trace = trace.replace(/\s/g, "").slice(0, 4);
-    toast("Showing both cases: the first 4 letters fit on the pad");
+    if (!draft) toast("Showing both cases: the first 4 letters fit on the pad");
   }
   const counterKind = m.forceKind || undefined;
   const tableRows = m.tableUI ? parseInt($("rowsSel").value, 10) : undefined;

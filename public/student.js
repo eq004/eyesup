@@ -94,6 +94,10 @@ function esc(s) {
 // as a labelled preview student, no join form.
 const PREVIEW = new URLSearchParams(location.search).get("preview") === "1";
 const PREVIEW_CODE = (new URLSearchParams(location.search).get("code") || "").toUpperCase();
+// Draft mode: the mini preview beside the teacher's Launch button (/join?draft=1 in a frame on the
+// step-by-step dashboard). It never connects, joins or sends: the dashboard hands it a student screen
+// (a "state" message) and it draws that, so the preview is this page, not a copy of it.
+const DRAFT = new URLSearchParams(location.search).get("draft") === "1" && window.parent !== window;
 
 // A join the student tapped before the socket was ready (slow Wi-Fi, phone
 // just woken, server waking up). It goes the moment the socket opens, and the
@@ -156,6 +160,7 @@ function watchSend(btn, reset) {
 }
 
 function connect() {
+  if (DRAFT) return; // a draft preview has no connection
   if (ws && (ws.readyState === 0 || ws.readyState === 1)) return; // already connecting / open
   clearTimeout(reconnectTimer);
   ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
@@ -2195,7 +2200,27 @@ function renderJoin(forceFullForm, opts = {}) {
   });
 }
 
-if (PREVIEW) {
+if (DRAFT) {
+  const blank = (text) => show(`<div class="big-emoji">👀</div><p class="state-sub">${esc(text)}</p>`);
+  blank("The student screen appears here.");
+  let draftSeq = 0;
+  window.addEventListener("message", (e) => {
+    if (e.origin !== location.origin || e.source !== window.parent || !e.data || e.data.type !== "eyesup_draft") return;
+    try {
+      if (!e.data.state) return blank(e.data.note || "The student screen appears here.");
+      state = e.data.state;
+      joined = true;
+      if (state.interaction) state.interaction.id = `draft${++draftSeq}`; // every draft is a fresh question: nothing half-chosen carries over
+      screenEl.innerHTML = ""; // so a question that cannot be drawn yet never leaves the last one on show
+      render(true);
+      if (!screenEl.innerHTML.trim()) blank("Fill in the boxes and the student screen appears here.");
+      window.scrollTo(0, 0);
+    } catch (err) {
+      blank("Fill in the boxes and the student screen appears here.");
+    }
+  });
+  window.parent.postMessage({ type: "eyesup_draft_ready" }, location.origin);
+} else if (PREVIEW) {
   show(`<div class="big-emoji">👁</div><p class="state-sub">Connecting preview…</p>`);
 } else {
   renderJoin();
