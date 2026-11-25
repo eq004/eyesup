@@ -174,7 +174,7 @@
     if (!state) return;
     // This page is switched on per account; anyone else belongs on the classic dashboard.
     if (me && me.newUi === false) {
-      try { localStorage.setItem("eyesup_ui", "classic"); } catch { /* private window */ }
+      rememberUi("classic");
       location.replace("/teacher?classic=1");
       return;
     }
@@ -211,7 +211,7 @@
     paint();
     if (open) el("sxAll").scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
-  el("classicLink").onclick = () => { try { localStorage.setItem("eyesup_ui", "classic"); } catch { /* private window */ } };
+  el("classicLink").onclick = () => { rememberUi("classic"); };
   // Screens and Tools close like the menu does: a click anywhere else puts them away.
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.sx-pop[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });

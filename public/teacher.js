@@ -3,9 +3,15 @@
 // Two dashboards, one engine: the classic page (/teacher) and the step-by-step page (/teach, body.ui-steps).
 // A teacher who chose the new look is taken to it from /teacher; ?classic=1 always means the classic page.
 const STEPS_UI = document.body.classList.contains("ui-steps");
+// The choice is kept twice: in this browser (localStorage) and in a cookie, so the server can open the
+// right page straight away on an address where the step-by-step page comes first (NEW_UI_HOSTS).
+const rememberUi = (v) => {
+  try { localStorage.setItem("eyesup_ui", v); } catch { /* private window */ }
+  try { document.cookie = `eyesup_ui=${v}; path=/; max-age=31536000; SameSite=Lax`; } catch { /* cookies off */ }
+};
 try {
-  if (STEPS_UI) localStorage.setItem("eyesup_ui", "steps");
-  else if (/[?&]classic\b/.test(location.search)) localStorage.setItem("eyesup_ui", "classic");
+  if (STEPS_UI) rememberUi("steps");
+  else if (/[?&]classic\b/.test(location.search)) rememberUi("classic");
   else if (localStorage.getItem("eyesup_ui") === "steps") location.replace("/teach");
 } catch { /* private window: stay where we are */ }
 

@@ -531,7 +531,22 @@ app.use((req, res, next) => (req.path === "/api/stripe/webhook" ? next() : (req.
 app.use(express.static(path.join(__dirname, "public")));
 
 // Friendly routes
-app.get("/teacher", (_req, res) => res.sendFile(path.join(__dirname, "public/teacher.html")));
+// Which dashboard an address opens. On the addresses named in NEW_UI_HOSTS (the site's own address,
+// eyesup.peakyou.com.au) /teacher opens the step-by-step page for every account; everywhere else
+// (eyesup.onrender.com) it stays the classic page. A teacher who chooses "Back to the classic dashboard"
+// keeps it: the page remembers the choice in a cookie (eyesup_ui) the server can read.
+const NEW_UI_HOSTS = (process.env.NEW_UI_HOSTS ?? "eyesup.peakyou.com.au").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+const newUiHost = (req) => !!req && NEW_UI_HOSTS.includes(String(req.hostname || "").toLowerCase());
+const uiCookie = (req) => (/(?:^|;\s*)eyesup_ui=(\w+)/.exec(String(req.headers.cookie || "")) || [])[1] || "";
+app.get("/teacher", (req, res) => {
+  if (newUiHost(req) && !("classic" in req.query) && uiCookie(req) !== "classic") {
+    const q = req.originalUrl.indexOf("?");
+    res.set("Cache-Control", "no-store");
+    return res.redirect(302, "/teach" + (q < 0 ? "" : req.originalUrl.slice(q)));
+  }
+  if (newUiHost(req)) res.set("Cache-Control", "no-store"); // the answer depends on the teacher's choice
+  res.sendFile(path.join(__dirname, "public/teacher.html"));
+});
 // The step-by-step Teach page lives beside the classic one. It is the classic page with its main area
 // (between the MAIN:START and MAIN:END comments) swapped for views/teach-main.html, plus one stylesheet and
 // one script — so the sign-in, the sheets, the styles and the engine (teacher.js) are shared, never copied.
@@ -885,12 +900,13 @@ app.get("/api/config", (_req, res) => {
   res.json({ accounts: !!db, openSignup: OPEN_SIGNUP || !TEACHER_PASSWORD, billing: BILLING_ON, trialDays: TRIAL_DAYS, contactEmail: process.env.CONTACT_EMAIL || "", gradeOptions: GRADE_OPTIONS, googleClientId: db ? GOOGLE_CLIENT_ID : "", video: Stream.ready() });
 });
 
-const mePayload = (t) => ({
+const mePayload = (t, req) => ({
   id: t.id, name: t.display_name, username: t.username, email: t.email || "", admin: !!t.is_admin,
   school: t.school || "", grades: t.grades || "", gradeOptions: GRADE_OPTIONS,
   google: !!t.google_sub, hasPassword: t.pass_set !== false,
   video: !!t.video_on, videoReady: Stream.ready(), // the Video add-on (Drop a Video)
-  newUi: !!(t.new_ui || t.is_admin), // the step-by-step Teach page (/teach): the owner, and accounts the owner switches on
+  newUi: !!(t.new_ui || t.is_admin) || newUiHost(req), // the step-by-step Teach page (/teach): everyone on a NEW_UI_HOSTS address; elsewhere the owner and accounts the owner switches on
+  newUiDefault: newUiHost(req), // this address opens the step-by-step page first
   billing: BILLING_ON, trialDays: TRIAL_DAYS, hasSubscription: !!t.stripe_sub, canManageBilling: !!t.stripe_customer,
   access: accessOf(t),
   tier: tierOf(t),
@@ -899,7 +915,7 @@ const mePayload = (t) => ({
 app.get("/api/me", async (req, res) => {
   const t = await authHttp(res, req.query.t);
   if (!t) return;
-  res.json(mePayload(t));
+  res.json(mePayload(t, req));
 });
 
 // A teacher can add or change their own email, school and year levels.
@@ -912,7 +928,7 @@ app.post("/api/me", async (req, res) => {
   const grades = "grades" in (req.body || {}) ? cleanGrades(req.body.grades) : t.grades || "";
   try {
     await db.query(`UPDATE teachers SET email = $1, school = $2, grades = $3 WHERE id = $4`, [email || null, school || null, grades || null, t.id]);
-    res.json(mePayload({ ...t, email, school, grades }));
+    res.json(mePayload({ ...t, email, school, grades }, req));
   } catch {
     res.status(500).json({ error: "db_error" });
   }
