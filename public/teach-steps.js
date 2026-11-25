@@ -148,17 +148,17 @@
 
   /* ---------- everything that follows the room ---------- */
   /* ---------- step 2: the mini student preview ---------- */
-  // A small phone beside the Launch button holding the student page itself (/join?draft=1). While a question
+  // A small landscape iPad beneath the Launch box holding the student page itself (/join?draft=1). While a question
   // is being written it shows that question as students will get it, before anything is launched; with no
   // activity picked it shows what students see right now. The server builds the screen the way a launch
   // would ("draft" message) and nothing is launched or stored. Pictures never leave this device for it.
   let draftN = 0, draftSig = "", draftTimer = null, draftSpec = null, draftView = null, draftReady = false;
-  const phoneShown = () => step === 2 && el("sxPhone").offsetParent !== null; // off on small screens (CSS) and on other steps
+  const padShown = () => step === 2 && el("sxPad").offsetParent !== null; // off on small screens (CSS) and on other steps
   const sizes = (list) => (Array.isArray(list) ? list.map((x) => (x ? x.length : 0)) : 0);
   function draftSoon(ms) { clearTimeout(draftTimer); draftTimer = setTimeout(askDraft, ms || 250); }
   function askDraft() {
-    if (!state || !phoneShown()) return;
-    const frame = el("sxPhoneFrame");
+    if (!state || !padShown()) return;
+    const frame = el("sxPadFrame");
     if (!frame.getAttribute("src")) frame.src = "/join?draft=1"; // loaded the first time step 2 is opened
     let spec = null;
     if (composerModeKey && composerTarget.kind === "launch") { try { spec = readComposer(true); } catch { spec = null; } }
@@ -173,7 +173,7 @@
     send({ type: "draft", n: draftN, spec: spec ? text : null });
   }
   function showDraft() {
-    if (draftReady && draftView) el("sxPhoneFrame").contentWindow.postMessage({ type: "eyesup_draft", state: draftView }, location.origin);
+    if (draftReady && draftView) el("sxPadFrame").contentWindow.postMessage({ type: "eyesup_draft", state: draftView }, location.origin);
   }
   function draft(msg) {
     if (msg.n !== draftN || !msg.state) return; // an answer to an older draft
@@ -184,16 +184,20 @@
       if (Array.isArray(spec.pairImages) && spec.pairImages.some(Boolean)) view.interaction.pairImages = spec.pairImages.slice(0, 10);
     }
     draftView = view;
-    el("sxPhoneLabel").textContent = msg.drafted ? "What students will see" : "What students see now";
-    el("sxPhoneNote").hidden = !msg.tool;
-    el("sxPhoneNote").textContent = msg.tool ? "This one shows on the classroom screen. Student screens stay as they are." : "";
+    el("sxPadLabel").textContent = msg.drafted ? "What students will see" : "What students see now";
+    el("sxPadNote").hidden = !msg.tool;
+    el("sxPadNote").textContent = msg.tool ? "This one shows on the classroom screen. Student screens stay as they are." : "";
     showDraft();
   }
   window.addEventListener("message", (e) => {
-    if (e.origin !== location.origin || e.source !== el("sxPhoneFrame").contentWindow || !e.data || e.data.type !== "eyesup_draft_ready") return;
+    if (e.origin !== location.origin || e.source !== el("sxPadFrame").contentWindow || !e.data || e.data.type !== "eyesup_draft_ready") return;
     draftReady = true;
     showDraft();
   });
+  // The iPad's screen is the student page at 1024 × 768, scaled to whatever width the column gives it.
+  const fitPad = () => { const w = el("sxPadScreen").clientWidth; if (w) el("sxPadScreen").style.setProperty("--pad-scale", (w / 1024).toFixed(4)); };
+  if (window.ResizeObserver) new ResizeObserver(fitPad).observe(el("sxPadScreen")); else window.addEventListener("resize", fitPad);
+  fitPad();
   // Anything typed, chosen or dropped in the question box redraws the preview a moment later.
   for (const ev of ["input", "change", "click"]) el("launchPanel").addEventListener(ev, () => draftSoon());
   for (const ev of ["drop", "paste"]) el("launchPanel").addEventListener(ev, () => { draftSoon(700); setTimeout(draftSoon, 2000); }); // a picture takes a moment to read

@@ -217,6 +217,13 @@
           </div>
             </div>
           </section>
+          <!-- The mini student preview: the student page itself on a small landscape iPad, showing the question
+               being written before it is launched (or, with nothing picked, what students see now). Nothing to press. -->
+          <aside class="sx-pad" id="sxPad" aria-label="Student preview">
+            <div class="sx-label" id="sxPadLabel">What students see now</div>
+            <div class="sx-pad-frame"><div class="sx-pad-screen" id="sxPadScreen"><iframe id="sxPadFrame" title="Student preview" tabindex="-1" aria-hidden="true"></iframe></div></div>
+            <p class="sx-pad-note" id="sxPadNote" hidden></p>
+          </aside>
           <div class="sx-card sx-opts">
             <div class="sx-row">
               <button class="btn" id="holdBtn" title="Keep every activity's answers off the classroom screen until you press Reveal">🙈 Hold answers: off</button>
@@ -235,13 +242,6 @@
             </details>
           </div>
           </div>
-          <!-- The mini student preview: the student page itself, small, showing the question being written
-               before it is launched (or, with nothing picked, what students see now). Nothing to press. -->
-          <aside class="sx-phone" id="sxPhone" aria-label="Student preview">
-            <div class="sx-label" id="sxPhoneLabel">What students see now</div>
-            <div class="sx-phone-frame"><iframe id="sxPhoneFrame" title="Student preview" tabindex="-1" aria-hidden="true"></iframe></div>
-            <p class="sx-phone-note" id="sxPhoneNote" hidden></p>
-          </aside>
         </div>
       </div>
     </section>

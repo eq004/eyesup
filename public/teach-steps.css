@@ -306,24 +306,25 @@ body.ui-steps .ls-chip.now .ls-run { color: #fff; }
 /* the Lesson plans view keeps its classic layout on the new ground colour */
 body.ui-steps .plans-wrap { max-width: 1240px; }
 
-/* step 2: the mini student preview beside the Launch button. The frame holds the real student page at
-   phone size (375 px wide), scaled down; it is there to look at, so it takes no taps. */
-.sx-askside { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
-.sx-askmain { flex: 1 1 300px; min-width: 0; }
-.sx-phone { flex: 0 0 224px; width: 224px; margin: 0 auto; }
-.sx-phone .sx-label { text-align: center; margin: 0.15rem 0 0.5rem; }
-.sx-phone-frame { width: 224px; height: 398px; box-sizing: border-box; border: 6px solid var(--ink); border-radius: 30px; overflow: hidden; background: #fff; box-shadow: 0 10px 24px rgba(14, 36, 69, 0.16); }
-.sx-phone-frame iframe { display: block; width: 375px; height: 683px; border: 0; transform: scale(0.5653); transform-origin: 0 0; pointer-events: none; }
-.sx-phone-note { margin: 0.55rem 0 0; text-align: center; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); }
+/* step 2: the mini student preview beneath the Launch box. A small landscape iPad whose screen holds the
+   real student page at iPad size (1024 × 768), scaled to fit (teach-steps.js sets --pad-scale); it is
+   there to look at, so it takes no taps. */
+.sx-askmain { min-width: 0; }
+.sx-pad { width: 100%; max-width: clamp(440px, calc((100vh - 420px) * 1.333), 560px); margin: 0 auto; } /* as big as fits under an empty Launch box on this screen */
+.sx-pad .sx-label { text-align: center; margin: 0.1rem 0 0.5rem; }
+.sx-pad-frame { position: relative; padding: 11px; border-radius: 22px; background: var(--ink); box-shadow: 0 10px 24px rgba(14, 36, 69, 0.16); }
+.sx-pad-frame::before { content: ""; position: absolute; left: 3px; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: rgba(255, 255, 255, 0.4); } /* the camera, on the short edge */
+.sx-pad-screen { position: relative; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 9px; background: #fff; }
+.sx-pad-screen iframe { position: absolute; left: 0; top: 0; display: block; width: 1024px; height: 768px; border: 0; transform: scale(var(--pad-scale, 0.45)); transform-origin: 0 0; pointer-events: none; }
+.sx-pad-note { margin: 0.55rem 0 0; text-align: center; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); }
 @media (min-width: 1180px) {
-  .sx-side.sx-askside { flex: 1 1 590px; flex-wrap: nowrap; }
+  .sx-side.sx-askside { flex: 1 1 520px; }
   .sx-askhead h1 { flex-basis: 100%; } /* the heading on its own line; search and Paste a quiz share the next */
-  body.ui-steps[data-step="2"] .sx-tiles { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); } /* three tiles a row beside the preview */
-  .sx-phone { position: sticky; top: 5.4rem; } /* clear of the top bar, in view while a long question is written */
+  body.ui-steps[data-step="2"] .sx-tiles { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); } /* three tiles a row beside the question box */
 }
 
 @media (max-width: 720px) {
-  .sx-phone { display: none; } /* on a phone-sized dashboard the question box comes first; 👁 Student view, full size is in the Menu */
+  .sx-pad { display: none; } /* on a phone-sized dashboard the question box comes first; 👁 Student view, full size is in the Menu */
   .sx-codeblocks span { width: 68px; height: 80px; font-size: 3.2rem; border-radius: 16px; }
   .sx-big b { font-size: 1.35rem; }
   .sx-pop-body { right: auto; left: 0; }
